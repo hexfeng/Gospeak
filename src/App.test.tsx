@@ -12,7 +12,10 @@ import {
   startRecording,
   stopRecording,
   upsertDictionaryTerm,
+  upsertPreference,
   upsertProfile,
+  selectExportPath,
+  selectImportPath,
 } from "./lib/tauri";
 
 vi.mock("./lib/tauri", () => ({
@@ -20,7 +23,14 @@ vi.mock("./lib/tauri", () => ({
   saveProviderApiKey: vi.fn(async () => ({ groq: true, openai: true })),
   startRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   stopRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
-  runAudioFileDictation: vi.fn(async () => "Polished dictation text"),
+  runAudioFileDictation: vi.fn(async () => ({
+    text: "Polished dictation text",
+    profile_id: "normal",
+    rewrite_fallback_used: false,
+    stt_latency_ms: 120,
+    rewrite_latency_ms: 80,
+    audio_seconds: 1.5,
+  })),
   copyTextForPaste: vi.fn(async () => ({
     copied: true,
     pasteAttempted: false,
@@ -29,11 +39,18 @@ vi.mock("./lib/tauri", () => ({
   cleanupTempAudioFile: vi.fn(async () => true),
   listenForGlobalShortcut: vi.fn(async () => vi.fn()),
   listProfiles: vi.fn(async () => []),
+  listPreferences: vi.fn(async () => []),
+  upsertPreference: vi.fn(async () => undefined),
   upsertProfile: vi.fn(async () => undefined),
   listDictionaryTerms: vi.fn(async () => []),
   upsertDictionaryTerm: vi.fn(async () => undefined),
   exportConfigToFile: vi.fn(async () => undefined),
   importConfigFromFile: vi.fn(async () => ({ data: null })),
+  selectExportPath: vi.fn(async () => "C:\\Temp\\gospeak-export.json"),
+  selectImportPath: vi.fn(async () => "C:\\Temp\\gospeak-import.json"),
+  updateGlobalShortcut: vi.fn(async () => undefined),
+  publishRecorderState: vi.fn(async () => undefined),
+  listenForTrayAction: vi.fn(async () => vi.fn()),
 }));
 
 describe("Gospeak Alpha app shell", () => {
@@ -87,13 +104,10 @@ describe("Gospeak Alpha app shell", () => {
 
     expect(stopRecording).toHaveBeenCalledTimes(1);
     expect(runAudioFileDictation).toHaveBeenCalledWith({
-      config: {
-        stt_provider: "groq",
-        stt_model: "whisper-large-v3-turbo",
-        rewrite_provider: "openai",
-        rewrite_model: "gpt-5-nano",
-      },
       audio_path: "C:\\Temp\\gospeak-test.wav",
+      profile_id: "normal",
+      stt_model: "whisper-large-v3-turbo",
+      rewrite_model: "gpt-5-nano",
     });
     expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
     expect(cleanupTempAudioFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-test.wav");
@@ -115,7 +129,9 @@ describe("Gospeak Alpha app shell", () => {
         enabled: true,
       }),
     );
-    expect(await screen.findByText("Meeting Notes")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByText("Meeting Notes").length).toBeGreaterThan(1),
+    );
   });
 
   it("creates dictionary terms through the storage command", async () => {
@@ -142,10 +158,6 @@ describe("Gospeak Alpha app shell", () => {
 
   it("exports and imports configuration through file commands", async () => {
     const user = userEvent.setup();
-    const promptSpy = vi
-      .spyOn(window, "prompt")
-      .mockReturnValueOnce("C:\\Temp\\gospeak-export.json")
-      .mockReturnValueOnce("C:\\Temp\\gospeak-import.json");
     vi.mocked(importConfigFromFile).mockResolvedValueOnce({
       schemaVersion: 1,
       exportedAt: "2026-06-22T00:00:00.000Z",
@@ -190,16 +202,50 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: /Export configuration/i }));
+    expect(selectExportPath).toHaveBeenCalled();
     expect(exportConfigToFile).toHaveBeenCalledWith(
       "C:\\Temp\\gospeak-export.json",
       expect.objectContaining({ schemaVersion: 1 }),
     );
 
     await user.click(screen.getByRole("button", { name: /Import configuration/i }));
+    expect(selectImportPath).toHaveBeenCalled();
     expect(importConfigFromFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-import.json");
-    expect(await screen.findByText("Imported Profile")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByText("Imported Profile").length).toBeGreaterThan(1),
+    );
     expect(await screen.findByText("brand")).toBeInTheDocument();
 
-    promptSpy.mockRestore();
+  });
+
+  it("persists the active profile and uses it for dictation", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
+    expect(upsertPreference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "active_profile_id",
+        value: "email",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(runAudioFileDictation).toHaveBeenCalledWith(
+      expect.objectContaining({ profile_id: "email" }),
+    );
+  });
+
+  it("allows privacy defaults to be changed and persisted", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByLabelText(/Save raw audio/i));
+
+    expect(upsertPreference).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "privacy" }),
+    );
   });
 });

@@ -1,6 +1,6 @@
 # Gospeak P0 Status And Next Plan
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
 ## Current Status
 
@@ -39,7 +39,17 @@ configured through the UI.
 - SQLite schema and Rust CRUD commands for preferences, prompt profiles, and
   dictionary terms.
 - Prompt profile defaults plus SQLite-backed profile editing UI.
-- Dictionary seed display plus SQLite-backed dictionary editing UI.
+- Dictionary and active Profile settings are loaded into the live pipeline.
+- Dictionary terms are injected into both the STT prompt and rewrite prompt.
+- Pipeline results include latency, audio duration, Profile, and rewrite
+  fallback metadata.
+- Usage events are written after successful pipeline runs without transcript or
+  polished-text content.
+- Preferences persist Provider models, active Profile, shortcut, and privacy.
+- Native import/export dialogs plus schema validation and transactional import.
+- SQLite is stored under Tauri App Data with one-time legacy database migration.
+- Configurable Toggle and Push-to-talk shortcut behavior.
+- Tray menu and compact always-on-top recorder window.
 - Privacy-safe JSON import/export file commands excluding keys, audio,
   transcript history, and logs.
 - Native paste smoke tests passed in Notepad, Chrome textarea, Cursor/VS Code,
@@ -52,14 +62,12 @@ configured through the UI.
 - Global hotkey: registered and routed to the frontend dictation toggle; full
   microphone dictation via hotkey still needs human-in-loop spoken-input
   acceptance.
-- SQLite persistence: profile and dictionary editing are wired; usage event
-  recording is still pending.
-- Usage events: schema exists; recording pipeline events is pending.
+- Desktop interaction: automated wiring is complete; real foreground-app and
+  microphone acceptance remains manual.
 
 ## Not Done
 
 - Full hotkey microphone dictation acceptance with real spoken input.
-- Tray menu and polished floating recorder window.
 - Provider/model cost estimation table.
 - App-aware profiles.
 - Speak to Edit.
@@ -67,8 +75,7 @@ configured through the UI.
 
 ## Next Plan
 
-1. Validate microphone dictation manually from the Tauri runtime.
-2. Wire SQLite dictionary terms into the live pipeline so product terms such as
-   Gospeak can correct STT output like "Gawspeak".
-3. Add usage event recording after each pipeline run.
-4. Add tray menu and polished floating recorder window.
+1. Complete `docs/P0_ACCEPTANCE_MATRIX.md` with real spoken input.
+2. Install the generated Windows bundle on a clean user profile.
+3. Fix any compatibility findings before calling the build a daily-use Alpha.
+4. After P0 acceptance, begin App-aware Profile routing.

@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { ApiKeyPresence, ConfigExportPayload } from "../domain/config";
 
 export type ProviderRuntimeConfig = {
@@ -9,8 +11,19 @@ export type ProviderRuntimeConfig = {
 };
 
 export type AudioFilePipelineRequest = {
-  config: ProviderRuntimeConfig;
   audio_path: string;
+  profile_id: string;
+  stt_model: string;
+  rewrite_model: string;
+};
+
+export type PipelineResult = {
+  text: string;
+  profile_id: string;
+  rewrite_fallback_used: boolean;
+  stt_latency_ms: number;
+  rewrite_latency_ms?: number | null;
+  audio_seconds?: number | null;
 };
 
 export type ClipboardResult = {
@@ -41,6 +54,12 @@ export type DictionaryRecord = {
   enabled: boolean;
   updated_at: string;
   deleted_at?: string | null;
+};
+
+export type PreferenceRecord = {
+  key: string;
+  value: string;
+  updated_at: string;
 };
 
 function hasTauriRuntime() {
@@ -90,12 +109,19 @@ export async function stopRecording(): Promise<string> {
 
 export async function runAudioFileDictation(
   request: AudioFilePipelineRequest,
-): Promise<string> {
+): Promise<PipelineResult> {
   if (!hasTauriRuntime()) {
-    return "Browser preview dictation text.";
+    return {
+      text: "Browser preview dictation text.",
+      profile_id: request.profile_id,
+      rewrite_fallback_used: false,
+      stt_latency_ms: 100,
+      rewrite_latency_ms: 80,
+      audio_seconds: 1,
+    };
   }
 
-  return invoke<string>("run_audio_file_dictation", { request });
+  return invoke<PipelineResult>("run_audio_file_dictation", { request });
 }
 
 export async function copyTextForPaste(text: string): Promise<ClipboardResult> {
@@ -119,14 +145,40 @@ export async function cleanupTempAudioFile(path: string): Promise<boolean> {
 }
 
 export async function listenForGlobalShortcut(
-  handler: () => void,
+  handler: (state: "pressed" | "released") => void,
 ): Promise<() => void> {
   if (!hasTauriRuntime()) {
     return () => {};
   }
 
-  const { listen } = await import("@tauri-apps/api/event");
-  return listen("gospeak://global-shortcut", () => handler());
+  return listen<{ state: "pressed" | "released" }>(
+    "gospeak://global-shortcut",
+    (event) => handler(event.payload.state),
+  );
+}
+
+export async function updateGlobalShortcut(
+  binding: string,
+  previousBinding?: string,
+): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+  return invoke<void>("update_global_shortcut", { binding, previousBinding });
+}
+
+export async function listPreferences(): Promise<PreferenceRecord[]> {
+  if (!hasTauriRuntime()) {
+    return [];
+  }
+  return invoke<PreferenceRecord[]>("list_preferences");
+}
+
+export async function upsertPreference(record: PreferenceRecord): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+  return invoke<void>("upsert_preference", { record });
 }
 
 export async function listProfiles(): Promise<ProfileRecord[]> {
@@ -182,4 +234,58 @@ export async function importConfigFromFile(
   }
 
   return invoke<ConfigExportPayload>("import_config_from_file", { path });
+}
+
+export async function selectExportPath(): Promise<string | null> {
+  if (!hasTauriRuntime()) {
+    return null;
+  }
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  return save({
+    defaultPath: "gospeak-config.json",
+    filters: [{ name: "JSON configuration", extensions: ["json"] }],
+  });
+}
+
+export async function selectImportPath(): Promise<string | null> {
+  if (!hasTauriRuntime()) {
+    return null;
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "JSON configuration", extensions: ["json"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function publishRecorderState(payload: {
+  status: string;
+  message: string;
+}): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+  await emit("gospeak://recorder-state", payload);
+  const recorder = await WebviewWindow.getByLabel("recorder");
+  if (!recorder) {
+    return;
+  }
+  if (payload.status === "idle" || payload.status === "done") {
+    await recorder.hide();
+  } else {
+    await recorder.show();
+  }
+}
+
+export async function listenForTrayAction(
+  handler: (action: string) => void,
+): Promise<() => void> {
+  if (!hasTauriRuntime()) {
+    return () => {};
+  }
+  return listen<string>("gospeak://tray-action", (event) =>
+    handler(event.payload),
+  );
 }
