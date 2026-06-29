@@ -59,14 +59,26 @@ describe("Gospeak Alpha app shell", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the provider configuration surface", () => {
+  it("renders one module at a time from sidebar navigation", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
     expect(
       screen.getByRole("heading", { name: /Gospeak Alpha/i }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText(/Groq STT/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/OpenAI Rewrite/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: /General/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /Provider Configuration/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Providers/i }));
+
+    expect(
+      screen.getByRole("heading", { name: /Provider Configuration/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /General/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText(/STT model/i)).toHaveValue(
       "whisper-large-v3-turbo",
     );
@@ -90,13 +102,15 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(listenForGlobalShortcut).toHaveBeenCalledTimes(1));
   });
 
-  it("renders P0 Alpha sections without P1 scope", () => {
+  it("renders P0 Alpha navigation without P1 scope", () => {
     render(<App />);
 
-    expect(screen.getByText(/Prompt Profiles/i)).toBeInTheDocument();
-    expect(screen.getByText(/Personal Dictionary/i)).toBeInTheDocument();
-    expect(screen.getByText(/Privacy Defaults/i)).toBeInTheDocument();
-    expect(screen.getByText(/Export configuration/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Profiles/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Dictionary/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Privacy/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Import\/Export/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Speak to Edit/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
   });
@@ -131,6 +145,7 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: /Profiles/i }));
     await user.type(screen.getByLabelText(/Profile name/i), "Meeting Notes");
     await user.type(screen.getByLabelText(/Profile system prompt/i), "Summarize spoken notes.");
     await user.click(screen.getByRole("button", { name: /Save profile/i }));
@@ -143,7 +158,7 @@ describe("Gospeak Alpha app shell", () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.getAllByText("Meeting Notes").length).toBeGreaterThan(1),
+      expect(screen.getByText("Meeting Notes")).toBeInTheDocument(),
     );
   });
 
@@ -151,6 +166,7 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: /Dictionary/i }));
     await user.type(screen.getByLabelText(/Spoken phrase/i), "gawspeak");
     await user.type(screen.getByLabelText(/Written phrase/i), "Gospeak");
     await user.type(screen.getByLabelText(/Dictionary aliases/i), "go speak");
@@ -214,6 +230,7 @@ describe("Gospeak Alpha app shell", () => {
 
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: /Import\/Export/i }));
     await user.click(screen.getByRole("button", { name: /Export configuration/i }));
     expect(selectExportPath).toHaveBeenCalled();
     expect(exportConfigToFile).toHaveBeenCalledWith(
@@ -224,9 +241,12 @@ describe("Gospeak Alpha app shell", () => {
     await user.click(screen.getByRole("button", { name: /Import configuration/i }));
     expect(selectImportPath).toHaveBeenCalled();
     expect(importConfigFromFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-import.json");
+
+    await user.click(screen.getByRole("button", { name: /Profiles/i }));
     await waitFor(() =>
-      expect(screen.getAllByText("Imported Profile").length).toBeGreaterThan(1),
+      expect(screen.getByText("Imported Profile")).toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("button", { name: /Dictionary/i }));
     expect(await screen.findByText("brand")).toBeInTheDocument();
 
   });
@@ -255,6 +275,7 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(screen.getByRole("button", { name: /Privacy/i }));
     await user.click(screen.getByLabelText(/Save raw audio/i));
 
     expect(upsertPreference).toHaveBeenCalledWith(

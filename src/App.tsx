@@ -75,16 +75,29 @@ const seedDictionaryTerms: DictionaryTerm[] = [
   },
 ];
 
-const navItems = [
-  { label: "General", icon: Settings },
-  { label: "Providers", icon: KeyRound },
-  { label: "Profiles", icon: SlidersHorizontal },
-  { label: "Dictionary", icon: BookMarked },
-  { label: "Privacy", icon: ShieldCheck },
-  { label: "Import/Export", icon: Database },
+type AppSection =
+  | "general"
+  | "providers"
+  | "profiles"
+  | "dictionary"
+  | "privacy"
+  | "import-export";
+
+const navItems: Array<{
+  id: AppSection;
+  label: string;
+  icon: typeof Settings;
+}> = [
+  { id: "general", label: "General", icon: Settings },
+  { id: "providers", label: "Providers", icon: KeyRound },
+  { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
+  { id: "dictionary", label: "Dictionary", icon: BookMarked },
+  { id: "privacy", label: "Privacy", icon: ShieldCheck },
+  { id: "import-export", label: "Import/Export", icon: Database },
 ];
 
 function App() {
+  const [activeSection, setActiveSection] = useState<AppSection>("general");
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
   const [keyPresence, setKeyPresence] = useState<ApiKeyPresence>({
     groq: false,
@@ -481,14 +494,16 @@ function App() {
 
         <nav className="nav-list">
           {navItems.map((item) => (
-            <a
-              className={item.label === "Providers" ? "nav-item active" : "nav-item"}
-              href={`#${item.label.toLowerCase().replace("/", "-")}`}
+            <button
+              aria-current={activeSection === item.id ? "page" : undefined}
+              className={activeSection === item.id ? "nav-item active" : "nav-item"}
               key={item.label}
+              onClick={() => setActiveSection(item.id)}
+              type="button"
             >
               <item.icon size={17} />
               {item.label}
-            </a>
+            </button>
           ))}
         </nav>
 
@@ -521,32 +536,44 @@ function App() {
           </button>
         </header>
 
-        <section className="status-grid" aria-label="Alpha status">
-          <StatusTile
-            label="STT"
-            value="Groq STT"
-            detail={readiness.stt.ready ? "Key ready" : readiness.stt.reason}
-            tone={readiness.stt.ready ? "good" : "warn"}
-          />
-          <StatusTile
-            label="Rewrite"
-            value="OpenAI Rewrite"
-            detail={
-              readiness.rewrite.ready ? "Key ready" : readiness.rewrite.reason
-            }
-            tone={readiness.rewrite.ready ? "good" : "warn"}
-          />
-          <StatusTile label="History" value="Off" detail="Transcript history disabled" />
-          <StatusTile label="Storage" value="Local" detail="SQLite enabled as source of truth" />
-        </section>
+        <p className="app-message" role="status">
+          {message}
+        </p>
 
-        <div className="content-grid">
-          <section className="panel" id="general">
+        <div className="module-stage">
+          {activeSection === "general" ? (
+          <section className="panel module-panel" id="general">
             <PanelHeader
               icon={<Settings size={19} />}
               title="General"
               description="Choose the profile and global shortcut used by the live pipeline."
             />
+            <section className="status-grid" aria-label="Alpha status">
+              <StatusTile
+                label="STT"
+                value="Groq STT"
+                detail={readiness.stt.ready ? "Key ready" : readiness.stt.reason}
+                tone={readiness.stt.ready ? "good" : "warn"}
+              />
+              <StatusTile
+                label="Rewrite"
+                value="OpenAI Rewrite"
+                detail={
+                  readiness.rewrite.ready ? "Key ready" : readiness.rewrite.reason
+                }
+                tone={readiness.rewrite.ready ? "good" : "warn"}
+              />
+              <StatusTile
+                label="History"
+                value="Off"
+                detail="Transcript history disabled"
+              />
+              <StatusTile
+                label="Storage"
+                value="Local"
+                detail="SQLite enabled as source of truth"
+              />
+            </section>
             <div className="compact-form">
               <label>
                 Active profile
@@ -594,7 +621,10 @@ function App() {
               </label>
             </div>
           </section>
-          <section className="panel providers-panel" id="providers">
+          ) : null}
+
+          {activeSection === "providers" ? (
+          <section className="panel module-panel providers-panel" id="providers">
             <PanelHeader
               icon={<KeyRound size={19} />}
               title="Provider Configuration"
@@ -682,8 +712,10 @@ function App() {
               </button>
             </div>
           </section>
+          ) : null}
 
-          <section className="panel" id="profiles">
+          {activeSection === "profiles" ? (
+          <section className="panel module-panel" id="profiles">
             <PanelHeader
               icon={<Sparkles size={19} />}
               title="Prompt Profiles"
@@ -745,8 +777,10 @@ function App() {
               ))}
             </div>
           </section>
+          ) : null}
 
-          <section className="panel" id="dictionary">
+          {activeSection === "dictionary" ? (
+          <section className="panel module-panel" id="dictionary">
             <PanelHeader
               icon={<BookMarked size={19} />}
               title="Personal Dictionary"
@@ -815,8 +849,10 @@ function App() {
               ))}
             </div>
           </section>
+          ) : null}
 
-          <section className="panel" id="privacy">
+          {activeSection === "privacy" ? (
+          <section className="panel module-panel" id="privacy">
             <PanelHeader
               icon={<ShieldCheck size={19} />}
               title="Privacy Defaults"
@@ -851,8 +887,10 @@ function App() {
               />
             </div>
           </section>
+          ) : null}
 
-          <section className="panel export-panel" id="import-export">
+          {activeSection === "import-export" ? (
+          <section className="panel module-panel export-panel" id="import-export">
             <PanelHeader
               icon={<Database size={19} />}
               title="Import / Export"
@@ -870,6 +908,7 @@ function App() {
             </div>
             <pre>{JSON.stringify(exportPreview.data.providers, null, 2)}</pre>
           </section>
+          ) : null}
         </div>
       </section>
     </main>

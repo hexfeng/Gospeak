@@ -1,9 +1,10 @@
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   color: var(--text);
   background: var(--bg);
+  overflow: hidden;
 }
 
 .sidebar {
@@ -67,12 +68,16 @@
 
 .nav-item {
   gap: 10px;
+  width: 100%;
   height: 36px;
   padding: 0 10px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--text);
   text-decoration: none;
   font-size: 14px;
+  text-align: left;
 }
 
 .nav-item.active,
@@ -115,8 +120,10 @@
 
 .workspace {
   min-width: 0;
+  height: 100vh;
   padding: 28px;
-  overflow: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .topbar {
@@ -187,6 +194,17 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+.app-message {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8faf9;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .status-tile,
 .panel {
   border: 1px solid var(--border);
@@ -231,8 +249,16 @@ button:disabled {
   gap: 16px;
 }
 
+.module-stage {
+  max-width: 1080px;
+}
+
 .panel {
   padding: 18px;
+}
+
+.module-panel {
+  min-height: min(560px, calc(100vh - 170px));
 }
 
 .providers-panel,
@@ -469,9 +495,18 @@ pre {
     height: auto;
   }
 
+  .workspace {
+    height: auto;
+    overflow: visible;
+  }
+
   .status-grid,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .module-panel {
+    min-height: auto;
   }
 
   .topbar,
