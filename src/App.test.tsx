@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import {
+  checkProviderKeys,
   copyTextForPaste,
   cleanupTempAudioFile,
   exportConfigToFile,
@@ -69,6 +70,18 @@ describe("Gospeak Alpha app shell", () => {
     expect(screen.getByLabelText(/STT model/i)).toHaveValue(
       "whisper-large-v3-turbo",
     );
+  });
+
+  it("loads persisted provider key status on startup", async () => {
+    vi.mocked(checkProviderKeys).mockResolvedValueOnce({
+      groq: true,
+      openai: true,
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(checkProviderKeys).toHaveBeenCalledTimes(1));
+    expect(await screen.findAllByText("Key ready")).toHaveLength(2);
   });
 
   it("registers the global shortcut listener", async () => {

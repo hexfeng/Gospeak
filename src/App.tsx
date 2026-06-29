@@ -366,14 +366,21 @@ function App() {
     let disposed = false;
 
     async function loadStoredConfig() {
-      const [storedProfiles, storedDictionary, storedPreferences] = await Promise.all([
+      const [
+        storedProfiles,
+        storedDictionary,
+        storedPreferences,
+        storedKeyPresence,
+      ] = await Promise.all([
         listProfiles(),
         listDictionaryTerms(),
         listPreferences(),
+        checkProviderKeys(),
       ]);
       if (disposed) {
         return;
       }
+      setKeyPresence(storedKeyPresence);
       if (storedProfiles.length > 0) {
         const mappedProfiles = storedProfiles.map(profileRecordToProfile);
         setProfiles(mappedProfiles);
