@@ -5,9 +5,11 @@ pub mod storage;
 
 use provider::{
     provider_key_status, run_alpha_pipeline, run_audio_file_pipeline, save_provider_key,
-    AudioFilePipelineRequest, ProviderRuntimeConfig,
+    AudioFilePipelineRequest, PipelineContext, PipelineResult, ProviderRuntimeConfig,
 };
 use std::sync::Mutex;
+use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[derive(Default)]
 struct RecordingState {
@@ -33,8 +35,43 @@ fn validate_alpha_pipeline(config: ProviderRuntimeConfig) -> Result<String, Stri
 }
 
 #[tauri::command]
-fn run_audio_file_dictation(request: AudioFilePipelineRequest) -> Result<String, String> {
-    run_audio_file_pipeline(&request).map_err(|error| error.to_string())
+fn run_audio_file_dictation(
+    app: tauri::AppHandle,
+    request: AudioFilePipelineRequest,
+) -> Result<PipelineResult, String> {
+    let database = open_app_database(&app)?;
+    let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
+    let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
+    let result = run_audio_file_pipeline(
+        &request,
+        PipelineContext {
+            profile_id: profile.id,
+            profile_name: profile.name,
+            system_prompt: profile.system_prompt,
+            user_prompt_template: profile.user_prompt_template,
+            target_language: profile.target_language,
+            dictionary_terms,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    storage::insert_usage_event(
+        &database,
+        &storage::UsageEventRecord {
+            id: format!("usage_{}", uuid::Uuid::new_v4()),
+            stt_provider: "groq".to_string(),
+            stt_model: request.stt_model,
+            llm_provider: "openai".to_string(),
+            llm_model: request.rewrite_model,
+            profile_id: result.profile_id.clone(),
+            audio_seconds: result.audio_seconds,
+            stt_latency_ms: result.stt_latency_ms,
+            rewrite_latency_ms: result.rewrite_latency_ms,
+            rewrite_fallback_used: result.rewrite_fallback_used,
+            estimated_cost: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+    )?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -78,38 +115,68 @@ fn cleanup_temp_audio_file(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn list_preferences() -> Result<Vec<storage::PreferenceRecord>, String> {
-    let database = open_app_database()?;
+fn update_global_shortcut(
+    app: tauri::AppHandle,
+    binding: String,
+    previous_binding: Option<String>,
+) -> Result<(), String> {
+    if binding.trim().is_empty() {
+        return Err("Global shortcut cannot be empty".to_string());
+    }
+    let shortcuts = app.global_shortcut();
+    shortcuts
+        .unregister_all()
+        .map_err(|error| format!("Cannot unregister the previous shortcut: {error}"))?;
+    if let Err(error) = shortcuts.register(binding.as_str()) {
+        if let Some(previous) = previous_binding.filter(|value| !value.trim().is_empty()) {
+            let _ = shortcuts.register(previous.as_str());
+        }
+        return Err(format!(
+            "Shortcut is invalid or already registered by another application: {error}"
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_preferences(app: tauri::AppHandle) -> Result<Vec<storage::PreferenceRecord>, String> {
+    let database = open_app_database(&app)?;
     storage::list_preferences(&database)
 }
 
 #[tauri::command]
-fn upsert_preference(record: storage::PreferenceRecord) -> Result<(), String> {
-    let database = open_app_database()?;
+fn upsert_preference(
+    app: tauri::AppHandle,
+    record: storage::PreferenceRecord,
+) -> Result<(), String> {
+    let database = open_app_database(&app)?;
     storage::upsert_preference(&database, &record)
 }
 
 #[tauri::command]
-fn list_dictionary_terms() -> Result<Vec<storage::DictionaryRecord>, String> {
-    let database = open_app_database()?;
+fn list_dictionary_terms(app: tauri::AppHandle) -> Result<Vec<storage::DictionaryRecord>, String> {
+    let database = open_app_database(&app)?;
     storage::list_dictionary_terms(&database)
 }
 
 #[tauri::command]
-fn upsert_dictionary_term(record: storage::DictionaryRecord) -> Result<(), String> {
-    let database = open_app_database()?;
+fn upsert_dictionary_term(
+    app: tauri::AppHandle,
+    record: storage::DictionaryRecord,
+) -> Result<(), String> {
+    let database = open_app_database(&app)?;
     storage::upsert_dictionary_term(&database, &record)
 }
 
 #[tauri::command]
-fn list_profiles() -> Result<Vec<storage::ProfileRecord>, String> {
-    let database = open_app_database()?;
+fn list_profiles(app: tauri::AppHandle) -> Result<Vec<storage::ProfileRecord>, String> {
+    let database = open_app_database(&app)?;
     storage::list_profiles(&database)
 }
 
 #[tauri::command]
-fn upsert_profile(record: storage::ProfileRecord) -> Result<(), String> {
-    let database = open_app_database()?;
+fn upsert_profile(app: tauri::AppHandle, record: storage::ProfileRecord) -> Result<(), String> {
+    let database = open_app_database(&app)?;
     storage::upsert_profile(&database, &record)
 }
 
@@ -119,12 +186,25 @@ fn export_config_to_file(path: String, payload: serde_json::Value) -> Result<(),
 }
 
 #[tauri::command]
-fn import_config_from_file(path: String) -> Result<serde_json::Value, String> {
-    storage::read_json_file(std::path::Path::new(&path))
+fn import_config_from_file(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let payload = storage::read_json_file(std::path::Path::new(&path))?;
+    let mut database = open_app_database(&app)?;
+    storage::import_config_payload(&mut database, &payload)?;
+    Ok(payload)
 }
 
-fn open_app_database() -> Result<rusqlite::Connection, String> {
-    let path = storage::default_database_path()?;
+fn open_app_database(app: &tauri::AppHandle) -> Result<rusqlite::Connection, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot resolve app data directory: {error}"))?;
+    let legacy_path = std::env::current_dir()
+        .ok()
+        .map(|directory| directory.join("gospeak.sqlite3"));
+    let path = storage::prepare_database_path(&app_data_dir, legacy_path.as_deref())?;
     storage::open_database(&path)
 }
 
@@ -132,24 +212,99 @@ fn open_app_database() -> Result<rusqlite::Connection, String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(RecordingState::default())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                use tauri::Emitter;
-                use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+                use tauri_plugin_global_shortcut::ShortcutState;
 
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_shortcuts(["alt+space"])?
-                        .with_handler(|app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed
-                                && shortcut.matches(Modifiers::ALT, Code::Space)
-                            {
-                                let _ = app.emit("gospeak://global-shortcut", "Alt+Space");
-                            }
+                        .with_handler(|app, _shortcut, event| {
+                            let state = match event.state {
+                                ShortcutState::Pressed => "pressed",
+                                ShortcutState::Released => "released",
+                            };
+                            let _ = app.emit(
+                                "gospeak://global-shortcut",
+                                serde_json::json!({ "state": state }),
+                            );
                         })
                         .build(),
                 )?;
+
+                let toggle = tauri::menu::MenuItem::with_id(
+                    app,
+                    "toggle",
+                    "Start / Stop Dictation",
+                    true,
+                    None::<&str>,
+                )?;
+                let normal = tauri::menu::MenuItem::with_id(
+                    app,
+                    "profile:normal",
+                    "Normal",
+                    true,
+                    None::<&str>,
+                )?;
+                let email = tauri::menu::MenuItem::with_id(
+                    app,
+                    "profile:email",
+                    "Email",
+                    true,
+                    None::<&str>,
+                )?;
+                let prompt = tauri::menu::MenuItem::with_id(
+                    app,
+                    "profile:prompt",
+                    "Prompt",
+                    true,
+                    None::<&str>,
+                )?;
+                let translate = tauri::menu::MenuItem::with_id(
+                    app,
+                    "profile:translate",
+                    "Translate",
+                    true,
+                    None::<&str>,
+                )?;
+                let profiles = tauri::menu::Submenu::with_items(
+                    app,
+                    "Profile",
+                    true,
+                    &[&normal, &email, &prompt, &translate],
+                )?;
+                let open = tauri::menu::MenuItem::with_id(
+                    app,
+                    "open",
+                    "Open Gospeak",
+                    true,
+                    None::<&str>,
+                )?;
+                let quit = tauri::menu::MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                let separator = tauri::menu::PredefinedMenuItem::separator(app)?;
+                let menu = tauri::menu::Menu::with_items(
+                    app,
+                    &[&toggle, &profiles, &separator, &open, &quit],
+                )?;
+                tauri::tray::TrayIconBuilder::new()
+                    .icon(app.default_window_icon().cloned().unwrap())
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id().as_ref() {
+                        "quit" => app.exit(0),
+                        "open" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        action => {
+                            let _ = app.emit("gospeak://tray-action", action);
+                        }
+                    })
+                    .build(app)?;
             }
 
             if cfg!(debug_assertions) {
@@ -170,6 +325,7 @@ pub fn run() {
             stop_recording,
             copy_text_for_paste,
             cleanup_temp_audio_file,
+            update_global_shortcut,
             list_preferences,
             upsert_preference,
             list_dictionary_terms,

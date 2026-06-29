@@ -24,8 +24,30 @@ pub struct ProviderRuntimeConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioFilePipelineRequest {
-    pub config: ProviderRuntimeConfig,
     pub audio_path: String,
+    pub profile_id: String,
+    pub stt_model: String,
+    pub rewrite_model: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineContext {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub system_prompt: String,
+    pub user_prompt_template: String,
+    pub target_language: Option<String>,
+    pub dictionary_terms: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PipelineResult {
+    pub text: String,
+    pub profile_id: String,
+    pub rewrite_fallback_used: bool,
+    pub stt_latency_ms: u64,
+    pub rewrite_latency_ms: Option<u64>,
+    pub audio_seconds: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,8 +104,15 @@ pub fn run_alpha_pipeline(config: &ProviderRuntimeConfig) -> Result<String, Prov
 
 pub fn run_audio_file_pipeline(
     request: &AudioFilePipelineRequest,
-) -> Result<String, ProviderError> {
-    validate_pipeline_readiness(&request.config, &provider_key_status())?;
+    context: PipelineContext,
+) -> Result<PipelineResult, ProviderError> {
+    let config = ProviderRuntimeConfig {
+        stt_provider: "groq".to_string(),
+        stt_model: request.stt_model.clone(),
+        rewrite_provider: "openai".to_string(),
+        rewrite_model: request.rewrite_model.clone(),
+    };
+    validate_pipeline_readiness(&config, &provider_key_status())?;
 
     let groq_key = provider_key("groq")?;
     let openai_key = provider_key("openai")?;
@@ -91,8 +120,9 @@ pub fn run_audio_file_pipeline(
     let rewrite_provider = OpenAiRewriteProvider::new(openai_key);
 
     run_alpha_pipeline_with_clients(
-        &request.config,
+        &config,
         request.audio_path.clone(),
+        context,
         &stt_provider,
         &rewrite_provider,
     )
@@ -159,6 +189,7 @@ pub struct RewriteInput {
     pub profile_name: String,
     pub system_prompt: String,
     pub dictionary_terms: Vec<String>,
+    pub rendered_prompt: String,
 }
 
 pub trait SttProvider {
@@ -254,19 +285,10 @@ impl RewriteProvider for OpenAiRewriteProvider {
             ));
         }
 
-        let dictionary = if input.dictionary_terms.is_empty() {
-            "No dictionary terms.".to_string()
-        } else {
-            input.dictionary_terms.join("\n")
-        };
-
         let body = serde_json::json!({
           "model": input.model,
           "instructions": input.system_prompt,
-          "input": format!(
-            "Profile: {}\n\nTranscript:\n{}\n\nDictionary terms:\n{}",
-            input.profile_name, input.transcript, dictionary
-          )
+          "input": input.rendered_prompt
         });
 
         let response = reqwest::blocking::Client::new()
@@ -297,35 +319,86 @@ impl RewriteProvider for OpenAiRewriteProvider {
 pub fn run_alpha_pipeline_with_clients<S, R>(
     config: &ProviderRuntimeConfig,
     audio_path: String,
+    context: PipelineContext,
     stt_provider: &S,
     rewrite_provider: &R,
-) -> Result<String, ProviderError>
+) -> Result<PipelineResult, ProviderError>
 where
     S: SttProvider,
     R: RewriteProvider,
 {
+    let stt_started = std::time::Instant::now();
     let transcript = stt_provider.transcribe(&SttInput {
-        audio_path,
+        audio_path: audio_path.clone(),
         model: config.stt_model.clone(),
         language: None,
-        prompt: None,
+        prompt: (!context.dictionary_terms.is_empty()).then(|| context.dictionary_terms.join("\n")),
     })?;
+    let stt_latency_ms = elapsed_ms(stt_started);
 
+    let rendered_prompt = render_user_prompt(&context, &transcript);
     let rewrite_input = RewriteInput {
-    transcript: transcript.clone(),
-    model: config.rewrite_model.clone(),
-    profile_name: "Normal".to_string(),
-    system_prompt: "Clean the transcript into natural written text. Preserve meaning exactly. Do not add new facts.".to_string(),
-    dictionary_terms: Vec::new(),
-  };
+        transcript: transcript.clone(),
+        model: config.rewrite_model.clone(),
+        profile_name: context.profile_name,
+        system_prompt: context.system_prompt,
+        dictionary_terms: context.dictionary_terms,
+        rendered_prompt,
+    };
 
+    let rewrite_started = std::time::Instant::now();
     match rewrite_provider.rewrite(&rewrite_input) {
-        Ok(text) => Ok(text),
+        Ok(text) => Ok(PipelineResult {
+            text,
+            profile_id: context.profile_id,
+            rewrite_fallback_used: false,
+            stt_latency_ms,
+            rewrite_latency_ms: Some(elapsed_ms(rewrite_started)),
+            audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
+        }),
         Err(error) => {
             log::warn!("Rewrite failed; falling back to raw transcript: {error}");
-            Ok(transcript)
+            Ok(PipelineResult {
+                text: transcript,
+                profile_id: context.profile_id,
+                rewrite_fallback_used: true,
+                stt_latency_ms,
+                rewrite_latency_ms: Some(elapsed_ms(rewrite_started)),
+                audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
+            })
         }
     }
+}
+
+fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
+    let dictionary = if context.dictionary_terms.is_empty() {
+        "No dictionary terms.".to_string()
+    } else {
+        context.dictionary_terms.join("\n")
+    };
+    context
+        .user_prompt_template
+        .replace("{{transcript}}", transcript)
+        .replace("{{dictionaryTerms}}", &dictionary)
+        .replace(
+            "{{targetLanguage}}",
+            context
+                .target_language
+                .as_deref()
+                .unwrap_or("Not specified"),
+        )
+}
+
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
+}
+
+fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
+    let reader = hound::WavReader::open(path).ok()?;
+    let spec = reader.spec();
+    let samples = f64::from(reader.duration());
+    let samples_per_second = f64::from(spec.sample_rate) * f64::from(spec.channels);
+    (samples_per_second > 0.0).then_some(samples / samples_per_second)
 }
 
 fn parse_groq_transcription_text(body: &str) -> Result<String, ProviderError> {
@@ -456,12 +529,23 @@ mod tests {
         let result = run_alpha_pipeline_with_clients(
             &config,
             "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "email".to_string(),
+                profile_name: "Email".to_string(),
+                system_prompt: "Write a concise email.".to_string(),
+                user_prompt_template: "Transcript:\n{{transcript}}\nTerms:\n{{dictionaryTerms}}"
+                    .to_string(),
+                target_language: None,
+                dictionary_terms: vec!["Gawspeak => Gospeak".to_string()],
+            },
             &MockStt,
             &MockRewrite,
         )
         .unwrap();
 
-        assert_eq!(result, "polished transcript");
+        assert_eq!(result.text, "polished transcript");
+        assert!(!result.rewrite_fallback_used);
+        assert_eq!(result.profile_id, "email");
     }
 
     #[test]
@@ -490,12 +574,69 @@ mod tests {
         let result = run_alpha_pipeline_with_clients(
             &config,
             "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+            },
             &MockStt,
             &FailingRewrite,
         )
         .unwrap();
 
-        assert_eq!(result, "raw transcript");
+        assert_eq!(result.text, "raw transcript");
+        assert!(result.rewrite_fallback_used);
+    }
+
+    #[test]
+    fn pipeline_injects_profile_and_dictionary_into_providers() {
+        struct InspectingStt;
+        impl SttProvider for InspectingStt {
+            fn transcribe(&self, input: &SttInput) -> Result<String, ProviderError> {
+                assert_eq!(input.prompt.as_deref(), Some("Gawspeak => Gospeak"));
+                Ok("Gawspeak is useful".to_string())
+            }
+        }
+
+        struct InspectingRewrite;
+        impl RewriteProvider for InspectingRewrite {
+            fn rewrite(&self, input: &RewriteInput) -> Result<String, ProviderError> {
+                assert_eq!(input.profile_name, "Product Email");
+                assert_eq!(input.system_prompt, "Write a concise product email.");
+                assert_eq!(input.dictionary_terms, vec!["Gawspeak => Gospeak"]);
+                assert!(input.rendered_prompt.contains("Gawspeak is useful"));
+                assert!(input.rendered_prompt.contains("English"));
+                Ok("Gospeak is useful.".to_string())
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "product_email".to_string(),
+                profile_name: "Product Email".to_string(),
+                system_prompt: "Write a concise product email.".to_string(),
+                user_prompt_template:
+                    "Target: {{targetLanguage}}\n{{transcript}}\n{{dictionaryTerms}}".to_string(),
+                target_language: Some("English".to_string()),
+                dictionary_terms: vec!["Gawspeak => Gospeak".to_string()],
+            },
+            &InspectingStt,
+            &InspectingRewrite,
+        )
+        .unwrap();
+
+        assert_eq!(result.text, "Gospeak is useful.");
+        assert_eq!(result.profile_id, "product_email");
     }
 
     #[test]

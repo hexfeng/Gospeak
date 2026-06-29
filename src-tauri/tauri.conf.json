@@ -12,11 +12,25 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Gospeak",
         "width": 1180,
         "height": 760,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "recorder",
+        "title": "Gospeak Recorder",
+        "width": 380,
+        "height": 150,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {
@@ -25,7 +39,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "msi"],
+    "shortDescription": "Local-first AI voice input for Windows",
+    "longDescription": "Gospeak records speech, transcribes with Groq, rewrites with OpenAI, and pastes into the active application.",
+    "publisher": "Gospeak",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
