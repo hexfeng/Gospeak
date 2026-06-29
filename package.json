@@ -1,7 +1,14 @@
 {
   "name": "gospeak",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Local-first AI voice input for Windows",
+  "license": "MIT",
+  "author": "Gospeak contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hexfeng/Gospeak.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,10 +20,13 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@emnapi/core": "^1.11.1",
+    "@emnapi/runtime": "^1.11.1",
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.3",
     "@testing-library/jest-dom": "^6.9.1",

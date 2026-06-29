@@ -1,9 +1,10 @@
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   color: var(--text);
   background: var(--bg);
+  overflow: hidden;
 }
 
 .sidebar {
@@ -67,12 +68,16 @@
 
 .nav-item {
   gap: 10px;
+  width: 100%;
   height: 36px;
   padding: 0 10px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--text);
   text-decoration: none;
   font-size: 14px;
+  text-align: left;
 }
 
 .nav-item.active,
@@ -114,8 +119,11 @@
 }
 
 .workspace {
+  min-width: 0;
+  height: 100vh;
   padding: 28px;
-  overflow: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .topbar {
@@ -186,6 +194,17 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+.app-message {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8faf9;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .status-tile,
 .panel {
   border: 1px solid var(--border);
@@ -226,12 +245,20 @@ button:disabled {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 16px;
+}
+
+.module-stage {
+  max-width: 1080px;
 }
 
 .panel {
   padding: 18px;
+}
+
+.module-panel {
+  min-height: min(560px, calc(100vh - 170px));
 }
 
 .providers-panel,
@@ -272,10 +299,21 @@ button:disabled {
 }
 
 .provider-row {
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px;
   padding: 14px 0;
   border-top: 1px solid var(--border);
+}
+
+.provider-row > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.provider-row label {
+  flex: 1 1 240px;
+  max-width: 360px;
 }
 
 .provider-row h3 {
@@ -290,7 +328,7 @@ button:disabled {
 label {
   display: grid;
   gap: 6px;
-  min-width: 240px;
+  min-width: 0;
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -298,6 +336,8 @@ label {
 select,
 input,
 textarea {
+  width: 100%;
+  min-width: 0;
   height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -315,7 +355,7 @@ textarea {
 
 .compact-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 10px;
   align-items: end;
   margin-bottom: 14px;
@@ -326,24 +366,26 @@ textarea {
 }
 
 .compact-form .wide-field {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
 }
 
 .dictionary-form {
-  grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
 }
 
 .key-row {
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-bottom: 2px;
 }
 
 .key-row input {
-  width: 280px;
+  flex: 1 1 280px;
 }
 
 .message-row {
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   margin-top: 14px;
@@ -396,9 +438,17 @@ textarea {
 
 .dict-item {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 12px;
   align-items: center;
+}
+
+.dict-item span,
+.dict-item strong,
+.dict-item small,
+.profile-item p,
+.message-row span {
+  overflow-wrap: anywhere;
 }
 
 .privacy-line {
@@ -445,9 +495,18 @@ pre {
     height: auto;
   }
 
+  .workspace {
+    height: auto;
+    overflow: visible;
+  }
+
   .status-grid,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .module-panel {
+    min-height: auto;
   }
 
   .topbar,

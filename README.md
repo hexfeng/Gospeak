@@ -26,10 +26,13 @@ tests.
   audio-file pipeline, copies and natively pastes the result, and then safely
   deletes Gospeak temp audio.
 - `Alt+Space` global shortcut registration that emits a frontend event and uses
-  the same dictation toggle flow.
+  the same dictation flow, with configurable Toggle and Push-to-talk modes.
+- Tray actions and a compact always-on-top recorder window.
 - Prompt profile defaults for Normal, Email, Prompt, and Translate.
-- Profile and dictionary editing UI backed by SQLite CRUD commands.
-- Privacy-safe JSON import/export file commands.
+- Profile and dictionary editing UI backed by SQLite CRUD commands and consumed
+  by the live STT/rewrite pipeline.
+- Privacy-safe JSON import/export through native file dialogs.
+- Privacy, provider, hotkey, and active-profile preferences persisted locally.
 - Rust provider interface commands:
   - `check_provider_keys`
   - `save_provider_api_key`
@@ -46,7 +49,9 @@ tests.
   - `export_config_to_file`
   - `import_config_from_file`
 - SQLite schema and Rust CRUD commands for preferences, prompt profiles,
-  dictionary terms, and usage events.
+  dictionary terms, and privacy-safe usage events.
+- SQLite data lives in the OS App Data directory; an older working-directory
+  database is migrated once on startup.
 - API key storage uses the OS credential store through Rust `keyring`.
 - Export payloads exclude API keys, raw audio, transcript history, and logs.
 
@@ -59,8 +64,8 @@ tests.
   "Gawspeak".
 - Native paste smoke tests pass in Notepad, Chrome textarea, Cursor/VS Code
   editor, and a browser contenteditable composer.
-- Usage events schema exists, but pipeline event recording is not wired yet.
-- Tray menu and floating recorder window are still UI follow-ups.
+- Human-in-loop acceptance remains tracked in
+  [docs/P0_ACCEPTANCE_MATRIX.md](docs/P0_ACCEPTANCE_MATRIX.md).
 - App-aware profiles, Speak to Edit, sync folder, WebDAV, and local Whisper.
 
 ## Development
@@ -79,6 +84,8 @@ npm run lint
 npm run build
 cd src-tauri
 cargo test
+cargo fmt -- --check
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 Debug desktop build:
