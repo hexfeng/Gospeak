@@ -454,12 +454,14 @@ textarea {
 
 .profile-list,
 .dictionary-list,
+.rule-list,
 .privacy-list {
   display: grid;
   gap: 10px;
 }
 
 .profile-item,
+.rule-item,
 .dict-item {
   padding: 12px;
   border: 1px solid var(--border);
@@ -469,6 +471,9 @@ textarea {
 
 .profile-item strong,
 .profile-item span,
+.rule-item strong,
+.rule-item span,
+.rule-item small,
 .dict-item span,
 .dict-item strong,
 .dict-item small {
@@ -476,11 +481,14 @@ textarea {
 }
 
 .profile-item strong,
+.rule-item strong,
 .dict-item strong {
   color: var(--text-strong);
 }
 
 .profile-item span,
+.rule-item span,
+.rule-item small,
 .dict-item small {
   color: var(--text-muted);
   font-size: 12px;
@@ -492,6 +500,90 @@ textarea {
   line-height: 1.45;
 }
 
+.app-routing-toggle {
+  margin-bottom: 12px;
+}
+
+.app-context-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.app-rule-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+}
+
+.rule-item {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.empty-note {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pricing-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.pricing-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pricing-heading h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.pricing-heading span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pricing-table-wrap {
+  overflow-x: auto;
+}
+
+.pricing-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pricing-table th,
+.pricing-table td {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pricing-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .dict-item {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
@@ -500,6 +592,9 @@ textarea {
 }
 
 .dict-item span,
+.rule-item span,
+.rule-item strong,
+.rule-item small,
 .dict-item strong,
 .dict-item small,
 .profile-item p,

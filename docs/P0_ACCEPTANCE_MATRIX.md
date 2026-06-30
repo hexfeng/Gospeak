@@ -5,7 +5,8 @@ Last updated: 2026-06-30
 Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
 fallback, clipboard behavior, recorder-window permissions, latency diagnostics,
-fast dictation, linting, compilation, and packaging. Manual rows below are
+fast dictation, App-aware routing, provider cost visibility, linting,
+compilation, and packaging. Manual rows below are
 recorded as passed based on user-reported acceptance on 2026-06-30.
 
 ## Test Environment
@@ -67,6 +68,18 @@ targets.
 | Recorder window permission | `window.show` and `window.hide` are allowed for the recorder overlay | Pass - capability regression test verifies `core:window:allow-show` and `core:window:allow-hide` |
 | Fast dictation | STT output can skip rewrite and paste faster | Pass - automated fast-mode tests verify `skip_rewrite`, no OpenAI requirement, and `Rewrite: Skipped` diagnostics |
 | STT audio optimization | Recorded WAV is optimized before upload | Pass - automated audio test verifies 16 kHz mono optimized WAV output |
+
+## Post-P0 App-Aware Routing Matrix
+
+| Scenario | Expected result | Status |
+| --- | --- | --- |
+| Foreground app detection | Windows foreground executable and window title are available to routing | Pass - automated Rust tests cover context shape and non-content routing metadata; manual target-app confirmation pending for the next bundle |
+| App-only rule | Matching executable selects the configured Profile | Pass - automated Rust and frontend resolver tests cover app-only matching |
+| App plus title rule | Matching executable and title substring selects the higher-priority Profile | Pass - automated Rust and frontend resolver tests cover title-specific priority |
+| Disabled or deleted rule | Rule is ignored and fallback Profile is used | Pass - automated Rust and frontend tests cover disabled and deleted rules |
+| Missing fallback Profile | Built-in Normal Profile is used instead of sending a missing Profile id | Pass - automated frontend tests cover missing and disabled fallback Profiles |
+| App Rules export | App Rules are exported as config without keys, audio, transcript, or polished text | Pass - automated frontend export tests cover privacy-safe payloads |
+| Provider/model cost table | Providers page shows 2026-06-30 pricing snapshot and estimates | Pass - automated frontend tests cover Groq and OpenAI model estimates |
 
 ## Release Gate
 

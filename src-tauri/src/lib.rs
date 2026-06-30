@@ -1,3 +1,4 @@
+pub mod app_context;
 pub mod audio;
 pub mod clipboard;
 pub mod provider;
@@ -139,6 +140,11 @@ fn update_global_shortcut(
 }
 
 #[tauri::command]
+fn get_foreground_app_context() -> app_context::ForegroundAppContext {
+    app_context::current_foreground_app_context()
+}
+
+#[tauri::command]
 fn list_preferences(app: tauri::AppHandle) -> Result<Vec<storage::PreferenceRecord>, String> {
     let database = open_app_database(&app)?;
     storage::list_preferences(&database)
@@ -178,6 +184,23 @@ fn list_profiles(app: tauri::AppHandle) -> Result<Vec<storage::ProfileRecord>, S
 fn upsert_profile(app: tauri::AppHandle, record: storage::ProfileRecord) -> Result<(), String> {
     let database = open_app_database(&app)?;
     storage::upsert_profile(&database, &record)
+}
+
+#[tauri::command]
+fn list_app_profile_rules(
+    app: tauri::AppHandle,
+) -> Result<Vec<storage::AppProfileRuleRecord>, String> {
+    let database = open_app_database(&app)?;
+    storage::list_app_profile_rules(&database)
+}
+
+#[tauri::command]
+fn upsert_app_profile_rule(
+    app: tauri::AppHandle,
+    record: storage::AppProfileRuleRecord,
+) -> Result<(), String> {
+    let database = open_app_database(&app)?;
+    storage::upsert_app_profile_rule(&database, &record)
 }
 
 #[tauri::command]
@@ -326,12 +349,15 @@ pub fn run() {
             copy_text_for_paste,
             cleanup_temp_audio_file,
             update_global_shortcut,
+            get_foreground_app_context,
             list_preferences,
             upsert_preference,
             list_dictionary_terms,
             upsert_dictionary_term,
             list_profiles,
             upsert_profile,
+            list_app_profile_rules,
+            upsert_app_profile_rule,
             export_config_to_file,
             import_config_from_file
         ])

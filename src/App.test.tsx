@@ -8,12 +8,16 @@ import {
   cleanupTempAudioFile,
   exportConfigToFile,
   importConfigFromFile,
+  getForegroundAppContext,
+  listAppProfileRules,
+  listPreferences,
   runAudioFileDictation,
   listenForGlobalShortcut,
   publishRecorderState,
   startRecording,
   stopRecording,
   upsertDictionaryTerm,
+  upsertAppProfileRule,
   upsertPreference,
   upsertProfile,
   selectExportPath,
@@ -42,6 +46,12 @@ vi.mock("./lib/tauri", () => ({
   })),
   cleanupTempAudioFile: vi.fn(async () => true),
   listenForGlobalShortcut: vi.fn(async () => vi.fn()),
+  getForegroundAppContext: vi.fn(async () => ({
+    appId: "browser-preview.exe",
+    windowTitle: "Browser preview",
+  })),
+  listAppProfileRules: vi.fn(async () => []),
+  upsertAppProfileRule: vi.fn(async () => undefined),
   listProfiles: vi.fn(async () => []),
   listPreferences: vi.fn(async () => []),
   upsertPreference: vi.fn(async () => undefined),
@@ -139,6 +149,7 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     expect(screen.getByRole("button", { name: /Profiles/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /App Rules/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Dictionary/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Privacy/i })).toBeInTheDocument();
     expect(
@@ -222,6 +233,180 @@ describe("Gospeak Alpha app shell", () => {
     );
     expect(copyTextForPaste).toHaveBeenCalledWith("Raw fast transcript");
     expect(await screen.findByText("Skipped")).toBeInTheDocument();
+  });
+
+  it("renders App Rules navigation with a rule form and detected app preview", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getForegroundAppContext).mockResolvedValueOnce({
+      appId: "chrome.exe",
+      windowTitle: "ChatGPT - Chrome",
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+
+    expect(
+      screen.getByRole("heading", { name: /App Rules/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Enable app-aware routing/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/App id/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Title contains/i)).toBeInTheDocument();
+    expect(screen.getByText(/chrome\.exe/i)).toBeInTheDocument();
+    expect(screen.getByText(/ChatGPT - Chrome/i)).toBeInTheDocument();
+  });
+
+  it("saves App Rules through the storage command", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
+    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
+    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
+    await user.clear(screen.getByLabelText(/Priority/i));
+    await user.type(screen.getByLabelText(/Priority/i), "10");
+    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
+
+    expect(upsertAppProfileRule).toHaveBeenCalledWith({
+      record: expect.objectContaining({
+        appId: "chrome.exe",
+        windowTitlePattern: "ChatGPT",
+        profileId: "prompt",
+        priority: 10,
+        enabled: true,
+        deletedAt: null,
+      }),
+    });
+    expect(await screen.findByText(/App rule saved/i)).toBeInTheDocument();
+  });
+
+  it("keeps multiple rules for the same app with different title patterns", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
+    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "normal");
+    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
+
+    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
+    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
+    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
+    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
+
+    expect(upsertAppProfileRule).toHaveBeenCalledTimes(2);
+    const ids = vi
+      .mocked(upsertAppProfileRule)
+      .mock.calls.map(([input]) => input.record.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(await screen.findByText("ChatGPT")).toBeInTheDocument();
+    expect(screen.getAllByText("chrome.exe").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rejects title-only App Rules before saving", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
+
+    expect(screen.getByRole("button", { name: /Save app rule/i })).toBeDisabled();
+  });
+
+  it("hydrates backend-style records and routes from camelCase foreground context", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
+      {
+        id: "rule_chrome_prompt",
+        appId: "chrome.exe",
+        windowTitlePattern: "ChatGPT",
+        profileId: "prompt",
+        priority: 10,
+        enabled: true,
+        updatedAt: "2026-06-30T10:00:00.000Z",
+        deletedAt: null,
+      },
+    ]);
+    vi.mocked(getForegroundAppContext).mockResolvedValue({
+      appId: "chrome.exe",
+      windowTitle: "ChatGPT - Chrome",
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByLabelText(/Enable app-aware routing/i));
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(getForegroundAppContext).toHaveBeenCalled();
+    expect(runAudioFileDictation).toHaveBeenCalledWith(
+      expect.objectContaining({ profile_id: "prompt" }),
+    );
+  });
+
+  it("uses the manual active profile when app-aware routing is disabled", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
+      {
+        id: "rule_chrome_prompt",
+        appId: "chrome.exe",
+        windowTitlePattern: "ChatGPT",
+        profileId: "prompt",
+        priority: 10,
+        enabled: true,
+        updatedAt: "2026-06-30T10:00:00.000Z",
+        deletedAt: null,
+      },
+    ]);
+    render(<App />);
+
+    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(getForegroundAppContext).not.toHaveBeenCalled();
+    expect(runAudioFileDictation).toHaveBeenCalledWith(
+      expect.objectContaining({ profile_id: "email" }),
+    );
+  });
+
+  it("displays App Rules enabled state in the rule list", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
+      {
+        id: "rule_chrome_prompt",
+        appId: "chrome.exe",
+        windowTitlePattern: "ChatGPT",
+        profileId: "prompt",
+        priority: 10,
+        enabled: false,
+        updatedAt: "2026-06-30T10:00:00.000Z",
+        deletedAt: null,
+      },
+    ]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+
+    const status = await screen.findByText("Disabled");
+    expect(status.closest(".rule-item")).toHaveTextContent(/chrome\.exe/i);
+  });
+
+  it("renders the provider pricing snapshot", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Providers/i }));
+
+    expect(
+      screen.getByText(/Pricing snapshot: 2026-06-30/i),
+    ).toBeInTheDocument();
+    const pricing = screen.getByLabelText(/Provider pricing/i);
+    expect(within(pricing).getByText("whisper-large-v3-turbo")).toBeInTheDocument();
+    expect(within(pricing).getByText("$0.04/hour")).toBeInTheDocument();
+    expect(within(pricing).getByText("gpt-5-mini")).toBeInTheDocument();
+    expect(within(pricing).getByText(/^\$0\.25\/1M input/)).toBeInTheDocument();
+    expect(within(pricing).getByText(/\$2\.00\/1M output$/)).toBeInTheDocument();
   });
 
   it("publishes visible recorder progress while processing dictation", async () => {
@@ -324,6 +509,7 @@ describe("Gospeak Alpha app shell", () => {
           rewrite: { providerId: "openai", model: "gpt-5-nano" },
         },
         performance: { fastMode: false },
+        appRouting: { enabled: false },
         hotkey: { binding: "Alt+Space", mode: "push-to-talk" },
         privacy: {
           saveRawAudio: false,
@@ -354,6 +540,7 @@ describe("Gospeak Alpha app shell", () => {
             updatedAt: "2026-06-22T00:00:00.000Z",
           },
         ],
+        appRules: [],
       },
     });
 
@@ -397,6 +584,30 @@ describe("Gospeak Alpha app shell", () => {
 
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ profile_id: "email" }),
+    );
+  });
+
+  it("sanitizes a missing stored active profile before dictation", async () => {
+    const user = userEvent.setup();
+    vi.mocked(checkProviderKeys).mockResolvedValueOnce({
+      groq: true,
+      openai: true,
+    });
+    vi.mocked(listPreferences).mockResolvedValueOnce([
+      {
+        key: "active_profile_id",
+        value: "missing_profile",
+        updated_at: "2026-06-30T10:00:00.000Z",
+      },
+    ]);
+    render(<App />);
+
+    await screen.findAllByText("Key ready");
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(runAudioFileDictation).toHaveBeenCalledWith(
+      expect.objectContaining({ profile_id: "normal" }),
     );
   });
 

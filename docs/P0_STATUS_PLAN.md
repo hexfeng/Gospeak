@@ -56,6 +56,10 @@ configured through the UI.
   Tauri `window.show`/`window.hide` permissions.
 - Latency diagnostics, 16 kHz mono STT audio optimization, HTTP client reuse,
   and Fast dictation mode that can skip rewrite.
+- App-aware Profile routing with Windows foreground app/window-title detection,
+  SQLite-backed App Rules, active Profile fallback, and built-in Normal fallback.
+- Provider/model cost estimation table with a 2026-06-30 pricing snapshot for
+  Groq Whisper and OpenAI rewrite models.
 - Privacy-safe JSON import/export file commands excluding keys, audio,
   transcript history, and logs.
 - Native paste smoke tests passed in Notepad, Chrome textarea, Cursor/VS Code,
@@ -65,22 +69,19 @@ configured through the UI.
 
 ## Partial
 
-- Provider/model cost estimation is not implemented yet. It is useful for
-  product clarity, but it is not required to keep P0 accepted.
+- App-aware routing has automated coverage for resolver, storage, import/export,
+  and frontend routing behavior. Manual target-app acceptance still needs to be
+  recorded after installing the next debug bundle.
 
 ## Not Done
 
-- App-aware profiles.
 - Speak to Edit.
 - Sync/WebDAV/local Whisper.
-- Provider/model cost estimation table.
 
 ## Next Plan
 
-1. Start App-aware Profile routing as the first post-P0 slice.
-2. Define the routing inputs: foreground app identity, window title, current
-   active Profile, and user override behavior.
-3. Add a small provider/model cost estimation table to make latency/cost
-   trade-offs visible in Settings or Providers.
-4. Keep Speak to Edit, Sync/WebDAV, and local Whisper deferred until App-aware
-   routing is stable.
+1. Build and manually accept the App-aware routing bundle in representative
+   target apps: Chrome/Edge, Outlook/Teams, VS Code/Cursor, and Notepad.
+2. After App-aware routing is stable in daily use, consider Speak to Edit as
+   the next product slice.
+3. Keep Sync/WebDAV and local Whisper deferred.

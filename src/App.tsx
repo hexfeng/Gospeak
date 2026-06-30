@@ -6,6 +6,7 @@ import {
   KeyRound,
   Mic,
   Play,
+  Route,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -15,12 +16,20 @@ import {
 import "./App.css";
 import {
   DEFAULT_APP_CONFIG,
+  PRICING_SNAPSHOT_DATE,
+  PROVIDER_PRICING,
   type ApiKeyPresence,
   type AppConfig,
+  type AppProfileRule,
   type DictionaryTerm,
+  type ForegroundAppContext,
   type PromptProfile,
   buildExportPayload,
+  estimateGroqSttCost,
+  estimateOpenAiRewriteCost,
   getProviderReadiness,
+  resolveActiveProfileId,
+  resolveProfileForContext,
   updateProviderModel,
 } from "./domain/config";
 import {
@@ -32,7 +41,9 @@ import {
   cleanupTempAudioFile,
   copyTextForPaste,
   exportConfigToFile,
+  getForegroundAppContext,
   importConfigFromFile,
+  listAppProfileRules,
   listDictionaryTerms,
   listPreferences,
   listProfiles,
@@ -46,6 +57,7 @@ import {
   startRecording,
   stopRecording,
   updateGlobalShortcut,
+  upsertAppProfileRule,
   upsertDictionaryTerm,
   upsertPreference,
   upsertProfile,
@@ -79,6 +91,7 @@ type AppSection =
   | "general"
   | "providers"
   | "profiles"
+  | "app-rules"
   | "dictionary"
   | "privacy"
   | "import-export";
@@ -91,6 +104,7 @@ const navItems: Array<{
   { id: "general", label: "General", icon: Settings },
   { id: "providers", label: "Providers", icon: KeyRound },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
+  { id: "app-rules", label: "App Rules", icon: Route },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
   { id: "privacy", label: "Privacy", icon: ShieldCheck },
   { id: "import-export", label: "Import/Export", icon: Database },
@@ -122,6 +136,9 @@ function App() {
   );
   const [dictionaryTerms, setDictionaryTerms] =
     useState<DictionaryTerm[]>(seedDictionaryTerms);
+  const [appRules, setAppRules] = useState<AppProfileRule[]>([]);
+  const [foregroundContext, setForegroundContext] =
+    useState<ForegroundAppContext | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     name: "",
     mode: "normal" as PromptProfile["mode"],
@@ -135,6 +152,12 @@ function App() {
     written: "",
     aliases: "",
     tags: "",
+  });
+  const [appRuleDraft, setAppRuleDraft] = useState({
+    appId: "",
+    windowTitlePattern: "",
+    profileId: DEFAULT_APP_CONFIG.activeProfileId,
+    priority: 0,
   });
   const [dictation, dispatchDictation] = useReducer(
     dictationReducer,
@@ -247,6 +270,38 @@ function App() {
     setMessage(`Dictionary term saved: ${term.written}`);
   }
 
+  async function saveAppRule() {
+    const appId = appRuleDraft.appId.trim();
+    const titlePattern = appRuleDraft.windowTitlePattern.trim();
+    if (!appId) {
+      setMessage("App rule needs an app id.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const profileId = appRuleDraft.profileId || config.activeProfileId;
+    const record: AppProfileRule = {
+      id: `rule_${slug([appId, titlePattern, profileId, now].join("_"))}`,
+      appId,
+      windowTitlePattern: titlePattern || null,
+      profileId,
+      priority: appRuleDraft.priority,
+      enabled: true,
+      updatedAt: now,
+      deletedAt: null,
+    };
+
+    await upsertAppProfileRule({ record });
+    setAppRules((current) => upsertById(current, record));
+    setAppRuleDraft((current) => ({
+      ...current,
+      appId: "",
+      windowTitlePattern: "",
+      priority: 0,
+    }));
+    setMessage(`App rule saved for ${appId || titlePattern}.`);
+  }
+
   async function exportConfiguration() {
     const path = await selectExportPath();
     if (!path) {
@@ -265,6 +320,7 @@ function App() {
     setConfig({ ...DEFAULT_APP_CONFIG, ...payload.data });
     setProfiles(payload.data.promptProfiles);
     setDictionaryTerms(payload.data.dictionaryTerms);
+    setAppRules(payload.data.appRules ?? []);
     setMessage(`Configuration imported from ${path}`);
   }
 
@@ -321,9 +377,26 @@ function App() {
       });
       setMessage("Recording stopped. Running STT and rewrite pipeline.");
 
+      let profileId = config.activeProfileId;
+      if (config.appRouting.enabled) {
+        const context = await getForegroundAppContext();
+        setForegroundContext(context);
+        profileId = resolveProfileForContext({
+          activeProfileId: config.activeProfileId,
+          enabledProfileIds: enabledProfileIds(profiles),
+          context,
+          rules: appRules,
+        }).profileId;
+      } else {
+        profileId = resolveActiveProfileId(
+          config.activeProfileId,
+          enabledProfileIds(profiles),
+        );
+      }
+
       const request: AudioFilePipelineRequest = {
         audio_path: audioPath,
-        profile_id: config.activeProfileId,
+        profile_id: profileId,
         stt_model: config.providers.stt.model,
         rewrite_model: config.providers.rewrite.model,
         skip_rewrite: config.performance.fastMode,
@@ -447,6 +520,25 @@ function App() {
   }, [dictation.message, dictation.status]);
 
   useEffect(() => {
+    if (activeSection !== "app-rules") {
+      return;
+    }
+    let disposed = false;
+    getForegroundAppContext()
+      .then((context) => {
+        if (!disposed) {
+          setForegroundContext(context);
+        }
+      })
+      .catch((error) => {
+        console.warn("Foreground app preview failed", error);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [activeSection]);
+
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
     listenForTrayAction((action) => {
       if (action === "toggle") {
@@ -467,11 +559,13 @@ function App() {
       const [
         storedProfiles,
         storedDictionary,
+        storedAppRules,
         storedPreferences,
         storedKeyPresence,
       ] = await Promise.all([
         listProfiles(),
         listDictionaryTerms(),
+        listAppProfileRules(),
         listPreferences(),
         checkProviderKeys(),
       ]);
@@ -486,6 +580,7 @@ function App() {
       if (storedDictionary.length > 0) {
         setDictionaryTerms(storedDictionary.map(dictionaryRecordToTerm));
       }
+      setAppRules(storedAppRules);
       const preferences = Object.fromEntries(
         storedPreferences.map((preference) => [preference.key, preference.value]),
       );
@@ -497,7 +592,13 @@ function App() {
         { ...DEFAULT_APP_CONFIG, promptProfiles: mappedProfiles },
         preferences,
       );
-      setConfig(nextConfig);
+      setConfig({
+        ...nextConfig,
+        activeProfileId: resolveActiveProfileId(
+          nextConfig.activeProfileId,
+          enabledProfileIds(mappedProfiles),
+        ),
+      });
       if (nextConfig.hotkey.binding !== DEFAULT_APP_CONFIG.hotkey.binding) {
         await updateGlobalShortcut(
           nextConfig.hotkey.binding,
@@ -566,9 +667,19 @@ function App() {
     setMessage(enabled ? "Fast dictation enabled." : "Fast dictation disabled.");
   }
 
+  async function changeAppRouting(enabled: boolean) {
+    const appRouting = { enabled };
+    setConfig((current) => ({ ...current, appRouting }));
+    await persistPreference("app_routing", appRouting);
+    setMessage(
+      enabled ? "App-aware routing enabled." : "App-aware routing disabled.",
+    );
+  }
+
   const exportPreview = buildExportPayload({
     config,
     dictionaryTerms,
+    appRules,
   });
 
   return (
@@ -808,6 +919,8 @@ function App() {
               </button>
             </div>
 
+            <ProviderPricingTable />
+
             <div className="message-row">
               <span>{message}</span>
               <button type="button" onClick={refreshKeys}>
@@ -878,6 +991,118 @@ function App() {
                   <p>{profile.systemPrompt}</p>
                 </article>
               ))}
+            </div>
+          </section>
+          ) : null}
+
+          {activeSection === "app-rules" ? (
+          <section className="panel module-panel" id="app-rules">
+            <PanelHeader
+              icon={<Route size={19} />}
+              title="App Rules"
+              description="Resolve the dictation profile from the foreground app before each request."
+            />
+            <label className="privacy-line app-routing-toggle">
+              <span>Enable app-aware routing</span>
+              <input
+                aria-label="Enable app-aware routing"
+                type="checkbox"
+                checked={config.appRouting.enabled}
+                onChange={(event) => void changeAppRouting(event.target.checked)}
+              />
+            </label>
+            <section className="app-context-preview" aria-label="Current app preview">
+              <Metric
+                label="Detected app"
+                value={foregroundContext?.appId || "Unavailable"}
+              />
+              <Metric
+                label="Window title"
+                value={foregroundContext?.windowTitle || "Unavailable"}
+              />
+            </section>
+            <div className="compact-form app-rule-form">
+              <label>
+                App id
+                <input
+                  value={appRuleDraft.appId}
+                  onChange={(event) =>
+                    setAppRuleDraft((current) => ({
+                      ...current,
+                      appId: event.target.value,
+                    }))
+                  }
+                  placeholder="chrome.exe"
+                />
+              </label>
+              <label>
+                Title contains
+                <input
+                  value={appRuleDraft.windowTitlePattern}
+                  onChange={(event) =>
+                    setAppRuleDraft((current) => ({
+                      ...current,
+                      windowTitlePattern: event.target.value,
+                    }))
+                  }
+                  placeholder="ChatGPT"
+                />
+              </label>
+              <label>
+                Rule profile
+                <select
+                  value={appRuleDraft.profileId}
+                  onChange={(event) =>
+                    setAppRuleDraft((current) => ({
+                      ...current,
+                      profileId: event.target.value,
+                    }))
+                  }
+                >
+                  {profiles
+                    .filter((profile) => profile.enabled)
+                    .map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Priority
+                <input
+                  type="number"
+                  value={appRuleDraft.priority}
+                  onChange={(event) =>
+                    setAppRuleDraft((current) => ({
+                      ...current,
+                      priority: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                onClick={saveAppRule}
+                disabled={!appRuleDraft.appId.trim()}
+              >
+                Save app rule
+              </button>
+            </div>
+            <div className="rule-list">
+              {appRules.length > 0 ? (
+                appRules.map((rule) => (
+                  <article className="rule-item" key={rule.id}>
+                    <strong>{rule.profileId}</strong>
+                    <span>{rule.appId}</span>
+                    <span>{rule.windowTitlePattern || "Any title"}</span>
+                    <span>{rule.enabled ? "Enabled" : "Disabled"}</span>
+                    <small>Priority {rule.priority}</small>
+                  </article>
+                ))
+              ) : (
+                <p className="empty-note">No App Rules saved yet.</p>
+              )}
             </div>
           </section>
           ) : null}
@@ -1038,6 +1263,52 @@ function PanelHeader({
   );
 }
 
+function ProviderPricingTable() {
+  return (
+    <section className="pricing-panel" aria-label="Provider pricing">
+      <div className="pricing-heading">
+        <h3>Model cost reference</h3>
+        <span>Pricing snapshot: {PRICING_SNAPSHOT_DATE}</span>
+      </div>
+      <div className="pricing-table-wrap">
+        <table className="pricing-table">
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Model</th>
+              <th>Published price</th>
+              <th>Estimate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PROVIDER_PRICING.map((row) => (
+              <tr key={`${row.providerId}-${row.model}`}>
+                <td>{row.providerId === "groq" ? "Groq" : "OpenAI"}</td>
+                <td>{row.model}</td>
+                <td>
+                  {row.kind === "stt"
+                    ? `${formatPrice(row.pricePerHourUsd)}/hour`
+                    : `${formatPrice(row.inputPerMillionUsd)}/1M input, ${formatPrice(
+                        row.outputPerMillionUsd,
+                      )}/1M output`}
+                </td>
+                <td>
+                  {row.kind === "stt"
+                    ? `${estimateGroqSttCost(row.model, 1)}/min`
+                    : `${estimateOpenAiRewriteCost(row.model, {
+                        inputTokens: 1000,
+                        outputTokens: 1000,
+                      })}/1K in + 1K out`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function LatencyDiagnostics({
   diagnostics,
 }: {
@@ -1137,6 +1408,12 @@ function upsertById<T extends { id: string }>(items: T[], item: T) {
   return items.map((current) => (current.id === item.id ? item : current));
 }
 
+function enabledProfileIds(profiles: PromptProfile[]) {
+  return profiles
+    .filter((profile) => profile.enabled)
+    .map((profile) => profile.id);
+}
+
 function profileRecordToProfile(record: ProfileRecord): PromptProfile {
   return {
     id: record.id,
@@ -1194,6 +1471,7 @@ function applyStoredPreferences(
     hotkey: parse("hotkey", config.hotkey),
     privacy: parse("privacy", config.privacy),
     performance: parse("performance", config.performance),
+    appRouting: parse("app_routing", config.appRouting),
     activeProfileId:
       preferences.active_profile_id ?? config.activeProfileId,
   };
@@ -1219,6 +1497,10 @@ function formatBytes(value: number | null | undefined) {
     return `${value} B`;
   }
   return `${(value / 1024).toFixed(1)} KB`;
+}
+
+function formatPrice(value: number) {
+  return `$${value.toFixed(value === 0.111 ? 3 : 2)}`;
 }
 
 export default App;

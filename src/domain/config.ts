@@ -28,6 +28,22 @@ export type DictionaryTerm = {
   updatedAt: string;
 };
 
+export type ForegroundAppContext = {
+  appId?: string | null;
+  windowTitle?: string | null;
+};
+
+export type AppProfileRule = {
+  id: string;
+  appId: string;
+  windowTitlePattern?: string | null;
+  profileId: string;
+  priority: number;
+  enabled: boolean;
+  updatedAt: string;
+  deletedAt?: string | null;
+};
+
 export type AppConfig = {
   providers: Record<ProviderKind, ProviderConfig>;
   hotkey: {
@@ -42,6 +58,9 @@ export type AppConfig = {
   };
   performance: {
     fastMode: boolean;
+  };
+  appRouting: {
+    enabled: boolean;
   };
   activeProfileId: string;
   promptProfiles: PromptProfile[];
@@ -62,11 +81,65 @@ export type ConfigExportPayload = {
     hotkey: AppConfig["hotkey"];
     privacy: AppConfig["privacy"];
     performance: AppConfig["performance"];
+    appRouting: AppConfig["appRouting"];
     activeProfileId: string;
     promptProfiles: PromptProfile[];
     dictionaryTerms: DictionaryTerm[];
+    appRules: AppProfileRule[];
   };
 };
+
+export type ProviderPricingRow =
+  | {
+      providerId: "groq";
+      model: string;
+      kind: "stt";
+      pricePerHourUsd: number;
+      sourceLabel: string;
+    }
+  | {
+      providerId: "openai";
+      model: string;
+      kind: "rewrite";
+      inputPerMillionUsd: number;
+      outputPerMillionUsd: number;
+      sourceLabel: string;
+    };
+
+export const PRICING_SNAPSHOT_DATE = "2026-06-30";
+
+export const PROVIDER_PRICING: ProviderPricingRow[] = [
+  {
+    providerId: "groq",
+    model: "whisper-large-v3-turbo",
+    kind: "stt",
+    pricePerHourUsd: 0.04,
+    sourceLabel: "Groq pricing",
+  },
+  {
+    providerId: "groq",
+    model: "whisper-large-v3",
+    kind: "stt",
+    pricePerHourUsd: 0.111,
+    sourceLabel: "Groq pricing",
+  },
+  {
+    providerId: "openai",
+    model: "gpt-5-nano",
+    kind: "rewrite",
+    inputPerMillionUsd: 0.05,
+    outputPerMillionUsd: 0.4,
+    sourceLabel: "OpenAI pricing",
+  },
+  {
+    providerId: "openai",
+    model: "gpt-5-mini",
+    kind: "rewrite",
+    inputPerMillionUsd: 0.25,
+    outputPerMillionUsd: 2,
+    sourceLabel: "OpenAI pricing",
+  },
+];
 
 const now = "2026-06-21T00:00:00.000Z";
 
@@ -93,6 +166,9 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   },
   performance: {
     fastMode: false,
+  },
+  appRouting: {
+    enabled: false,
   },
   activeProfileId: "normal",
   promptProfiles: [
@@ -163,6 +239,7 @@ export function updateProviderModel(
 export function buildExportPayload(input: {
   config: AppConfig;
   dictionaryTerms: DictionaryTerm[];
+  appRules?: AppProfileRule[];
   apiKeyPresence?: ApiKeyPresence;
   transcriptHistory?: TranscriptHistoryItem[];
 }): ConfigExportPayload {
@@ -174,11 +251,85 @@ export function buildExportPayload(input: {
       hotkey: input.config.hotkey,
       privacy: input.config.privacy,
       performance: input.config.performance,
+      appRouting: input.config.appRouting,
       activeProfileId: input.config.activeProfileId,
       promptProfiles: input.config.promptProfiles,
       dictionaryTerms: input.dictionaryTerms,
+      appRules: input.appRules ?? [],
     },
   };
+}
+
+export function resolveProfileForContext(input: {
+  activeProfileId: string;
+  enabledProfileIds?: string[];
+  context: ForegroundAppContext | null | undefined;
+  rules: AppProfileRule[];
+}): { profileId: string; matchedRuleId: string | null } {
+  const fallbackProfileId = resolveActiveProfileId(
+    input.activeProfileId,
+    input.enabledProfileIds,
+  );
+  const appId = normalize(input.context?.appId);
+  const windowTitle = normalize(input.context?.windowTitle);
+  const matchedRule = input.rules
+    .filter((rule) => rule.enabled && !rule.deletedAt)
+    .filter(
+      (rule) =>
+        !input.enabledProfileIds ||
+        input.enabledProfileIds.includes(rule.profileId),
+    )
+    .filter((rule) => {
+      const ruleAppId = normalize(rule.appId);
+      const ruleTitle = normalize(rule.windowTitlePattern);
+      if (!ruleAppId) {
+        return false;
+      }
+      const appMatches = ruleAppId === appId;
+      const titleMatches = !ruleTitle || windowTitle.includes(ruleTitle);
+      return appMatches && titleMatches;
+    })
+    .sort((left, right) => right.priority - left.priority)[0];
+
+  return matchedRule
+    ? { profileId: matchedRule.profileId, matchedRuleId: matchedRule.id }
+    : { profileId: fallbackProfileId, matchedRuleId: null };
+}
+
+export function resolveActiveProfileId(
+  activeProfileId: string,
+  enabledProfileIds?: string[],
+): string {
+  if (!enabledProfileIds) {
+    return activeProfileId;
+  }
+  return enabledProfileIds.includes(activeProfileId) ? activeProfileId : "normal";
+}
+
+export function estimateGroqSttCost(model: string, minutes: number): string {
+  const pricing = PROVIDER_PRICING.find(
+    (row) => row.kind === "stt" && row.model === model,
+  );
+  if (!pricing || pricing.kind !== "stt") {
+    return "N/A";
+  }
+  return formatUsd((pricing.pricePerHourUsd / 60) * minutes);
+}
+
+export function estimateOpenAiRewriteCost(
+  model: string,
+  usage: { inputTokens: number; outputTokens: number },
+): string {
+  const pricing = PROVIDER_PRICING.find(
+    (row) => row.kind === "rewrite" && row.model === model,
+  );
+  if (!pricing || pricing.kind !== "rewrite") {
+    return "N/A";
+  }
+  const inputCost = (pricing.inputPerMillionUsd / 1_000_000) * usage.inputTokens;
+  const outputCost =
+    (pricing.outputPerMillionUsd / 1_000_000) * usage.outputTokens;
+  return formatUsd(inputCost + outputCost);
 }
 
 export function getProviderReadiness(
@@ -203,4 +354,12 @@ export function getProviderReadiness(
             "OpenAI API key is missing. Configure it before live rewrite.",
         },
   };
+}
+
+function normalize(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function formatUsd(value: number) {
+  return `$${value.toFixed(4)}`;
 }
