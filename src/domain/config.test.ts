@@ -11,6 +11,7 @@ describe("Gospeak provider configuration", () => {
     expect(DEFAULT_APP_CONFIG.providers.stt.providerId).toBe("groq");
     expect(DEFAULT_APP_CONFIG.providers.stt.model).toBe("whisper-large-v3-turbo");
     expect(DEFAULT_APP_CONFIG.providers.rewrite.providerId).toBe("openai");
+    expect(DEFAULT_APP_CONFIG.performance.fastMode).toBe(false);
   });
 
   it("updates provider models without mutating the existing config", () => {
@@ -54,6 +55,7 @@ describe("Gospeak provider configuration", () => {
 
     expect(payload.schemaVersion).toBe(1);
     expect(payload.data.providers.stt.providerId).toBe("groq");
+    expect(payload.data.performance.fastMode).toBe(false);
     expect(serialized).not.toContain("apiKey");
     expect(serialized).not.toContain("private transcript");
     expect(serialized).not.toContain("private polished text");

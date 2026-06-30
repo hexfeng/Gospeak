@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -10,6 +10,7 @@ import {
   importConfigFromFile,
   runAudioFileDictation,
   listenForGlobalShortcut,
+  publishRecorderState,
   startRecording,
   stopRecording,
   upsertDictionaryTerm,
@@ -31,6 +32,8 @@ vi.mock("./lib/tauri", () => ({
     stt_latency_ms: 120,
     rewrite_latency_ms: 80,
     audio_seconds: 1.5,
+    audio_file_bytes: 32000,
+    fast_path_used: false,
   })),
   copyTextForPaste: vi.fn(async () => ({
     copied: true,
@@ -102,6 +105,36 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(listenForGlobalShortcut).toHaveBeenCalledTimes(1));
   });
 
+  it("handles quick push-to-talk release before recording state rerenders", async () => {
+    let shortcutHandler: ((state: "pressed" | "released") => void) | undefined;
+    let resolveStartRecording: ((path: string) => void) | undefined;
+    vi.mocked(listenForGlobalShortcut).mockImplementationOnce(async (handler) => {
+      shortcutHandler = handler;
+      return () => undefined;
+    });
+    vi.mocked(startRecording).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStartRecording = resolve;
+      }),
+    );
+
+    render(<App />);
+    await waitFor(() => expect(shortcutHandler).toBeDefined());
+
+    act(() => {
+      shortcutHandler?.("pressed");
+      shortcutHandler?.("released");
+    });
+
+    expect(startRecording).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveStartRecording?.("C:\\Temp\\gospeak-test.wav");
+    });
+
+    await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
+  });
+
   it("renders P0 Alpha navigation without P1 scope", () => {
     render(<App />);
 
@@ -135,9 +168,104 @@ describe("Gospeak Alpha app shell", () => {
       profile_id: "normal",
       stt_model: "whisper-large-v3-turbo",
       rewrite_model: "gpt-5-nano",
+      skip_rewrite: false,
     });
     expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
     expect(cleanupTempAudioFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-test.wav");
+    expect(await screen.findByText(/Text copied to clipboard/i)).toBeInTheDocument();
+  });
+
+  it("shows last dictation latency diagnostics after output completes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    const diagnostics = await screen.findByLabelText(
+      /Last dictation diagnostics/i,
+    );
+    expect(
+      within(diagnostics).getByRole("heading", {
+        name: /Last dictation diagnostics/i,
+      }),
+    ).toBeInTheDocument();
+    expect(within(diagnostics).getByText("STT")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("120 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Rewrite")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("80 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Audio")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("1.5 s")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("31.3 KB")).toBeInTheDocument();
+  });
+
+  it("sends fast dictation requests that skip rewrite", async () => {
+    const user = userEvent.setup();
+    vi.mocked(runAudioFileDictation).mockResolvedValueOnce({
+      text: "Raw fast transcript",
+      profile_id: "normal",
+      rewrite_fallback_used: false,
+      stt_latency_ms: 90,
+      rewrite_latency_ms: null,
+      audio_seconds: 0.8,
+      audio_file_bytes: 16000,
+      fast_path_used: true,
+    });
+    render(<App />);
+
+    await user.click(screen.getByLabelText(/Fast dictation/i));
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(runAudioFileDictation).toHaveBeenCalledWith(
+      expect.objectContaining({ skip_rewrite: true }),
+    );
+    expect(copyTextForPaste).toHaveBeenCalledWith("Raw fast transcript");
+    expect(await screen.findByText("Skipped")).toBeInTheDocument();
+  });
+
+  it("publishes visible recorder progress while processing dictation", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    await waitFor(() =>
+      expect(publishRecorderState).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "done" }),
+      ),
+    );
+
+    expect(
+      vi.mocked(publishRecorderState).mock.calls.map(([payload]) => payload.status),
+    ).toEqual(
+      expect.arrayContaining([
+        "idle",
+        "recording",
+        "transcribing",
+        "rewriting",
+        "pasting",
+        "done",
+      ]),
+    );
+  });
+
+  it("keeps dictation output running when recorder overlay publishing fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(publishRecorderState).mockRejectedValue(
+      new Error(
+        "window.show not allowed. Permissions associated with this command: core:window:allow-show",
+      ),
+    );
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    expect(runAudioFileDictation).toHaveBeenCalledTimes(1);
+    expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
     expect(await screen.findByText(/Text copied to clipboard/i)).toBeInTheDocument();
   });
 
@@ -195,6 +323,7 @@ describe("Gospeak Alpha app shell", () => {
           stt: { providerId: "groq", model: "whisper-large-v3-turbo" },
           rewrite: { providerId: "openai", model: "gpt-5-nano" },
         },
+        performance: { fastMode: false },
         hotkey: { binding: "Alt+Space", mode: "push-to-talk" },
         privacy: {
           saveRawAudio: false,

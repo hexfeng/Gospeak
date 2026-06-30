@@ -96,6 +96,18 @@ const navItems: Array<{
   { id: "import-export", label: "Import/Export", icon: Database },
 ];
 
+type DictationDiagnostics = {
+  recordingStartMs: number;
+  recordingStopMs: number;
+  pipelineMs: number;
+  sttMs: number;
+  rewriteMs: number | null;
+  pasteMs: number;
+  audioSeconds: number | null;
+  audioBytes: number | null;
+  fastPathUsed: boolean;
+};
+
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
@@ -132,6 +144,8 @@ function App() {
   const [message, setMessage] = useState(
     "Provider interfaces are configured. Add keys when you are ready for live calls.",
   );
+  const [lastDiagnostics, setLastDiagnostics] =
+    useState<DictationDiagnostics | null>(null);
 
   const readiness = useMemo(
     () => getProviderReadiness(config, keyPresence),
@@ -248,29 +262,63 @@ function App() {
       return;
     }
     const payload = await importConfigFromFile(path);
-    setConfig({
-      ...payload.data,
-      promptProfiles: payload.data.promptProfiles,
-    });
+    setConfig({ ...DEFAULT_APP_CONFIG, ...payload.data });
     setProfiles(payload.data.promptProfiles);
     setDictionaryTerms(payload.data.dictionaryTerms);
     setMessage(`Configuration imported from ${path}`);
   }
 
+  async function publishRecorderStateSafely(payload: {
+    status: string;
+    message: string;
+  }) {
+    try {
+      await publishRecorderState(payload);
+    } catch (error) {
+      console.warn("Recorder overlay update failed", error);
+    }
+  }
+
   async function handleDictationToggle() {
     setIsDictationBusy(true);
     let completedAudioPath: string | null = null;
+    let ownsStartingFlag = false;
     try {
-      if (dictation.status !== "recording") {
+      if (dictationStatusRef.current !== "recording") {
+        if (isStartingRecordingRef.current) {
+          stopAfterStartRef.current = true;
+          return;
+        }
+        isStartingRecordingRef.current = true;
+        ownsStartingFlag = true;
+        const recordingStartStarted = performance.now();
         const path = await startRecording();
+        recordingStartLatencyRef.current = elapsedPerformanceMs(
+          recordingStartStarted,
+        );
+        dictationStatusRef.current = "recording";
         dispatchDictation({ type: "recording-started", audioPath: path });
         setMessage("Recording to temporary WAV. Press Stop Dictation to transcribe.");
+        if (
+          shortcutModeRef.current === "push-to-talk" &&
+          stopAfterStartRef.current
+        ) {
+          stopAfterStartRef.current = false;
+          void dictationToggleRef.current();
+        }
         return;
       }
 
+      const recordingStopStarted = performance.now();
       const audioPath = await stopRecording();
+      const recordingStopMs = elapsedPerformanceMs(recordingStopStarted);
       completedAudioPath = audioPath;
+      dictationStatusRef.current = "transcribing";
       dispatchDictation({ type: "recording-stopped" });
+      await publishRecorderStateSafely({
+        status: "transcribing",
+        message: "Transcribing with Groq…",
+      });
       setMessage("Recording stopped. Running STT and rewrite pipeline.");
 
       const request: AudioFilePipelineRequest = {
@@ -278,11 +326,40 @@ function App() {
         profile_id: config.activeProfileId,
         stt_model: config.providers.stt.model,
         rewrite_model: config.providers.rewrite.model,
+        skip_rewrite: config.performance.fastMode,
       };
+      const pipelineStarted = performance.now();
       const result = await runAudioFileDictation(request);
-      dispatchDictation({ type: "rewriting" });
+      const pipelineMs = elapsedPerformanceMs(pipelineStarted);
+      if (!result.fast_path_used) {
+        dictationStatusRef.current = "rewriting";
+        dispatchDictation({ type: "rewriting" });
+        await publishRecorderStateSafely({
+          status: "rewriting",
+          message: "Rewriting with OpenAI…",
+        });
+      }
+      dictationStatusRef.current = "pasting";
       dispatchDictation({ type: "pasting" });
+      await publishRecorderStateSafely({
+        status: "pasting",
+        message: "Pasting…",
+      });
+      const pasteStarted = performance.now();
       const clipboard = await copyTextForPaste(result.text);
+      const pasteMs = elapsedPerformanceMs(pasteStarted);
+      setLastDiagnostics({
+        recordingStartMs: recordingStartLatencyRef.current,
+        recordingStopMs,
+        pipelineMs,
+        sttMs: result.stt_latency_ms,
+        rewriteMs: result.rewrite_latency_ms ?? null,
+        pasteMs,
+        audioSeconds: result.audio_seconds ?? null,
+        audioBytes: result.audio_file_bytes ?? null,
+        fastPathUsed: result.fast_path_used === true,
+      });
+      dictationStatusRef.current = "done";
       dispatchDictation({
         type: "completed",
         message: clipboard.message,
@@ -291,9 +368,13 @@ function App() {
       setMessage(clipboard.message);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      dictationStatusRef.current = "error";
       dispatchDictation({ type: "failed", message: errorMessage });
       setMessage(errorMessage);
     } finally {
+      if (ownsStartingFlag) {
+        isStartingRecordingRef.current = false;
+      }
       if (completedAudioPath) {
         if (!config.privacy.saveRawAudio) {
           try {
@@ -313,6 +394,9 @@ function App() {
   );
   const shortcutModeRef = useRef(config.hotkey.mode);
   const dictationStatusRef = useRef(dictation.status);
+  const isStartingRecordingRef = useRef(false);
+  const stopAfterStartRef = useRef(false);
+  const recordingStartLatencyRef = useRef(0);
 
   useEffect(() => {
     dictationToggleRef.current = handleDictationToggle;
@@ -332,7 +416,8 @@ function App() {
         (mode === "toggle" && state === "pressed") ||
         (mode === "push-to-talk" &&
           ((state === "pressed" && status !== "recording") ||
-            (state === "released" && status === "recording")))
+            (state === "released" &&
+              (status === "recording" || isStartingRecordingRef.current))))
       ) {
         void dictationToggleRef.current();
       }
@@ -355,7 +440,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    void publishRecorderState({
+    void publishRecorderStateSafely({
       status: dictation.status,
       message: dictation.message,
     });
@@ -472,6 +557,13 @@ function App() {
     const privacy = { ...config.privacy, [key]: enabled };
     setConfig((current) => ({ ...current, privacy }));
     await persistPreference("privacy", privacy);
+  }
+
+  async function changeFastMode(enabled: boolean) {
+    const performanceConfig = { ...config.performance, fastMode: enabled };
+    setConfig((current) => ({ ...current, performance: performanceConfig }));
+    await persistPreference("performance", performanceConfig);
+    setMessage(enabled ? "Fast dictation enabled." : "Fast dictation disabled.");
   }
 
   const exportPreview = buildExportPayload({
@@ -619,7 +711,18 @@ function App() {
                   <option value="toggle">Toggle</option>
                 </select>
               </label>
+              <label className="checkbox-line">
+                <span>Fast dictation</span>
+                <input
+                  type="checkbox"
+                  checked={config.performance.fastMode}
+                  onChange={(event) => void changeFastMode(event.target.checked)}
+                />
+              </label>
             </div>
+            {lastDiagnostics ? (
+              <LatencyDiagnostics diagnostics={lastDiagnostics} />
+            ) : null}
           </section>
           ) : null}
 
@@ -935,6 +1038,40 @@ function PanelHeader({
   );
 }
 
+function LatencyDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: DictationDiagnostics;
+}) {
+  const rewriteValue = diagnostics.fastPathUsed
+    ? "Skipped"
+    : formatMs(diagnostics.rewriteMs);
+  return (
+    <section className="latency-panel" aria-label="Last dictation diagnostics">
+      <h3>Last dictation diagnostics</h3>
+      <div className="latency-grid">
+        <Metric label="Start" value={formatMs(diagnostics.recordingStartMs)} />
+        <Metric label="Stop" value={formatMs(diagnostics.recordingStopMs)} />
+        <Metric label="STT" value={formatMs(diagnostics.sttMs)} />
+        <Metric label="Rewrite" value={rewriteValue} />
+        <Metric label="Pipeline" value={formatMs(diagnostics.pipelineMs)} />
+        <Metric label="Paste" value={formatMs(diagnostics.pasteMs)} />
+        <Metric label="Audio" value={formatSeconds(diagnostics.audioSeconds)} />
+        <Metric label="File" value={formatBytes(diagnostics.audioBytes)} />
+      </div>
+    </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="metric-chip">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
 function StatusTile({
   label,
   value,
@@ -1056,9 +1193,32 @@ function applyStoredPreferences(
     providers: parse("providers", config.providers),
     hotkey: parse("hotkey", config.hotkey),
     privacy: parse("privacy", config.privacy),
+    performance: parse("performance", config.performance),
     activeProfileId:
       preferences.active_profile_id ?? config.activeProfileId,
   };
+}
+
+function elapsedPerformanceMs(started: number) {
+  return Math.max(0, Math.round(performance.now() - started));
+}
+
+function formatMs(value: number | null | undefined) {
+  return value == null ? "N/A" : `${Math.round(value)} ms`;
+}
+
+function formatSeconds(value: number | null | undefined) {
+  return value == null ? "N/A" : `${Number(value.toFixed(1))} s`;
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (value == null) {
+    return "N/A";
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  return `${(value / 1024).toFixed(1)} KB`;
 }
 
 export default App;

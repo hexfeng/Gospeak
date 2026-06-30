@@ -15,6 +15,7 @@ export type AudioFilePipelineRequest = {
   profile_id: string;
   stt_model: string;
   rewrite_model: string;
+  skip_rewrite: boolean;
 };
 
 export type PipelineResult = {
@@ -24,6 +25,8 @@ export type PipelineResult = {
   stt_latency_ms: number;
   rewrite_latency_ms?: number | null;
   audio_seconds?: number | null;
+  audio_file_bytes?: number | null;
+  fast_path_used?: boolean;
 };
 
 export type ClipboardResult = {
@@ -118,6 +121,8 @@ export async function runAudioFileDictation(
       stt_latency_ms: 100,
       rewrite_latency_ms: 80,
       audio_seconds: 1,
+      audio_file_bytes: 32000,
+      fast_path_used: request.skip_rewrite,
     };
   }
 

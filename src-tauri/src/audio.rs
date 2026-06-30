@@ -39,6 +39,7 @@ impl ActiveRecording {
                 .finalize()
                 .map_err(|error| format!("Cannot finalize WAV file: {error}"))?;
         }
+        normalize_recording_for_stt(&self.path)?;
         Ok(self.path)
     }
 }
@@ -142,6 +143,82 @@ fn create_wav_writer(
         .map_err(|error| format!("Cannot create temporary WAV file: {error}"))
 }
 
+fn normalize_recording_for_stt(path: &Path) -> Result<(), String> {
+    const TARGET_SAMPLE_RATE: u32 = 16_000;
+    const TARGET_CHANNELS: u16 = 1;
+
+    let (spec, mono_samples) = {
+        let mut reader = hound::WavReader::open(path)
+            .map_err(|error| format!("Cannot read WAV file: {error}"))?;
+        let spec = reader.spec();
+        if spec.channels == 0 {
+            return Err("WAV file has no audio channels".to_string());
+        }
+        if spec.bits_per_sample != 16 || spec.sample_format != hound::SampleFormat::Int {
+            return Err("Only 16-bit PCM WAV recordings can be optimized for STT".to_string());
+        }
+        if spec.channels == TARGET_CHANNELS && spec.sample_rate == TARGET_SAMPLE_RATE {
+            return Ok(());
+        }
+
+        let channels = usize::from(spec.channels);
+        let samples = reader
+            .samples::<i16>()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("Cannot read WAV samples: {error}"))?;
+        let mono = samples
+            .chunks(channels)
+            .filter(|frame| frame.len() == channels)
+            .map(|frame| {
+                let sum: i32 = frame.iter().map(|sample| i32::from(*sample)).sum();
+                (sum / i32::try_from(channels).unwrap_or(1)) as i16
+            })
+            .collect::<Vec<_>>();
+        (spec, mono)
+    };
+
+    if mono_samples.is_empty() {
+        return Err("WAV recording is empty".to_string());
+    }
+
+    let target_len = ((mono_samples.len() as f64) * f64::from(TARGET_SAMPLE_RATE)
+        / f64::from(spec.sample_rate))
+    .round()
+    .max(1.0) as usize;
+    let temp_path = path.with_file_name(format!("gospeak-{}.stt.wav", uuid::Uuid::new_v4()));
+    let mut writer = hound::WavWriter::create(
+        &temp_path,
+        hound::WavSpec {
+            channels: TARGET_CHANNELS,
+            sample_rate: TARGET_SAMPLE_RATE,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        },
+    )
+    .map_err(|error| format!("Cannot create optimized WAV file: {error}"))?;
+
+    for target_index in 0..target_len {
+        let source_index = ((target_index as f64) * f64::from(spec.sample_rate)
+            / f64::from(TARGET_SAMPLE_RATE))
+        .floor() as usize;
+        let sample = mono_samples
+            .get(source_index)
+            .or_else(|| mono_samples.last())
+            .copied()
+            .unwrap_or_default();
+        writer
+            .write_sample(sample)
+            .map_err(|error| format!("Cannot write optimized WAV sample: {error}"))?;
+    }
+    writer
+        .finalize()
+        .map_err(|error| format!("Cannot finalize optimized WAV file: {error}"))?;
+    std::fs::copy(&temp_path, path)
+        .map_err(|error| format!("Cannot replace recording with optimized WAV: {error}"))?;
+    let _ = std::fs::remove_file(&temp_path);
+    Ok(())
+}
+
 fn write_samples<T>(data: &[T], writer: &SharedWriter)
 where
     T: cpal::Sample + cpal::SizedSample,
@@ -191,6 +268,40 @@ mod tests {
 
         assert!(result.is_err());
         assert!(path.exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn normalizes_recording_for_stt_to_16khz_mono() {
+        let path = std::env::temp_dir().join(format!("gospeak-{}.wav", uuid::Uuid::new_v4()));
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 48_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        {
+            let mut writer = hound::WavWriter::create(&path, spec).unwrap();
+            for frame in 0..48_000 {
+                let sample = if frame % 2 == 0 { i16::MAX / 3 } else { 0 };
+                writer.write_sample(sample).unwrap();
+                writer.write_sample(sample).unwrap();
+            }
+            writer.finalize().unwrap();
+        }
+        let original_size = std::fs::metadata(&path).unwrap().len();
+
+        super::normalize_recording_for_stt(&path).unwrap();
+
+        let reader = hound::WavReader::open(&path).unwrap();
+        let normalized = reader.spec();
+        let normalized_samples = reader.duration();
+        let normalized_size = std::fs::metadata(&path).unwrap().len();
+        assert_eq!(normalized.channels, 1);
+        assert_eq!(normalized.sample_rate, 16_000);
+        assert_eq!(normalized_samples, 16_000);
+        assert!(normalized_size < original_size);
+
         let _ = std::fs::remove_file(path);
     }
 }

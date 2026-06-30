@@ -40,6 +40,9 @@ export type AppConfig = {
     syncTranscriptHistory: boolean;
     crashReportIncludesTranscript: boolean;
   };
+  performance: {
+    fastMode: boolean;
+  };
   activeProfileId: string;
   promptProfiles: PromptProfile[];
 };
@@ -58,6 +61,7 @@ export type ConfigExportPayload = {
     providers: AppConfig["providers"];
     hotkey: AppConfig["hotkey"];
     privacy: AppConfig["privacy"];
+    performance: AppConfig["performance"];
     activeProfileId: string;
     promptProfiles: PromptProfile[];
     dictionaryTerms: DictionaryTerm[];
@@ -86,6 +90,9 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     saveTranscriptHistory: false,
     syncTranscriptHistory: false,
     crashReportIncludesTranscript: false,
+  },
+  performance: {
+    fastMode: false,
   },
   activeProfileId: "normal",
   promptProfiles: [
@@ -166,6 +173,7 @@ export function buildExportPayload(input: {
       providers: input.config.providers,
       hotkey: input.config.hotkey,
       privacy: input.config.privacy,
+      performance: input.config.performance,
       activeProfileId: input.config.activeProfileId,
       promptProfiles: input.config.promptProfiles,
       dictionaryTerms: input.dictionaryTerms,
