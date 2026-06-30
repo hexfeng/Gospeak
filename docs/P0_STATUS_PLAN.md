@@ -1,11 +1,13 @@
 # Gospeak P0 Status And Next Plan
 
-Last updated: 2026-06-23
+Last updated: 2026-06-30
 
 ## Current Status
 
-Gospeak is now a P0 Alpha implementation, but not yet a fully accepted daily-use
-P0 release. The main backend loop is present:
+Gospeak is now an accepted P0 Alpha implementation as of 2026-06-30. Automated
+verification and packaging pass on the latest local build, and manual
+acceptance has been recorded as passed in `docs/P0_ACCEPTANCE_MATRIX.md`. The
+main backend loop is present:
 
 ```text
 Alt+Space or Start button
@@ -50,6 +52,10 @@ configured through the UI.
 - SQLite is stored under Tauri App Data with one-time legacy database migration.
 - Configurable Toggle and Push-to-talk shortcut behavior.
 - Tray menu and compact always-on-top recorder window.
+- Waveform-only recorder overlay with state color/status labels and required
+  Tauri `window.show`/`window.hide` permissions.
+- Latency diagnostics, 16 kHz mono STT audio optimization, HTTP client reuse,
+  and Fast dictation mode that can skip rewrite.
 - Privacy-safe JSON import/export file commands excluding keys, audio,
   transcript history, and logs.
 - Native paste smoke tests passed in Notepad, Chrome textarea, Cursor/VS Code,
@@ -59,23 +65,22 @@ configured through the UI.
 
 ## Partial
 
-- Global hotkey: registered and routed to the frontend dictation toggle; full
-  microphone dictation via hotkey still needs human-in-loop spoken-input
-  acceptance.
-- Desktop interaction: automated wiring is complete; real foreground-app and
-  microphone acceptance remains manual.
+- Provider/model cost estimation is not implemented yet. It is useful for
+  product clarity, but it is not required to keep P0 accepted.
 
 ## Not Done
 
-- Full hotkey microphone dictation acceptance with real spoken input.
-- Provider/model cost estimation table.
 - App-aware profiles.
 - Speak to Edit.
 - Sync/WebDAV/local Whisper.
+- Provider/model cost estimation table.
 
 ## Next Plan
 
-1. Complete `docs/P0_ACCEPTANCE_MATRIX.md` with real spoken input.
-2. Install the generated Windows bundle on a clean user profile.
-3. Fix any compatibility findings before calling the build a daily-use Alpha.
-4. After P0 acceptance, begin App-aware Profile routing.
+1. Start App-aware Profile routing as the first post-P0 slice.
+2. Define the routing inputs: foreground app identity, window title, current
+   active Profile, and user override behavior.
+3. Add a small provider/model cost estimation table to make latency/cost
+   trade-offs visible in Settings or Providers.
+4. Keep Speak to Edit, Sync/WebDAV, and local Whisper deferred until App-aware
+   routing is stable.
