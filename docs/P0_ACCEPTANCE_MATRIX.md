@@ -1,6 +1,6 @@
 # Gospeak P0 Alpha Acceptance Matrix
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
@@ -73,9 +73,10 @@ targets.
 
 | Scenario | Expected result | Status |
 | --- | --- | --- |
-| Foreground app detection | Windows foreground executable and window title are available to routing | Pass - automated Rust tests cover context shape and non-content routing metadata; manual target-app confirmation pending for the next bundle |
-| App-only rule | Matching executable selects the configured Profile | Pass - automated Rust and frontend resolver tests cover app-only matching |
-| App plus title rule | Matching executable and title substring selects the higher-priority Profile | Pass - automated Rust and frontend resolver tests cover title-specific priority |
+| Foreground app detection | Windows foreground executable and window title are available to routing | Pass - automated Rust tests cover context shape and non-content routing metadata; user-reported manual acceptance on 2026-07-01 |
+| Chrome + ChatGPT title rule | `chrome.exe` plus `ChatGPT` window-title match selects Prompt Profile | Pass - user-reported manual acceptance on 2026-07-01; automated frontend test covers camelCase foreground context and Prompt routing |
+| Chrome app-only rule | `chrome.exe` without a matching title-specific rule falls back to Normal Profile | Pass - user-reported manual acceptance on 2026-07-01; automated Rust and frontend resolver tests cover app-only matching |
+| Manual routing override | App-aware routing disabled uses the manually selected Active Profile | Pass - user-reported manual acceptance on 2026-07-01; automated frontend test covers disabled App-aware routing |
 | Disabled or deleted rule | Rule is ignored and fallback Profile is used | Pass - automated Rust and frontend tests cover disabled and deleted rules |
 | Missing fallback Profile | Built-in Normal Profile is used instead of sending a missing Profile id | Pass - automated frontend tests cover missing and disabled fallback Profiles |
 | App Rules export | App Rules are exported as config without keys, audio, transcript, or polished text | Pass - automated frontend export tests cover privacy-safe payloads |
@@ -95,3 +96,9 @@ P0 Alpha is accepted as of 2026-06-30. Automated verification passed, the latest
 debug installers were rebuilt, and the remaining manual acceptance rows are
 recorded as user-reported passes. App-aware Profile routing can begin as the
 next post-P0 phase.
+
+## Post-P0 App-Aware Acceptance Decision
+
+App-aware Profile routing is accepted as of 2026-07-01 based on automated
+coverage plus user-reported manual acceptance. Future work in this area should
+be limited to bug fixes unless a new App Rules requirement is explicitly scoped.

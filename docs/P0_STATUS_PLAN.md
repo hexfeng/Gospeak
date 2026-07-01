@@ -1,6 +1,6 @@
 # Gospeak P0 Status And Next Plan
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 ## Current Status
 
@@ -20,6 +20,10 @@ Alt+Space or Start button
 
 Live provider verification passed after Groq and OpenAI keys were manually
 configured through the UI.
+
+Post-P0 App-aware Profile routing has also been manually accepted as of
+2026-07-01 after user-reported target-app testing confirmed that App Rules can
+route to the expected Profile.
 
 ## Completed
 
@@ -69,9 +73,8 @@ configured through the UI.
 
 ## Partial
 
-- App-aware routing has automated coverage for resolver, storage, import/export,
-  and frontend routing behavior. Manual target-app acceptance still needs to be
-  recorded after installing the next debug bundle.
+- No active partial App-aware routing work remains. Future App Rules changes
+  should be treated as bug fixes or explicitly scoped follow-up features.
 
 ## Not Done
 
@@ -80,8 +83,5 @@ configured through the UI.
 
 ## Next Plan
 
-1. Build and manually accept the App-aware routing bundle in representative
-   target apps: Chrome/Edge, Outlook/Teams, VS Code/Cursor, and Notepad.
-2. After App-aware routing is stable in daily use, consider Speak to Edit as
-   the next product slice.
-3. Keep Sync/WebDAV and local Whisper deferred.
+1. Start Speak to Edit design and feasibility validation.
+2. Keep Sync/WebDAV and local Whisper deferred.
