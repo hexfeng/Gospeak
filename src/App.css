@@ -532,6 +532,7 @@ textarea {
   font-size: 13px;
 }
 
+.cost-panel,
 .pricing-panel {
   margin-top: 14px;
   padding: 12px;
@@ -582,6 +583,35 @@ textarea {
 .pricing-table th {
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 10px;
+}
+
+.cost-metric {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.cost-metric span,
+.cost-metric strong {
+  display: block;
+}
+
+.cost-metric span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cost-metric strong {
+  margin-top: 4px;
+  color: var(--text-strong);
+  font-size: 18px;
 }
 
 .dict-item {

@@ -20,6 +20,7 @@ export type AudioFilePipelineRequest = {
   profile_id: string;
   stt_model: string;
   rewrite_model: string;
+  selected_text: string | null;
   skip_rewrite: boolean;
 };
 
@@ -32,6 +33,8 @@ export type PipelineResult = {
   audio_seconds?: number | null;
   audio_file_bytes?: number | null;
   fast_path_used?: boolean;
+  rewrite_input_tokens?: number | null;
+  rewrite_output_tokens?: number | null;
 };
 
 export type ClipboardResult = {
@@ -79,6 +82,23 @@ export type AppProfileRuleRecord = {
   enabled: boolean;
   updatedAt: string;
   deletedAt?: string | null;
+};
+
+export type UsageEventRecord = {
+  id: string;
+  stt_provider: string;
+  stt_model: string;
+  llm_provider: string;
+  llm_model: string;
+  profile_id: string;
+  audio_seconds?: number | null;
+  stt_latency_ms: number;
+  rewrite_latency_ms?: number | null;
+  rewrite_fallback_used: boolean;
+  stt_estimated_cost?: number | null;
+  rewrite_estimated_cost?: number | null;
+  estimated_cost?: number | null;
+  created_at: string;
 };
 
 export type ForegroundAppContextRecord = {
@@ -148,6 +168,14 @@ export async function runAudioFileDictation(
   }
 
   return invoke<PipelineResult>("run_audio_file_dictation", { request });
+}
+
+export async function readSelectedTextForEdit(): Promise<string> {
+  if (!hasTauriRuntime()) {
+    return "Browser preview selected text.";
+  }
+
+  return invoke<string>("read_selected_text_for_edit");
 }
 
 export async function copyTextForPaste(text: string): Promise<ClipboardResult> {
@@ -228,6 +256,14 @@ export async function listAppProfileRules(): Promise<AppProfileRule[]> {
 
   const records = await invoke<AppProfileRuleRecord[]>("list_app_profile_rules");
   return records.map(appProfileRuleRecordToRule);
+}
+
+export async function listUsageEvents(): Promise<UsageEventRecord[]> {
+  if (!hasTauriRuntime()) {
+    return [];
+  }
+
+  return invoke<UsageEventRecord[]>("list_usage_events");
 }
 
 export async function upsertAppProfileRule(input: {

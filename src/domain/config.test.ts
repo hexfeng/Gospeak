@@ -15,6 +15,7 @@ describe("Gospeak provider configuration", () => {
     expect(DEFAULT_APP_CONFIG.providers.stt.model).toBe("whisper-large-v3-turbo");
     expect(DEFAULT_APP_CONFIG.providers.rewrite.providerId).toBe("openai");
     expect(DEFAULT_APP_CONFIG.performance.fastMode).toBe(false);
+    expect(DEFAULT_APP_CONFIG.performance.speakToEdit).toBe(false);
   });
 
   it("updates provider models without mutating the existing config", () => {

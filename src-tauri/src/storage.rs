@@ -59,6 +59,8 @@ pub struct UsageEventRecord {
     pub stt_latency_ms: u64,
     pub rewrite_latency_ms: Option<u64>,
     pub rewrite_fallback_used: bool,
+    pub stt_estimated_cost: Option<f64>,
+    pub rewrite_estimated_cost: Option<f64>,
     pub estimated_cost: Option<f64>,
     pub created_at: String,
 }
@@ -157,6 +159,8 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         stt_latency_ms INTEGER NOT NULL DEFAULT 0,
         rewrite_latency_ms INTEGER,
         rewrite_fallback_used INTEGER NOT NULL DEFAULT 0,
+        stt_estimated_cost REAL,
+        rewrite_estimated_cost REAL,
         estimated_cost REAL,
         created_at TEXT NOT NULL
       );
@@ -206,6 +210,8 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         "rewrite_fallback_used",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(connection, "usage_events", "stt_estimated_cost", "REAL")?;
+    ensure_column(connection, "usage_events", "rewrite_estimated_cost", "REAL")?;
     Ok(())
 }
 
@@ -498,8 +504,9 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
             INSERT INTO usage_events
               (id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                audio_seconds, stt_latency_ms, rewrite_latency_ms,
-               rewrite_fallback_used, estimated_cost, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+               rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
+               estimated_cost, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             "#,
             params![
                 event.id,
@@ -514,6 +521,8 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
                     .rewrite_latency_ms
                     .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
                 event.rewrite_fallback_used as i32,
+                event.stt_estimated_cost,
+                event.rewrite_estimated_cost,
                 event.estimated_cost,
                 event.created_at,
             ],
@@ -528,7 +537,8 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
             r#"
             SELECT id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                    audio_seconds, stt_latency_ms, rewrite_latency_ms,
-                   rewrite_fallback_used, estimated_cost, created_at
+                   rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
+                   estimated_cost, created_at
             FROM usage_events
             ORDER BY created_at DESC
             "#,
@@ -549,8 +559,10 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
                     .get::<_, Option<i64>>(8)?
                     .and_then(|value| u64::try_from(value).ok()),
                 rewrite_fallback_used: row.get::<_, i32>(9)? != 0,
-                estimated_cost: row.get(10)?,
-                created_at: row.get(11)?,
+                stt_estimated_cost: row.get(10)?,
+                rewrite_estimated_cost: row.get(11)?,
+                estimated_cost: row.get(12)?,
+                created_at: row.get(13)?,
             })
         })
         .map_err(|error| format!("Cannot query usage events: {error}"))?;
@@ -1122,6 +1134,8 @@ mod tests {
             stt_latency_ms: 120,
             rewrite_latency_ms: Some(80),
             rewrite_fallback_used: false,
+            stt_estimated_cost: Some(0.000014),
+            rewrite_estimated_cost: Some(0.000032),
             estimated_cost: None,
             created_at: "2026-06-23T00:00:00Z".to_string(),
         };
@@ -1196,6 +1210,8 @@ mod tests {
         assert!(columns.contains(&"profile_id".to_string()));
         assert!(columns.contains(&"stt_latency_ms".to_string()));
         assert!(columns.contains(&"rewrite_fallback_used".to_string()));
+        assert!(columns.contains(&"stt_estimated_cost".to_string()));
+        assert!(columns.contains(&"rewrite_estimated_cost".to_string()));
     }
 
     fn table_columns(connection: &Connection, table: &str) -> Vec<String> {

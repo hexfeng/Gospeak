@@ -58,6 +58,7 @@ export type AppConfig = {
   };
   performance: {
     fastMode: boolean;
+    speakToEdit: boolean;
   };
   appRouting: {
     enabled: boolean;
@@ -166,6 +167,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   },
   performance: {
     fastMode: false,
+    speakToEdit: false,
   },
   appRouting: {
     enabled: false,

@@ -4,10 +4,11 @@ Last updated: 2026-07-01
 
 ## Current Status
 
-Gospeak is now an accepted P0 Alpha implementation as of 2026-06-30. Automated
-verification and packaging pass on the latest local build, and manual
-acceptance has been recorded as passed in `docs/P0_ACCEPTANCE_MATRIX.md`. The
-main backend loop is present:
+Gospeak is now effectively P0 Alpha complete in the local working tree. The
+base P0 Alpha was accepted on 2026-06-30, and the latest local debug build adds
+the remaining post-P0 alpha slice: App-aware routing, provider usage cost
+totals, and Speak to Edit. Automated verification and debug packaging pass on
+the latest local build. The main backend loop is present:
 
 ```text
 Alt+Space or Start button
@@ -24,6 +25,9 @@ configured through the UI.
 Post-P0 App-aware Profile routing has also been manually accepted as of
 2026-07-01 after user-reported target-app testing confirmed that App Rules can
 route to the expected Profile.
+
+Speak to Edit has automated coverage and user-reported manual target-app
+acceptance as of 2026-07-01.
 
 ## Completed
 
@@ -62,8 +66,12 @@ route to the expected Profile.
   and Fast dictation mode that can skip rewrite.
 - App-aware Profile routing with Windows foreground app/window-title detection,
   SQLite-backed App Rules, active Profile fallback, and built-in Normal fallback.
-- Provider/model cost estimation table with a 2026-06-30 pricing snapshot for
-  Groq Whisper and OpenAI rewrite models.
+- Provider usage cost totals that record STT cost from actual audio duration and
+  rewrite cost from OpenAI token usage, displayed as separate STT and rewrite
+  metrics.
+- Speak to Edit with selected-text capture through native Copy, clipboard
+  restoration, spoken edit instruction transcription, selected-text rewrite,
+  and native paste replacement.
 - Privacy-safe JSON import/export file commands excluding keys, audio,
   transcript history, and logs.
 - Native paste smoke tests passed in Notepad, Chrome textarea, Cursor/VS Code,
@@ -73,15 +81,17 @@ route to the expected Profile.
 
 ## Partial
 
-- No active partial App-aware routing work remains. Future App Rules changes
-  should be treated as bug fixes or explicitly scoped follow-up features.
+- No active implementation or manual acceptance partials remain for P0 Alpha.
 
 ## Not Done
 
-- Speak to Edit.
-- Sync/WebDAV/local Whisper.
+- No remaining P0 Alpha implementation items.
+- Sync/WebDAV/local Whisper remain deferred follow-up features, not P0 scope.
 
 ## Next Plan
 
-1. Start Speak to Edit design and feasibility validation.
-2. Keep Sync/WebDAV and local Whisper deferred.
+1. Publish the current branch/PR using the existing secret-safe workflow.
+2. Treat the next slice as release hardening: installer/update notes,
+   regression smoke script, and packaging sanity checks.
+3. After release hardening, consider VAD/error handling. Keep local Whisper and
+   Sync Folder/WebDAV deferred until explicitly scoped.

@@ -237,13 +237,13 @@ Please evaluate feasibility, architecture, risks, and implementation roadmap.
 | App Context    | 前台 App 检测       | 根据 App 选择 Profile |
 | Speak to Edit  | 选中文本语音编辑        | 读取选中文本，按语音命令改写    |
 | Cost Dashboard | 成本统计            | 统计 STT / LLM 调用成本 |
-| Local Whisper  | 本地 STT fallback | 隐私模式或离线模式         |
-| Sync Folder    | 加密 sync.json    | 用户选择同步文件夹         |
 
 ### P2：后续版本
 
 | 模块                    | 功能        | 说明                    |
 | --------------------- | --------- | --------------------- |
+| Local Whisper         | 本地 STT fallback | 隐私模式或离线模式         |
+| Sync Folder           | 加密 sync.json | 用户选择同步文件夹         |
 | WebDAV Sync           | WebDAV 同步 | Nextcloud / NAS / 自托管 |
 | Streaming STT         | 流式转写      | 降低体感延迟                |
 | Native Text Injection | 原生文本注入    | 替代剪贴板粘贴               |
@@ -1582,7 +1582,6 @@ Enabled
 * Speak to Edit；
 * Cost Dashboard；
 * 多 Provider Adapter；
-* Local Whisper fallback；
 * 错误 retry；
 * 日志和诊断；
 * 历史记录可选开启；

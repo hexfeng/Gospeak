@@ -28,6 +28,10 @@ tests.
 - `Alt+Space` global shortcut registration that emits a frontend event and uses
   the same dictation flow, with configurable Toggle and Push-to-talk modes.
 - Tray actions and a compact always-on-top recorder window.
+- App-aware Profile routing for foreground app/window-title rules.
+- Speak to Edit mode that captures selected text, records a spoken edit
+  instruction, rewrites the selected text, and pastes the replacement.
+- Usage cost totals split into STT and rewrite estimates from recorded usage.
 - Prompt profile defaults for Normal, Email, Prompt, and Translate.
 - Profile and dictionary editing UI backed by SQLite CRUD commands and consumed
   by the live STT/rewrite pipeline.
@@ -41,11 +45,16 @@ tests.
   - `start_recording`
   - `stop_recording`
   - `copy_text_for_paste`
+  - `read_selected_text_for_edit`
   - `cleanup_temp_audio_file`
+  - `get_foreground_app_context`
   - `list_profiles`
   - `upsert_profile`
+  - `list_app_profile_rules`
+  - `upsert_app_profile_rule`
   - `list_dictionary_terms`
   - `upsert_dictionary_term`
+  - `list_usage_events`
   - `export_config_to_file`
   - `import_config_from_file`
 - SQLite schema and Rust CRUD commands for preferences, prompt profiles,
@@ -66,7 +75,8 @@ tests.
   editor, and a browser contenteditable composer.
 - Human-in-loop acceptance remains tracked in
   [docs/P0_ACCEPTANCE_MATRIX.md](docs/P0_ACCEPTANCE_MATRIX.md).
-- App-aware profiles, Speak to Edit, sync folder, WebDAV, and local Whisper.
+- Sync folder, WebDAV, and local Whisper are deferred roadmap features, not
+  current P0 scope.
 
 ## Development
 

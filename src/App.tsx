@@ -16,8 +16,6 @@ import {
 import "./App.css";
 import {
   DEFAULT_APP_CONFIG,
-  PRICING_SNAPSHOT_DATE,
-  PROVIDER_PRICING,
   type ApiKeyPresence,
   type AppConfig,
   type AppProfileRule,
@@ -25,8 +23,6 @@ import {
   type ForegroundAppContext,
   type PromptProfile,
   buildExportPayload,
-  estimateGroqSttCost,
-  estimateOpenAiRewriteCost,
   getProviderReadiness,
   resolveActiveProfileId,
   resolveProfileForContext,
@@ -47,9 +43,11 @@ import {
   listDictionaryTerms,
   listPreferences,
   listProfiles,
+  listUsageEvents,
   listenForGlobalShortcut,
   listenForTrayAction,
   publishRecorderState,
+  readSelectedTextForEdit,
   runAudioFileDictation,
   saveProviderApiKey,
   selectExportPath,
@@ -64,6 +62,7 @@ import {
   type AudioFilePipelineRequest,
   type DictionaryRecord,
   type ProfileRecord,
+  type UsageEventRecord,
 } from "./lib/tauri";
 
 const seedDictionaryTerms: DictionaryTerm[] = [
@@ -137,6 +136,7 @@ function App() {
   const [dictionaryTerms, setDictionaryTerms] =
     useState<DictionaryTerm[]>(seedDictionaryTerms);
   const [appRules, setAppRules] = useState<AppProfileRule[]>([]);
+  const [usageEvents, setUsageEvents] = useState<UsageEventRecord[]>([]);
   const [foregroundContext, setForegroundContext] =
     useState<ForegroundAppContext | null>(null);
   const [profileDraft, setProfileDraft] = useState({
@@ -173,6 +173,10 @@ function App() {
   const readiness = useMemo(
     () => getProviderReadiness(config, keyPresence),
     [config, keyPresence],
+  );
+  const usageCostTotals = useMemo(
+    () => summarizeUsageCosts(usageEvents),
+    [usageEvents],
   );
 
   async function refreshKeys() {
@@ -347,6 +351,11 @@ function App() {
         }
         isStartingRecordingRef.current = true;
         ownsStartingFlag = true;
+        selectedTextForEditRef.current = null;
+        if (config.performance.speakToEdit) {
+          selectedTextForEditRef.current = await readSelectedTextForEdit();
+          setMessage("Editing selected text. Record the edit instruction.");
+        }
         const recordingStartStarted = performance.now();
         const path = await startRecording();
         recordingStartLatencyRef.current = elapsedPerformanceMs(
@@ -354,7 +363,11 @@ function App() {
         );
         dictationStatusRef.current = "recording";
         dispatchDictation({ type: "recording-started", audioPath: path });
-        setMessage("Recording to temporary WAV. Press Stop Dictation to transcribe.");
+        setMessage(
+          config.performance.speakToEdit
+            ? "Editing selected text. Press Stop Speak to Edit to replace it."
+            : "Recording to temporary WAV. Press Stop Dictation to transcribe.",
+        );
         if (
           shortcutModeRef.current === "push-to-talk" &&
           stopAfterStartRef.current
@@ -399,7 +412,9 @@ function App() {
         profile_id: profileId,
         stt_model: config.providers.stt.model,
         rewrite_model: config.providers.rewrite.model,
-        skip_rewrite: config.performance.fastMode,
+        selected_text: selectedTextForEditRef.current,
+        skip_rewrite:
+          config.performance.fastMode && selectedTextForEditRef.current == null,
       };
       const pipelineStarted = performance.now();
       const result = await runAudioFileDictation(request);
@@ -438,13 +453,18 @@ function App() {
         message: clipboard.message,
         rewriteFallbackUsed: result.rewrite_fallback_used,
       });
+      await refreshUsageEvents();
       setMessage(clipboard.message);
+      selectedTextForEditRef.current = null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       dictationStatusRef.current = "error";
       dispatchDictation({ type: "failed", message: errorMessage });
       setMessage(errorMessage);
     } finally {
+      if (dictationStatusRef.current !== "recording") {
+        selectedTextForEditRef.current = null;
+      }
       if (ownsStartingFlag) {
         isStartingRecordingRef.current = false;
       }
@@ -470,6 +490,7 @@ function App() {
   const isStartingRecordingRef = useRef(false);
   const stopAfterStartRef = useRef(false);
   const recordingStartLatencyRef = useRef(0);
+  const selectedTextForEditRef = useRef<string | null>(null);
 
   useEffect(() => {
     dictationToggleRef.current = handleDictationToggle;
@@ -562,17 +583,20 @@ function App() {
         storedAppRules,
         storedPreferences,
         storedKeyPresence,
+        storedUsageEvents,
       ] = await Promise.all([
         listProfiles(),
         listDictionaryTerms(),
         listAppProfileRules(),
         listPreferences(),
         checkProviderKeys(),
+        listUsageEvents(),
       ]);
       if (disposed) {
         return;
       }
       setKeyPresence(storedKeyPresence);
+      setUsageEvents(storedUsageEvents);
       if (storedProfiles.length > 0) {
         const mappedProfiles = storedProfiles.map(profileRecordToProfile);
         setProfiles(mappedProfiles);
@@ -624,6 +648,10 @@ function App() {
     });
   }
 
+  async function refreshUsageEvents() {
+    setUsageEvents(await listUsageEvents());
+  }
+
   async function changeActiveProfile(profileId: string) {
     setConfig((current) => ({ ...current, activeProfileId: profileId }));
     await persistPreference("active_profile_id", profileId);
@@ -665,6 +693,13 @@ function App() {
     setConfig((current) => ({ ...current, performance: performanceConfig }));
     await persistPreference("performance", performanceConfig);
     setMessage(enabled ? "Fast dictation enabled." : "Fast dictation disabled.");
+  }
+
+  async function changeSpeakToEdit(enabled: boolean) {
+    const performanceConfig = { ...config.performance, speakToEdit: enabled };
+    setConfig((current) => ({ ...current, performance: performanceConfig }));
+    await persistPreference("performance", performanceConfig);
+    setMessage(enabled ? "Speak to Edit enabled." : "Speak to Edit disabled.");
   }
 
   async function changeAppRouting(enabled: boolean) {
@@ -735,7 +770,13 @@ function App() {
             disabled={isDictationBusy}
           >
             <Play size={16} />
-            {dictation.status === "recording" ? "Stop Dictation" : "Start Dictation"}
+            {dictation.status === "recording"
+              ? config.performance.speakToEdit
+                ? "Stop Speak to Edit"
+                : "Stop Dictation"
+              : config.performance.speakToEdit
+                ? "Start Speak to Edit"
+                : "Start Dictation"}
           </button>
         </header>
 
@@ -830,6 +871,16 @@ function App() {
                   onChange={(event) => void changeFastMode(event.target.checked)}
                 />
               </label>
+              <label className="checkbox-line">
+                <span>Speak to Edit</span>
+                <input
+                  type="checkbox"
+                  checked={config.performance.speakToEdit}
+                  onChange={(event) =>
+                    void changeSpeakToEdit(event.target.checked)
+                  }
+                />
+              </label>
             </div>
             {lastDiagnostics ? (
               <LatencyDiagnostics diagnostics={lastDiagnostics} />
@@ -919,7 +970,7 @@ function App() {
               </button>
             </div>
 
-            <ProviderPricingTable />
+            <UsageCostTotals totals={usageCostTotals} />
 
             <div className="message-row">
               <span>{message}</span>
@@ -1263,47 +1314,27 @@ function PanelHeader({
   );
 }
 
-function ProviderPricingTable() {
+type UsageCostSummary = {
+  sttCost: number;
+  rewriteCost: number;
+};
+
+function UsageCostTotals({ totals }: { totals: UsageCostSummary }) {
   return (
-    <section className="pricing-panel" aria-label="Provider pricing">
+    <section className="cost-panel" aria-label="Usage cost totals">
       <div className="pricing-heading">
-        <h3>Model cost reference</h3>
-        <span>Pricing snapshot: {PRICING_SNAPSHOT_DATE}</span>
+        <h3>Usage cost</h3>
+        <span>Completed dictations</span>
       </div>
-      <div className="pricing-table-wrap">
-        <table className="pricing-table">
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Model</th>
-              <th>Published price</th>
-              <th>Estimate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {PROVIDER_PRICING.map((row) => (
-              <tr key={`${row.providerId}-${row.model}`}>
-                <td>{row.providerId === "groq" ? "Groq" : "OpenAI"}</td>
-                <td>{row.model}</td>
-                <td>
-                  {row.kind === "stt"
-                    ? `${formatPrice(row.pricePerHourUsd)}/hour`
-                    : `${formatPrice(row.inputPerMillionUsd)}/1M input, ${formatPrice(
-                        row.outputPerMillionUsd,
-                      )}/1M output`}
-                </td>
-                <td>
-                  {row.kind === "stt"
-                    ? `${estimateGroqSttCost(row.model, 1)}/min`
-                    : `${estimateOpenAiRewriteCost(row.model, {
-                        inputTokens: 1000,
-                        outputTokens: 1000,
-                      })}/1K in + 1K out`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="cost-grid">
+        <div className="cost-metric">
+          <span>STT cost</span>
+          <strong>{formatUsd(totals.sttCost)}</strong>
+        </div>
+        <div className="cost-metric">
+          <span>Rewrite cost</span>
+          <strong>{formatUsd(totals.rewriteCost)}</strong>
+        </div>
       </div>
     </section>
   );
@@ -1470,7 +1501,10 @@ function applyStoredPreferences(
     providers: parse("providers", config.providers),
     hotkey: parse("hotkey", config.hotkey),
     privacy: parse("privacy", config.privacy),
-    performance: parse("performance", config.performance),
+    performance: {
+      ...config.performance,
+      ...parse("performance", config.performance),
+    },
     appRouting: parse("app_routing", config.appRouting),
     activeProfileId:
       preferences.active_profile_id ?? config.activeProfileId,
@@ -1479,6 +1513,16 @@ function applyStoredPreferences(
 
 function elapsedPerformanceMs(started: number) {
   return Math.max(0, Math.round(performance.now() - started));
+}
+
+function summarizeUsageCosts(events: UsageEventRecord[]): UsageCostSummary {
+  return events.reduce(
+    (totals, event) => ({
+      sttCost: totals.sttCost + (event.stt_estimated_cost ?? 0),
+      rewriteCost: totals.rewriteCost + (event.rewrite_estimated_cost ?? 0),
+    }),
+    { sttCost: 0, rewriteCost: 0 },
+  );
 }
 
 function formatMs(value: number | null | undefined) {
@@ -1499,8 +1543,8 @@ function formatBytes(value: number | null | undefined) {
   return `${(value / 1024).toFixed(1)} KB`;
 }
 
-function formatPrice(value: number) {
-  return `$${value.toFixed(value === 0.111 ? 3 : 2)}`;
+function formatUsd(value: number) {
+  return `$${value.toFixed(value >= 0.01 ? 2 : 4)}`;
 }
 
 export default App;

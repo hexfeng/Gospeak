@@ -5,8 +5,9 @@ pub mod provider;
 pub mod storage;
 
 use provider::{
-    provider_key_status, run_alpha_pipeline, run_audio_file_pipeline, save_provider_key,
-    AudioFilePipelineRequest, PipelineContext, PipelineResult, ProviderRuntimeConfig,
+    estimate_groq_stt_cost_usd, estimate_openai_rewrite_cost_usd, provider_key_status,
+    run_alpha_pipeline, run_audio_file_pipeline, save_provider_key, AudioFilePipelineRequest,
+    PipelineContext, PipelineResult, ProviderRuntimeConfig, RewriteUsage,
 };
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
@@ -52,9 +53,27 @@ fn run_audio_file_dictation(
             user_prompt_template: profile.user_prompt_template,
             target_language: profile.target_language,
             dictionary_terms,
+            selected_text: request.selected_text.clone(),
         },
     )
     .map_err(|error| error.to_string())?;
+    let stt_estimated_cost = estimate_groq_stt_cost_usd(&request.stt_model, result.audio_seconds);
+    let rewrite_estimated_cost = estimate_openai_rewrite_cost_usd(
+        &request.rewrite_model,
+        result
+            .rewrite_input_tokens
+            .zip(result.rewrite_output_tokens)
+            .map(|(input_tokens, output_tokens)| RewriteUsage {
+                input_tokens,
+                output_tokens,
+            }),
+    );
+    let estimated_cost = match (stt_estimated_cost, rewrite_estimated_cost) {
+        (Some(stt), Some(rewrite)) => Some(stt + rewrite),
+        (Some(stt), None) => Some(stt),
+        (None, Some(rewrite)) => Some(rewrite),
+        (None, None) => None,
+    };
     storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {
@@ -68,7 +87,9 @@ fn run_audio_file_dictation(
             stt_latency_ms: result.stt_latency_ms,
             rewrite_latency_ms: result.rewrite_latency_ms,
             rewrite_fallback_used: result.rewrite_fallback_used,
-            estimated_cost: None,
+            stt_estimated_cost,
+            rewrite_estimated_cost,
+            estimated_cost,
             created_at: chrono::Utc::now().to_rfc3339(),
         },
     )?;
@@ -108,6 +129,11 @@ fn stop_recording(state: tauri::State<'_, RecordingState>) -> Result<String, Str
 #[tauri::command]
 fn copy_text_for_paste(text: String) -> Result<clipboard::ClipboardResult, String> {
     clipboard::copy_text_for_paste(&text)
+}
+
+#[tauri::command]
+fn read_selected_text_for_edit() -> Result<String, String> {
+    clipboard::read_selected_text_for_edit()
 }
 
 #[tauri::command]
@@ -201,6 +227,12 @@ fn upsert_app_profile_rule(
 ) -> Result<(), String> {
     let database = open_app_database(&app)?;
     storage::upsert_app_profile_rule(&database, &record)
+}
+
+#[tauri::command]
+fn list_usage_events(app: tauri::AppHandle) -> Result<Vec<storage::UsageEventRecord>, String> {
+    let database = open_app_database(&app)?;
+    storage::list_usage_events(&database)
 }
 
 #[tauri::command]
@@ -347,6 +379,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             copy_text_for_paste,
+            read_selected_text_for_edit,
             cleanup_temp_audio_file,
             update_global_shortcut,
             get_foreground_app_context,
@@ -358,6 +391,7 @@ pub fn run() {
             upsert_profile,
             list_app_profile_rules,
             upsert_app_profile_rule,
+            list_usage_events,
             export_config_to_file,
             import_config_from_file
         ])
