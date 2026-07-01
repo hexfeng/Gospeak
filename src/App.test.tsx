@@ -565,7 +565,7 @@ describe("Gospeak Alpha app shell", () => {
           stt: { providerId: "groq", model: "whisper-large-v3-turbo" },
           rewrite: { providerId: "openai", model: "gpt-5-nano" },
         },
-        performance: { fastMode: false, speakToEdit: false },
+        performance: { fastMode: false, speakToEdit: false, streamingMode: false },
         appRouting: { enabled: false },
         hotkey: { binding: "Alt+Space", mode: "push-to-talk" },
         privacy: {

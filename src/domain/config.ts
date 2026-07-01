@@ -59,6 +59,7 @@ export type AppConfig = {
   performance: {
     fastMode: boolean;
     speakToEdit: boolean;
+    streamingMode: boolean;
   };
   appRouting: {
     enabled: boolean;
@@ -168,6 +169,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   performance: {
     fastMode: false,
     speakToEdit: false,
+    streamingMode: false,
   },
   appRouting: {
     enabled: false,

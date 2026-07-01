@@ -37,6 +37,19 @@ export type PipelineResult = {
   rewrite_output_tokens?: number | null;
 };
 
+export type StreamingPipelineRequest = AudioFilePipelineRequest & {
+  streaming_insert: boolean;
+};
+
+export type StreamingPipelineResult = PipelineResult & {
+  streaming_used: boolean;
+  inserted_streaming: boolean;
+  first_stt_delta_ms?: number | null;
+  first_rewrite_delta_ms?: number | null;
+  first_insert_ms?: number | null;
+  warning?: string | null;
+};
+
 export type ClipboardResult = {
   copied: boolean;
   paste_attempted?: boolean;
@@ -168,6 +181,38 @@ export async function runAudioFileDictation(
   }
 
   return invoke<PipelineResult>("run_audio_file_dictation", { request });
+}
+
+export async function runStreamingDictation(
+  request: StreamingPipelineRequest,
+): Promise<StreamingPipelineResult> {
+  if (!hasTauriRuntime()) {
+    return {
+      text: "Browser preview streaming dictation text.",
+      profile_id: request.profile_id,
+      rewrite_fallback_used: false,
+      stt_latency_ms: 80,
+      rewrite_latency_ms: 60,
+      audio_seconds: 1,
+      audio_file_bytes: 32000,
+      fast_path_used: request.skip_rewrite,
+      streaming_used: true,
+      inserted_streaming: request.streaming_insert,
+      first_stt_delta_ms: 120,
+      first_rewrite_delta_ms: 180,
+      first_insert_ms: request.streaming_insert ? 220 : null,
+    };
+  }
+
+  return invoke<StreamingPipelineResult>("run_streaming_dictation", { request });
+}
+
+export async function typeTextChunk(text: string): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+
+  return invoke<void>("type_text_chunk", { text });
 }
 
 export async function readSelectedTextForEdit(): Promise<string> {
