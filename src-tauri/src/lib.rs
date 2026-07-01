@@ -132,6 +132,11 @@ fn copy_text_for_paste(text: String) -> Result<clipboard::ClipboardResult, Strin
 }
 
 #[tauri::command]
+fn type_text_chunk(text: String) -> Result<(), String> {
+    clipboard::type_text_chunk(&text)
+}
+
+#[tauri::command]
 fn read_selected_text_for_edit() -> Result<String, String> {
     clipboard::read_selected_text_for_edit()
 }
@@ -379,6 +384,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             copy_text_for_paste,
+            type_text_chunk,
             read_selected_text_for_edit,
             cleanup_temp_audio_file,
             update_global_shortcut,
