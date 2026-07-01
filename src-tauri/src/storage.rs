@@ -34,6 +34,19 @@ pub struct ProfileRecord {
     pub deleted_at: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppProfileRuleRecord {
+    pub id: String,
+    pub app_id: String,
+    pub window_title_pattern: Option<String>,
+    pub profile_id: String,
+    pub priority: i32,
+    pub enabled: bool,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UsageEventRecord {
     pub id: String,
@@ -46,6 +59,8 @@ pub struct UsageEventRecord {
     pub stt_latency_ms: u64,
     pub rewrite_latency_ms: Option<u64>,
     pub rewrite_fallback_used: bool,
+    pub stt_estimated_cost: Option<f64>,
+    pub rewrite_estimated_cost: Option<f64>,
     pub estimated_cost: Option<f64>,
     pub created_at: String,
 }
@@ -122,6 +137,17 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         deleted_at TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS app_profile_rules (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        window_title_pattern TEXT,
+        profile_id TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS usage_events (
         id TEXT PRIMARY KEY,
         stt_provider TEXT,
@@ -133,6 +159,8 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         stt_latency_ms INTEGER NOT NULL DEFAULT 0,
         rewrite_latency_ms INTEGER,
         rewrite_fallback_used INTEGER NOT NULL DEFAULT 0,
+        stt_estimated_cost REAL,
+        rewrite_estimated_cost REAL,
         estimated_cost REAL,
         created_at TEXT NOT NULL
       );
@@ -182,6 +210,8 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         "rewrite_fallback_used",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(connection, "usage_events", "stt_estimated_cost", "REAL")?;
+    ensure_column(connection, "usage_events", "rewrite_estimated_cost", "REAL")?;
     Ok(())
 }
 
@@ -393,6 +423,72 @@ pub fn get_enabled_profile(
         .ok_or_else(|| format!("Enabled profile not found: {profile_id}"))
 }
 
+pub fn upsert_app_profile_rule(
+    connection: &Connection,
+    record: &AppProfileRuleRecord,
+) -> Result<(), String> {
+    connection
+        .execute(
+            r#"
+      INSERT INTO app_profile_rules
+        (id, app_id, window_title_pattern, profile_id, priority, enabled, updated_at, deleted_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ON CONFLICT(id) DO UPDATE SET
+        app_id = excluded.app_id,
+        window_title_pattern = excluded.window_title_pattern,
+        profile_id = excluded.profile_id,
+        priority = excluded.priority,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at,
+        deleted_at = excluded.deleted_at
+      "#,
+            params![
+                record.id,
+                record.app_id,
+                record.window_title_pattern,
+                record.profile_id,
+                record.priority,
+                record.enabled as i32,
+                record.updated_at,
+                record.deleted_at
+            ],
+        )
+        .map_err(|error| format!("Cannot save app profile rule: {error}"))?;
+    Ok(())
+}
+
+pub fn list_app_profile_rules(
+    connection: &Connection,
+) -> Result<Vec<AppProfileRuleRecord>, String> {
+    let mut statement = connection
+        .prepare(
+            r#"
+      SELECT id, app_id, window_title_pattern, profile_id, priority, enabled, updated_at, deleted_at
+      FROM app_profile_rules
+      WHERE deleted_at IS NULL
+      ORDER BY priority DESC, app_id ASC
+      "#,
+        )
+        .map_err(|error| format!("Cannot prepare app profile rules query: {error}"))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(AppProfileRuleRecord {
+                id: row.get(0)?,
+                app_id: row.get(1)?,
+                window_title_pattern: row.get(2)?,
+                profile_id: row.get(3)?,
+                priority: row.get(4)?,
+                enabled: row.get::<_, i32>(5)? != 0,
+                updated_at: row.get(6)?,
+                deleted_at: row.get(7)?,
+            })
+        })
+        .map_err(|error| format!("Cannot query app profile rules: {error}"))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Cannot read app profile rules: {error}"))
+}
+
 pub fn dictionary_prompt_terms(connection: &Connection) -> Result<Vec<String>, String> {
     Ok(list_dictionary_terms(connection)?
         .into_iter()
@@ -408,8 +504,9 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
             INSERT INTO usage_events
               (id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                audio_seconds, stt_latency_ms, rewrite_latency_ms,
-               rewrite_fallback_used, estimated_cost, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+               rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
+               estimated_cost, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             "#,
             params![
                 event.id,
@@ -424,6 +521,8 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
                     .rewrite_latency_ms
                     .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
                 event.rewrite_fallback_used as i32,
+                event.stt_estimated_cost,
+                event.rewrite_estimated_cost,
                 event.estimated_cost,
                 event.created_at,
             ],
@@ -438,7 +537,8 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
             r#"
             SELECT id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                    audio_seconds, stt_latency_ms, rewrite_latency_ms,
-                   rewrite_fallback_used, estimated_cost, created_at
+                   rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
+                   estimated_cost, created_at
             FROM usage_events
             ORDER BY created_at DESC
             "#,
@@ -459,8 +559,10 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
                     .get::<_, Option<i64>>(8)?
                     .and_then(|value| u64::try_from(value).ok()),
                 rewrite_fallback_used: row.get::<_, i32>(9)? != 0,
-                estimated_cost: row.get(10)?,
-                created_at: row.get(11)?,
+                stt_estimated_cost: row.get(10)?,
+                rewrite_estimated_cost: row.get(11)?,
+                estimated_cost: row.get(12)?,
+                created_at: row.get(13)?,
             })
         })
         .map_err(|error| format!("Cannot query usage events: {error}"))?;
@@ -491,6 +593,13 @@ pub fn import_config_payload(
         .get("dictionaryTerms")
         .and_then(|value| value.as_array())
         .ok_or_else(|| "Config payload is missing dictionaryTerms".to_string())?;
+    let app_rules: &[serde_json::Value] = match data.get("appRules") {
+        Some(value) => value
+            .as_array()
+            .map(Vec::as_slice)
+            .ok_or_else(|| "Config payload appRules must be an array".to_string())?,
+        None => &[],
+    };
     let active_profile_id = data
         .get("activeProfileId")
         .and_then(|value| value.as_str())
@@ -498,6 +607,11 @@ pub fn import_config_payload(
     for key in ["providers", "hotkey", "privacy"] {
         if !data.get(key).is_some_and(serde_json::Value::is_object) {
             return Err(format!("Config payload is missing {key}"));
+        }
+    }
+    for key in ["performance", "appRouting"] {
+        if data.get(key).is_some_and(|value| !value.is_object()) {
+            return Err(format!("Config payload {key} must be an object"));
         }
     }
     if profiles.is_empty() {
@@ -523,6 +637,9 @@ pub fn import_config_payload(
     transaction
         .execute("DELETE FROM dictionary_terms", [])
         .map_err(|error| format!("Cannot replace dictionary: {error}"))?;
+    transaction
+        .execute("DELETE FROM app_profile_rules", [])
+        .map_err(|error| format!("Cannot replace app profile rules: {error}"))?;
 
     for value in profiles {
         let record = profile_from_export(value)?;
@@ -532,6 +649,10 @@ pub fn import_config_payload(
         let record = dictionary_from_export(value)?;
         upsert_dictionary_term(&transaction, &record)?;
     }
+    for value in app_rules {
+        let record = app_rule_from_export(value)?;
+        upsert_app_profile_rule(&transaction, &record)?;
+    }
     upsert_preference(
         &transaction,
         &PreferenceRecord {
@@ -540,12 +661,18 @@ pub fn import_config_payload(
             updated_at: chrono::Utc::now().to_rfc3339(),
         },
     )?;
-    for key in ["providers", "hotkey", "privacy"] {
-        if let Some(value) = data.get(key) {
+    for (payload_key, preference_key) in [
+        ("providers", "providers"),
+        ("hotkey", "hotkey"),
+        ("privacy", "privacy"),
+        ("performance", "performance"),
+        ("appRouting", "app_routing"),
+    ] {
+        if let Some(value) = data.get(payload_key) {
             upsert_preference(
                 &transaction,
                 &PreferenceRecord {
-                    key: key.to_string(),
+                    key: preference_key.to_string(),
                     value: value.to_string(),
                     updated_at: chrono::Utc::now().to_rfc3339(),
                 },
@@ -601,6 +728,36 @@ fn dictionary_from_export(value: &serde_json::Value) -> Result<DictionaryRecord,
     })
 }
 
+fn app_rule_from_export(value: &serde_json::Value) -> Result<AppProfileRuleRecord, String> {
+    let priority = value
+        .get("priority")
+        .and_then(|field| field.as_i64())
+        .ok_or_else(|| "Config field is missing: priority".to_string())
+        .and_then(|priority| {
+            i32::try_from(priority).map_err(|_| "Config priority is out of range".to_string())
+        })?;
+
+    Ok(AppProfileRuleRecord {
+        id: required_string(value, "id")?,
+        app_id: required_string(value, "appId")?,
+        window_title_pattern: value
+            .get("windowTitlePattern")
+            .and_then(|field| field.as_str())
+            .map(ToOwned::to_owned),
+        profile_id: required_string(value, "profileId")?,
+        priority,
+        enabled: value
+            .get("enabled")
+            .and_then(|field| field.as_bool())
+            .unwrap_or(true),
+        updated_at: required_string(value, "updatedAt")?,
+        deleted_at: value
+            .get("deletedAt")
+            .and_then(|field| field.as_str())
+            .map(ToOwned::to_owned),
+    })
+}
+
 fn required_string(value: &serde_json::Value, field: &str) -> Result<String, String> {
     value
         .get(field)
@@ -632,6 +789,122 @@ mod tests {
             get_preference(&connection, "default_stt_provider").unwrap(),
             Some("groq".to_string())
         );
+    }
+
+    #[test]
+    fn migrates_app_profile_rules_table() {
+        let connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+
+        let columns = table_columns(&connection, "app_profile_rules");
+
+        assert!(columns.contains(&"id".to_string()));
+        assert!(columns.contains(&"app_id".to_string()));
+        assert!(columns.contains(&"window_title_pattern".to_string()));
+        assert!(columns.contains(&"profile_id".to_string()));
+        assert!(columns.contains(&"priority".to_string()));
+        assert!(columns.contains(&"enabled".to_string()));
+        assert!(columns.contains(&"updated_at".to_string()));
+        assert!(columns.contains(&"deleted_at".to_string()));
+    }
+
+    #[test]
+    fn upserts_and_lists_app_profile_rules_by_priority_then_app_id() {
+        let connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+
+        upsert_app_profile_rule(
+            &connection,
+            &AppProfileRuleRecord {
+                id: "rule_low".to_string(),
+                app_id: "chrome.exe".to_string(),
+                window_title_pattern: None,
+                profile_id: "normal".to_string(),
+                priority: 1,
+                enabled: true,
+                updated_at: "2026-06-30T00:00:00Z".to_string(),
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+        upsert_app_profile_rule(
+            &connection,
+            &AppProfileRuleRecord {
+                id: "rule_disabled".to_string(),
+                app_id: "code.exe".to_string(),
+                window_title_pattern: Some("Gospeak".to_string()),
+                profile_id: "prompt".to_string(),
+                priority: 20,
+                enabled: false,
+                updated_at: "2026-06-30T00:00:00Z".to_string(),
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+        upsert_app_profile_rule(
+            &connection,
+            &AppProfileRuleRecord {
+                id: "rule_high".to_string(),
+                app_id: "brave.exe".to_string(),
+                window_title_pattern: None,
+                profile_id: "email".to_string(),
+                priority: 20,
+                enabled: true,
+                updated_at: "2026-06-30T00:00:00Z".to_string(),
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+
+        let rules = list_app_profile_rules(&connection).unwrap();
+
+        assert_eq!(
+            rules
+                .iter()
+                .map(|rule| rule.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["rule_high", "rule_disabled", "rule_low"]
+        );
+    }
+
+    #[test]
+    fn app_profile_rule_soft_deletes_are_hidden() {
+        let connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+
+        upsert_app_profile_rule(
+            &connection,
+            &AppProfileRuleRecord {
+                id: "rule_visible".to_string(),
+                app_id: "chrome.exe".to_string(),
+                window_title_pattern: None,
+                profile_id: "prompt".to_string(),
+                priority: 1,
+                enabled: true,
+                updated_at: "2026-06-30T00:00:00Z".to_string(),
+                deleted_at: None,
+            },
+        )
+        .unwrap();
+        upsert_app_profile_rule(
+            &connection,
+            &AppProfileRuleRecord {
+                id: "rule_deleted".to_string(),
+                app_id: "code.exe".to_string(),
+                window_title_pattern: None,
+                profile_id: "email".to_string(),
+                priority: 2,
+                enabled: true,
+                updated_at: "2026-06-30T00:00:00Z".to_string(),
+                deleted_at: Some("2026-06-30T01:00:00Z".to_string()),
+            },
+        )
+        .unwrap();
+
+        let rules = list_app_profile_rules(&connection).unwrap();
+
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, "rule_visible");
     }
 
     #[test]
@@ -745,6 +1018,108 @@ mod tests {
     }
 
     #[test]
+    fn imports_config_app_rules_and_defaults_missing_app_rules_to_empty() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let base_payload = serde_json::json!({
+          "schemaVersion": 1,
+          "data": {
+            "providers": {
+              "stt": { "providerId": "groq", "model": "whisper-large-v3" },
+              "rewrite": { "providerId": "openai", "model": "gpt-5-mini" }
+            },
+            "hotkey": { "binding": "Alt+Shift+Space", "mode": "toggle" },
+            "privacy": {
+              "saveRawAudio": false,
+              "saveTranscriptHistory": false,
+              "syncTranscriptHistory": false,
+              "crashReportIncludesTranscript": false
+            },
+            "activeProfileId": "prompt",
+            "promptProfiles": [{
+              "id": "prompt",
+              "name": "Prompt",
+              "mode": "prompt",
+              "systemPrompt": "Write a prompt.",
+              "userPromptTemplate": "{{transcript}}",
+              "enabled": true,
+              "updatedAt": "2026-06-30T00:00:00Z"
+            }],
+            "dictionaryTerms": []
+          }
+        });
+
+        import_config_payload(&mut connection, &base_payload).unwrap();
+        assert!(list_app_profile_rules(&connection).unwrap().is_empty());
+
+        let mut payload_with_rules = base_payload.clone();
+        payload_with_rules["data"]["appRules"] = serde_json::json!([{
+          "id": "rule_prompt",
+          "appId": "chrome.exe",
+          "windowTitlePattern": "ChatGPT",
+          "profileId": "prompt",
+          "priority": 10,
+          "enabled": true,
+          "updatedAt": "2026-06-30T01:00:00Z"
+        }]);
+
+        import_config_payload(&mut connection, &payload_with_rules).unwrap();
+        let rules = list_app_profile_rules(&connection).unwrap();
+
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, "rule_prompt");
+        assert_eq!(rules[0].app_id, "chrome.exe");
+        assert_eq!(rules[0].window_title_pattern.as_deref(), Some("ChatGPT"));
+    }
+
+    #[test]
+    fn imports_app_routing_and_performance_preferences() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let payload = serde_json::json!({
+          "schemaVersion": 1,
+          "data": {
+            "providers": {
+              "stt": { "providerId": "groq", "model": "whisper-large-v3" },
+              "rewrite": { "providerId": "openai", "model": "gpt-5-mini" }
+            },
+            "performance": { "fastMode": true },
+            "appRouting": { "enabled": true },
+            "hotkey": { "binding": "Alt+Shift+Space", "mode": "toggle" },
+            "privacy": {
+              "saveRawAudio": false,
+              "saveTranscriptHistory": false,
+              "syncTranscriptHistory": false,
+              "crashReportIncludesTranscript": false
+            },
+            "activeProfileId": "normal",
+            "promptProfiles": [{
+              "id": "normal",
+              "name": "Normal",
+              "mode": "normal",
+              "systemPrompt": "Clean transcript.",
+              "userPromptTemplate": "{{transcript}}",
+              "enabled": true,
+              "updatedAt": "2026-06-30T00:00:00Z"
+            }],
+            "dictionaryTerms": [],
+            "appRules": []
+          }
+        });
+
+        import_config_payload(&mut connection, &payload).unwrap();
+
+        assert_eq!(
+            get_preference(&connection, "performance").unwrap(),
+            Some(r#"{"fastMode":true}"#.to_string())
+        );
+        assert_eq!(
+            get_preference(&connection, "app_routing").unwrap(),
+            Some(r#"{"enabled":true}"#.to_string())
+        );
+    }
+
+    #[test]
     fn records_usage_without_transcript_content() {
         let connection = Connection::open_in_memory().unwrap();
         migrate(&connection).unwrap();
@@ -759,6 +1134,8 @@ mod tests {
             stt_latency_ms: 120,
             rewrite_latency_ms: Some(80),
             rewrite_fallback_used: false,
+            stt_estimated_cost: Some(0.000014),
+            rewrite_estimated_cost: Some(0.000032),
             estimated_cost: None,
             created_at: "2026-06-23T00:00:00Z".to_string(),
         };
@@ -833,6 +1210,8 @@ mod tests {
         assert!(columns.contains(&"profile_id".to_string()));
         assert!(columns.contains(&"stt_latency_ms".to_string()));
         assert!(columns.contains(&"rewrite_fallback_used".to_string()));
+        assert!(columns.contains(&"stt_estimated_cost".to_string()));
+        assert!(columns.contains(&"rewrite_estimated_cost".to_string()));
     }
 
     fn table_columns(connection: &Connection, table: &str) -> Vec<String> {

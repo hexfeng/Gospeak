@@ -1,25 +1,27 @@
 # Gospeak P0 Alpha Acceptance Matrix
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
 fallback, clipboard behavior, recorder-window permissions, latency diagnostics,
-fast dictation, linting, compilation, and packaging. Manual rows below are
-recorded as passed based on user-reported acceptance on 2026-06-30.
+fast dictation, App-aware routing, provider cost visibility, Speak to Edit,
+linting, compilation, and packaging. Manual rows below are
+recorded as passed based on user-reported acceptance on 2026-06-30 and
+2026-07-01 where noted.
 
 ## Test Environment
 
 | Item | Value |
 | --- | --- |
-| Commit | `9e2cd9a Improve recorder feedback and dictation latency` |
+| Commit | Local working tree after Speak to Edit and usage-cost updates |
 | App version | `0.1.0` debug bundle |
-| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-06-30 12:57:29`, 5,442,489 bytes) |
-| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-06-30 12:57:38`, 9,740,288 bytes) |
+| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-01 11:18:26`, 5,469,775 bytes) |
+| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-01 11:18:33`, 9,781,248 bytes) |
 | OS | Windows 10 Home, version 2009, build 26200, 64-bit |
 | Microphone | `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
 | Target apps detected | Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
-| Automated verification | `npm test`, `npm run lint`, `npm run build`, `cargo test`, `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `npm run tauri -- build --debug` all passed on 2026-06-30 |
+| Automated verification | `npm test`, `npm run lint`, `npm run build`, `cargo test`, `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `npm run tauri -- build --debug` all passed on 2026-07-01 |
 | Manual acceptance | User-reported pass for P0 trigger/input, profile/target-app, failure/privacy, and clean-install release-gate checks on 2026-06-30 |
 
 ## Trigger and Input Matrix
@@ -68,6 +70,29 @@ targets.
 | Fast dictation | STT output can skip rewrite and paste faster | Pass - automated fast-mode tests verify `skip_rewrite`, no OpenAI requirement, and `Rewrite: Skipped` diagnostics |
 | STT audio optimization | Recorded WAV is optimized before upload | Pass - automated audio test verifies 16 kHz mono optimized WAV output |
 
+## Post-P0 App-Aware Routing Matrix
+
+| Scenario | Expected result | Status |
+| --- | --- | --- |
+| Foreground app detection | Windows foreground executable and window title are available to routing | Pass - automated Rust tests cover context shape and non-content routing metadata; user-reported manual acceptance on 2026-07-01 |
+| Chrome + ChatGPT title rule | `chrome.exe` plus `ChatGPT` window-title match selects Prompt Profile | Pass - user-reported manual acceptance on 2026-07-01; automated frontend test covers camelCase foreground context and Prompt routing |
+| Chrome app-only rule | `chrome.exe` without a matching title-specific rule falls back to Normal Profile | Pass - user-reported manual acceptance on 2026-07-01; automated Rust and frontend resolver tests cover app-only matching |
+| Manual routing override | App-aware routing disabled uses the manually selected Active Profile | Pass - user-reported manual acceptance on 2026-07-01; automated frontend test covers disabled App-aware routing |
+| Disabled or deleted rule | Rule is ignored and fallback Profile is used | Pass - automated Rust and frontend tests cover disabled and deleted rules |
+| Missing fallback Profile | Built-in Normal Profile is used instead of sending a missing Profile id | Pass - automated frontend tests cover missing and disabled fallback Profiles |
+| App Rules export | App Rules are exported as config without keys, audio, transcript, or polished text | Pass - automated frontend export tests cover privacy-safe payloads |
+| Provider usage cost totals | Providers page shows cumulative STT and rewrite cost metrics from recorded usage events | Pass - automated frontend tests cover cumulative STT and rewrite totals; Rust tests cover usage cost persistence and provider cost formulas |
+
+## Post-P0 Speak to Edit Matrix
+
+| Scenario | Expected result | Status |
+| --- | --- | --- |
+| Selected text capture | App copies selected text from the active app and restores the previous clipboard value before replacement | Pass - automated clipboard tests cover selected-text capture and clipboard restoration |
+| Spoken edit rewrite | STT transcript is treated as the edit instruction and OpenAI receives selected text plus instruction, not transcript history | Pass - automated provider test covers selected-text edit prompt and replacement output |
+| UI edit mode | Speak to Edit mode captures selected text before recording, sends it as `selected_text`, and pastes the replacement text | Pass - automated frontend test covers edit mode request flow |
+| Target-app replacement | Selected text is replaced in Notepad, browser text fields, Outlook/Teams, and VS Code/Cursor | Pass - user-reported manual acceptance on 2026-07-01 |
+| Deferred sync/local STT | Sync Folder, WebDAV, and local Whisper are not required for the current P0/Post-P0 acceptance gate | Pass - documented as deferred roadmap scope |
+
 ## Release Gate
 
 - [x] Pass - Complete every manual row relevant to the Windows Alpha.
@@ -82,3 +107,15 @@ P0 Alpha is accepted as of 2026-06-30. Automated verification passed, the latest
 debug installers were rebuilt, and the remaining manual acceptance rows are
 recorded as user-reported passes. App-aware Profile routing can begin as the
 next post-P0 phase.
+
+## Post-P0 App-Aware Acceptance Decision
+
+App-aware Profile routing is accepted as of 2026-07-01 based on automated
+coverage plus user-reported manual acceptance. Future work in this area should
+be limited to bug fixes unless a new App Rules requirement is explicitly scoped.
+
+## Post-P0 Speak to Edit Acceptance Decision
+
+Speak to Edit is accepted as of 2026-07-01 based on automated coverage plus
+user-reported manual target-app acceptance. The P0 Alpha plus post-P0 alpha
+slice can be treated as complete for PR/release-candidate publishing.

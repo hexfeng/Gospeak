@@ -29,6 +29,8 @@ pub struct AudioFilePipelineRequest {
     pub stt_model: String,
     pub rewrite_model: String,
     #[serde(default)]
+    pub selected_text: Option<String>,
+    #[serde(default)]
     pub skip_rewrite: bool,
 }
 
@@ -40,6 +42,7 @@ pub struct PipelineContext {
     pub user_prompt_template: String,
     pub target_language: Option<String>,
     pub dictionary_terms: Vec<String>,
+    pub selected_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -52,6 +55,8 @@ pub struct PipelineResult {
     pub audio_seconds: Option<f64>,
     pub audio_file_bytes: Option<u64>,
     pub fast_path_used: bool,
+    pub rewrite_input_tokens: Option<u64>,
+    pub rewrite_output_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -221,12 +226,24 @@ pub struct RewriteInput {
     pub rendered_prompt: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RewriteUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RewriteOutput {
+    pub text: String,
+    pub usage: Option<RewriteUsage>,
+}
+
 pub trait SttProvider {
     fn transcribe(&self, input: &SttInput) -> Result<String, ProviderError>;
 }
 
 pub trait RewriteProvider {
-    fn rewrite(&self, input: &RewriteInput) -> Result<String, ProviderError>;
+    fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError>;
 }
 
 #[derive(Debug, Clone)]
@@ -312,7 +329,7 @@ impl OpenAiRewriteProvider {
 }
 
 impl RewriteProvider for OpenAiRewriteProvider {
-    fn rewrite(&self, input: &RewriteInput) -> Result<String, ProviderError> {
+    fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
         if input.transcript.trim().is_empty() {
             return Err(ProviderError::InvalidInput(
                 "Transcript cannot be empty".to_string(),
@@ -347,7 +364,7 @@ impl RewriteProvider for OpenAiRewriteProvider {
             )));
         }
 
-        parse_openai_output_text(&body)
+        parse_openai_rewrite_response(&body)
     }
 }
 
@@ -381,6 +398,8 @@ where
             audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
             audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
             fast_path_used: true,
+            rewrite_input_tokens: None,
+            rewrite_output_tokens: None,
         });
     }
 
@@ -396,16 +415,21 @@ where
 
     let rewrite_started = std::time::Instant::now();
     match rewrite_provider.rewrite(&rewrite_input) {
-        Ok(text) => Ok(PipelineResult {
-            text,
-            profile_id: context.profile_id,
-            rewrite_fallback_used: false,
-            stt_latency_ms,
-            rewrite_latency_ms: Some(elapsed_ms(rewrite_started)),
-            audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
-            audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
-            fast_path_used: false,
-        }),
+        Ok(output) => {
+            let usage = output.usage;
+            Ok(PipelineResult {
+                text: output.text,
+                profile_id: context.profile_id,
+                rewrite_fallback_used: false,
+                stt_latency_ms,
+                rewrite_latency_ms: Some(elapsed_ms(rewrite_started)),
+                audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
+                audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
+                fast_path_used: false,
+                rewrite_input_tokens: usage.map(|value| value.input_tokens),
+                rewrite_output_tokens: usage.map(|value| value.output_tokens),
+            })
+        }
         Err(error) => {
             log::warn!("Rewrite failed; falling back to raw transcript: {error}");
             Ok(PipelineResult {
@@ -417,6 +441,8 @@ where
                 audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
                 audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
                 fast_path_used: false,
+                rewrite_input_tokens: None,
+                rewrite_output_tokens: None,
             })
         }
     }
@@ -450,6 +476,17 @@ fn shared_http_client() -> reqwest::blocking::Client {
 }
 
 fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
+    if let Some(selected_text) = context
+        .selected_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        return format!(
+            "Selected text:\n{selected_text}\n\nSpoken edit instruction:\n{transcript}\n\nReturn only the replacement text for the selected text."
+        );
+    }
+
     let dictionary = if context.dictionary_terms.is_empty() {
         "No dictionary terms.".to_string()
     } else {
@@ -484,6 +521,29 @@ fn audio_file_bytes(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 
+pub fn estimate_groq_stt_cost_usd(model: &str, audio_seconds: Option<f64>) -> Option<f64> {
+    let price_per_hour = match model {
+        "whisper-large-v3-turbo" => 0.04,
+        "whisper-large-v3" => 0.111,
+        _ => return None,
+    };
+    audio_seconds
+        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+        .map(|seconds| (price_per_hour / 3600.0) * seconds)
+}
+
+pub fn estimate_openai_rewrite_cost_usd(model: &str, usage: Option<RewriteUsage>) -> Option<f64> {
+    let (input_per_million, output_per_million) = match model {
+        "gpt-5-nano" => (0.05, 0.4),
+        "gpt-5-mini" => (0.25, 2.0),
+        _ => return None,
+    };
+    usage.map(|usage| {
+        (input_per_million / 1_000_000.0) * usage.input_tokens as f64
+            + (output_per_million / 1_000_000.0) * usage.output_tokens as f64
+    })
+}
+
 fn parse_groq_transcription_text(body: &str) -> Result<String, ProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         ProviderError::ProviderResponse(format!("Groq STT returned invalid JSON: {error}"))
@@ -500,43 +560,55 @@ fn parse_groq_transcription_text(body: &str) -> Result<String, ProviderError> {
         })
 }
 
+#[cfg(test)]
 fn parse_openai_output_text(body: &str) -> Result<String, ProviderError> {
+    Ok(parse_openai_rewrite_response(body)?.text)
+}
+
+fn parse_openai_rewrite_response(body: &str) -> Result<RewriteOutput, ProviderError> {
     let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
         ProviderError::ProviderResponse(format!("OpenAI rewrite returned invalid JSON: {error}"))
     })?;
 
-    if let Some(text) = value
+    let text = if let Some(text) = value
         .get("output_text")
         .and_then(|output_text| output_text.as_str())
         .map(str::trim)
         .filter(|text| !text.is_empty())
     {
-        return Ok(text.to_string());
-    }
-
-    value
-        .get("output")
-        .and_then(|output| output.as_array())
-        .and_then(|items| {
-            items.iter().find_map(|item| {
-                item.get("content")
-                    .and_then(|content| content.as_array())
-                    .and_then(|content| {
-                        content.iter().find_map(|part| {
-                            part.get("text")
-                                .and_then(|text| text.as_str())
-                                .map(str::trim)
-                                .filter(|text| !text.is_empty())
+        text.to_string()
+    } else {
+        value
+            .get("output")
+            .and_then(|output| output.as_array())
+            .and_then(|items| {
+                items.iter().find_map(|item| {
+                    item.get("content")
+                        .and_then(|content| content.as_array())
+                        .and_then(|content| {
+                            content.iter().find_map(|part| {
+                                part.get("text")
+                                    .and_then(|text| text.as_str())
+                                    .map(str::trim)
+                                    .filter(|text| !text.is_empty())
+                            })
                         })
-                    })
+                })
             })
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| {
+                ProviderError::ProviderResponse(
+                    "OpenAI rewrite response did not include output_text".to_string(),
+                )
+            })?
+    };
+    let usage = value.get("usage").and_then(|usage| {
+        Some(RewriteUsage {
+            input_tokens: usage.get("input_tokens")?.as_u64()?,
+            output_tokens: usage.get("output_tokens")?.as_u64()?,
         })
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| {
-            ProviderError::ProviderResponse(
-                "OpenAI rewrite response did not include output_text".to_string(),
-            )
-        })
+    });
+    Ok(RewriteOutput { text, usage })
 }
 
 fn sanitize_provider_body(body: &str) -> String {
@@ -583,6 +655,41 @@ mod tests {
     }
 
     #[test]
+    fn parses_openai_usage_tokens_for_cost_tracking() {
+        let output = parse_openai_rewrite_response(
+            r#"{"output_text":" Polished text. ","usage":{"input_tokens":1234,"output_tokens":456}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(output.text, "Polished text.");
+        assert_eq!(
+            output.usage,
+            Some(RewriteUsage {
+                input_tokens: 1234,
+                output_tokens: 456,
+            }),
+        );
+    }
+
+    #[test]
+    fn estimates_provider_costs_from_real_usage_units() {
+        assert_eq!(
+            estimate_groq_stt_cost_usd("whisper-large-v3-turbo", Some(90.0)),
+            Some(0.001),
+        );
+        assert_eq!(
+            estimate_openai_rewrite_cost_usd(
+                "gpt-5-mini",
+                Some(RewriteUsage {
+                    input_tokens: 1000,
+                    output_tokens: 2000,
+                }),
+            ),
+            Some(0.00425),
+        );
+    }
+
+    #[test]
     fn orchestrates_stt_then_rewrite_with_mock_providers() {
         struct MockStt;
         impl SttProvider for MockStt {
@@ -595,10 +702,16 @@ mod tests {
 
         struct MockRewrite;
         impl RewriteProvider for MockRewrite {
-            fn rewrite(&self, input: &RewriteInput) -> Result<String, ProviderError> {
+            fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
                 assert_eq!(input.model, "gpt-5-nano");
                 assert_eq!(input.transcript, "raw transcript");
-                Ok("polished transcript".to_string())
+                Ok(RewriteOutput {
+                    text: "polished transcript".to_string(),
+                    usage: Some(RewriteUsage {
+                        input_tokens: 100,
+                        output_tokens: 25,
+                    }),
+                })
             }
         }
 
@@ -620,6 +733,7 @@ mod tests {
                     .to_string(),
                 target_language: None,
                 dictionary_terms: vec!["Gawspeak => Gospeak".to_string()],
+                selected_text: None,
             },
             PipelineOptions::default(),
             &MockStt,
@@ -630,6 +744,8 @@ mod tests {
         assert_eq!(result.text, "polished transcript");
         assert!(!result.rewrite_fallback_used);
         assert_eq!(result.profile_id, "email");
+        assert_eq!(result.rewrite_input_tokens, Some(100));
+        assert_eq!(result.rewrite_output_tokens, Some(25));
     }
 
     #[test]
@@ -643,7 +759,7 @@ mod tests {
 
         struct FailingRewrite;
         impl RewriteProvider for FailingRewrite {
-            fn rewrite(&self, _input: &RewriteInput) -> Result<String, ProviderError> {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
                 Err(ProviderError::Http("rewrite unavailable".to_string()))
             }
         }
@@ -665,6 +781,7 @@ mod tests {
                 user_prompt_template: "{{transcript}}".to_string(),
                 target_language: None,
                 dictionary_terms: Vec::new(),
+                selected_text: None,
             },
             PipelineOptions::default(),
             &MockStt,
@@ -687,7 +804,7 @@ mod tests {
 
         struct PanickingRewrite;
         impl RewriteProvider for PanickingRewrite {
-            fn rewrite(&self, _input: &RewriteInput) -> Result<String, ProviderError> {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
                 panic!("fast mode should not call rewrite");
             }
         }
@@ -707,6 +824,7 @@ mod tests {
                 user_prompt_template: "{{transcript}}".to_string(),
                 target_language: None,
                 dictionary_terms: Vec::new(),
+                selected_text: None,
             },
             PipelineOptions { skip_rewrite: true },
             &MockStt,
@@ -731,13 +849,16 @@ mod tests {
 
         struct InspectingRewrite;
         impl RewriteProvider for InspectingRewrite {
-            fn rewrite(&self, input: &RewriteInput) -> Result<String, ProviderError> {
+            fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
                 assert_eq!(input.profile_name, "Product Email");
                 assert_eq!(input.system_prompt, "Write a concise product email.");
                 assert_eq!(input.dictionary_terms, vec!["Gawspeak => Gospeak"]);
                 assert!(input.rendered_prompt.contains("Gawspeak is useful"));
                 assert!(input.rendered_prompt.contains("English"));
-                Ok("Gospeak is useful.".to_string())
+                Ok(RewriteOutput {
+                    text: "Gospeak is useful.".to_string(),
+                    usage: None,
+                })
             }
         }
 
@@ -757,6 +878,7 @@ mod tests {
                     "Target: {{targetLanguage}}\n{{transcript}}\n{{dictionaryTerms}}".to_string(),
                 target_language: Some("English".to_string()),
                 dictionary_terms: vec!["Gawspeak => Gospeak".to_string()],
+                selected_text: None,
             },
             PipelineOptions::default(),
             &InspectingStt,
@@ -766,6 +888,68 @@ mod tests {
 
         assert_eq!(result.text, "Gospeak is useful.");
         assert_eq!(result.profile_id, "product_email");
+    }
+
+    #[test]
+    fn speak_to_edit_prompt_uses_selected_text_and_spoken_instruction() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("make this clearer and fix the typo".to_string())
+            }
+        }
+
+        struct InspectingRewrite;
+        impl RewriteProvider for InspectingRewrite {
+            fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                assert_eq!(input.transcript, "make this clearer and fix the typo");
+                assert!(input.rendered_prompt.contains("Selected text:"));
+                assert!(input
+                    .rendered_prompt
+                    .contains("Turing research center will all of you"));
+                assert!(input.rendered_prompt.contains("Spoken edit instruction:"));
+                assert!(input
+                    .rendered_prompt
+                    .contains("make this clearer and fix the typo"));
+                assert!(input
+                    .rendered_prompt
+                    .contains("Return only the replacement text"));
+                Ok(RewriteOutput {
+                    text: "I would like to share our vision and mission for the Turing Research Center with all of you.".to_string(),
+                    usage: None,
+                })
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: Some(
+                    "Looking forward, I would like to share our vision and mission for Turing research center will all of you.".to_string(),
+                ),
+            },
+            PipelineOptions::default(),
+            &MockStt,
+            &InspectingRewrite,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.text,
+            "I would like to share our vision and mission for the Turing Research Center with all of you."
+        );
     }
 
     #[test]

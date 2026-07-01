@@ -1,7 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import type { ApiKeyPresence, ConfigExportPayload } from "../domain/config";
+import type {
+  ApiKeyPresence,
+  AppProfileRule,
+  ConfigExportPayload,
+  ForegroundAppContext,
+} from "../domain/config";
 
 export type ProviderRuntimeConfig = {
   stt_provider: "groq";
@@ -15,6 +20,7 @@ export type AudioFilePipelineRequest = {
   profile_id: string;
   stt_model: string;
   rewrite_model: string;
+  selected_text: string | null;
   skip_rewrite: boolean;
 };
 
@@ -27,6 +33,8 @@ export type PipelineResult = {
   audio_seconds?: number | null;
   audio_file_bytes?: number | null;
   fast_path_used?: boolean;
+  rewrite_input_tokens?: number | null;
+  rewrite_output_tokens?: number | null;
 };
 
 export type ClipboardResult = {
@@ -63,6 +71,39 @@ export type PreferenceRecord = {
   key: string;
   value: string;
   updated_at: string;
+};
+
+export type AppProfileRuleRecord = {
+  id: string;
+  appId: string;
+  windowTitlePattern?: string | null;
+  profileId: string;
+  priority: number;
+  enabled: boolean;
+  updatedAt: string;
+  deletedAt?: string | null;
+};
+
+export type UsageEventRecord = {
+  id: string;
+  stt_provider: string;
+  stt_model: string;
+  llm_provider: string;
+  llm_model: string;
+  profile_id: string;
+  audio_seconds?: number | null;
+  stt_latency_ms: number;
+  rewrite_latency_ms?: number | null;
+  rewrite_fallback_used: boolean;
+  stt_estimated_cost?: number | null;
+  rewrite_estimated_cost?: number | null;
+  estimated_cost?: number | null;
+  created_at: string;
+};
+
+export type ForegroundAppContextRecord = {
+  appId?: string | null;
+  windowTitle?: string | null;
 };
 
 function hasTauriRuntime() {
@@ -129,6 +170,14 @@ export async function runAudioFileDictation(
   return invoke<PipelineResult>("run_audio_file_dictation", { request });
 }
 
+export async function readSelectedTextForEdit(): Promise<string> {
+  if (!hasTauriRuntime()) {
+    return "Browser preview selected text.";
+  }
+
+  return invoke<string>("read_selected_text_for_edit");
+}
+
 export async function copyTextForPaste(text: string): Promise<ClipboardResult> {
   if (!hasTauriRuntime()) {
     return {
@@ -184,6 +233,88 @@ export async function upsertPreference(record: PreferenceRecord): Promise<void> 
     return;
   }
   return invoke<void>("upsert_preference", { record });
+}
+
+export async function getForegroundAppContext(): Promise<ForegroundAppContext> {
+  if (!hasTauriRuntime()) {
+    return {
+      appId: "browser-preview.exe",
+      windowTitle: document.title || "Gospeak browser preview",
+    };
+  }
+
+  const record = await invoke<ForegroundAppContextRecord>(
+    "get_foreground_app_context",
+  );
+  return foregroundAppContextRecordToContext(record);
+}
+
+export async function listAppProfileRules(): Promise<AppProfileRule[]> {
+  if (!hasTauriRuntime()) {
+    return [];
+  }
+
+  const records = await invoke<AppProfileRuleRecord[]>("list_app_profile_rules");
+  return records.map(appProfileRuleRecordToRule);
+}
+
+export async function listUsageEvents(): Promise<UsageEventRecord[]> {
+  if (!hasTauriRuntime()) {
+    return [];
+  }
+
+  return invoke<UsageEventRecord[]>("list_usage_events");
+}
+
+export async function upsertAppProfileRule(input: {
+  record: AppProfileRule;
+}): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+
+  return invoke<void>("upsert_app_profile_rule", {
+    record: appProfileRuleToRecord(input.record),
+  });
+}
+
+export function appProfileRuleRecordToRule(
+  record: AppProfileRuleRecord,
+): AppProfileRule {
+  return {
+    id: record.id,
+    appId: record.appId,
+    windowTitlePattern: record.windowTitlePattern ?? null,
+    profileId: record.profileId,
+    priority: record.priority,
+    enabled: record.enabled,
+    updatedAt: record.updatedAt,
+    deletedAt: record.deletedAt ?? null,
+  };
+}
+
+export function appProfileRuleToRecord(
+  rule: AppProfileRule,
+): AppProfileRuleRecord {
+  return {
+    id: rule.id,
+    appId: rule.appId,
+    windowTitlePattern: rule.windowTitlePattern ?? null,
+    profileId: rule.profileId,
+    priority: rule.priority,
+    enabled: rule.enabled,
+    updatedAt: rule.updatedAt,
+    deletedAt: rule.deletedAt ?? null,
+  };
+}
+
+export function foregroundAppContextRecordToContext(
+  record: ForegroundAppContextRecord,
+): ForegroundAppContext {
+  return {
+    appId: record.appId ?? null,
+    windowTitle: record.windowTitle ?? null,
+  };
 }
 
 export async function listProfiles(): Promise<ProfileRecord[]> {
