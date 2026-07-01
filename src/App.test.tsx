@@ -163,6 +163,16 @@ describe("Gospeak Alpha app shell", () => {
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
   });
 
+  it("renders experimental streaming dictation toggle", async () => {
+    render(<App />);
+
+    expect(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    ).not.toBeChecked();
+  });
+
   it("drives the manual dictation flow from the primary button", async () => {
     const user = userEvent.setup();
     render(<App />);

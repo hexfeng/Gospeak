@@ -702,6 +702,12 @@ function App() {
     setMessage(enabled ? "Speak to Edit enabled." : "Speak to Edit disabled.");
   }
 
+  async function changeStreamingMode(enabled: boolean) {
+    const performanceConfig = { ...config.performance, streamingMode: enabled };
+    setConfig((current) => ({ ...current, performance: performanceConfig }));
+    await persistPreference("performance", performanceConfig);
+  }
+
   async function changeAppRouting(enabled: boolean) {
     const appRouting = { enabled };
     setConfig((current) => ({ ...current, appRouting }));
@@ -878,6 +884,22 @@ function App() {
                   checked={config.performance.speakToEdit}
                   onChange={(event) =>
                     void changeSpeakToEdit(event.target.checked)
+                  }
+                />
+              </label>
+              <label className="checkbox-line">
+                <span>
+                  <strong>Experimental streaming dictation</strong>
+                  <small>
+                    Streams STT and rewrite when available; batch dictation
+                    remains the fallback.
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={config.performance.streamingMode}
+                  onChange={(event) =>
+                    void changeStreamingMode(event.target.checked)
                   }
                 />
               </label>
