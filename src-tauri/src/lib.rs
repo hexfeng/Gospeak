@@ -3,6 +3,8 @@ pub mod audio;
 pub mod clipboard;
 pub mod provider;
 pub mod storage;
+#[allow(dead_code)]
+mod streaming;
 
 use provider::{
     estimate_groq_stt_cost_usd, estimate_openai_rewrite_cost_usd, provider_key_status,
