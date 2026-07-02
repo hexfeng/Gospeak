@@ -127,6 +127,8 @@ type DictationDiagnostics = {
   streamingUsed: boolean;
 };
 
+const STREAMING_STT_MODEL = "gpt-realtime-whisper";
+
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
@@ -435,6 +437,7 @@ function App() {
         try {
           const streamingResult = await runStreamingDictation({
             ...request,
+            stt_model: STREAMING_STT_MODEL,
             streaming_insert: true,
           });
           result = streamingResult;

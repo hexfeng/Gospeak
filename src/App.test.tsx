@@ -210,6 +210,11 @@ describe("Gospeak Alpha app shell", () => {
     );
 
     await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
+    expect(runStreamingDictation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stt_model: "gpt-realtime-whisper",
+      }),
+    );
     await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
   });
 
