@@ -167,7 +167,7 @@ fn has_provider_key(provider: &str) -> bool {
     provider_key(provider).is_ok()
 }
 
-fn provider_key(provider: &str) -> Result<String, ProviderError> {
+pub(crate) fn provider_key(provider: &str) -> Result<String, ProviderError> {
     let env_name = match provider {
         "groq" => "GROQ_API_KEY",
         "openai" => "OPENAI_API_KEY",
@@ -545,7 +545,7 @@ fn shared_http_client() -> reqwest::blocking::Client {
     CLIENT.get_or_init(reqwest::blocking::Client::new).clone()
 }
 
-fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
+pub(crate) fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
     if let Some(selected_text) = context
         .selected_text
         .as_deref()
@@ -579,7 +579,7 @@ fn elapsed_ms(started: std::time::Instant) -> u64 {
     started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
 }
 
-fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
+pub(crate) fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
     let reader = hound::WavReader::open(path).ok()?;
     let spec = reader.spec();
     let samples = f64::from(reader.duration());
@@ -587,7 +587,7 @@ fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
     (samples_per_second > 0.0).then_some(samples / samples_per_second)
 }
 
-fn audio_file_bytes(path: &std::path::Path) -> Option<u64> {
+pub(crate) fn audio_file_bytes(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 

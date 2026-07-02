@@ -3,7 +3,6 @@ pub mod audio;
 pub mod clipboard;
 pub mod provider;
 pub mod storage;
-#[allow(dead_code)]
 mod streaming;
 
 use provider::{
@@ -96,6 +95,34 @@ fn run_audio_file_dictation(
         },
     )?;
     Ok(result)
+}
+
+#[tauri::command]
+fn run_streaming_dictation(
+    app: tauri::AppHandle,
+    request: streaming::StreamingPipelineRequest,
+) -> Result<streaming::StreamingPipelineResult, String> {
+    if !streaming::streaming_eligible(&request) {
+        return Err("Streaming dictation is disabled for Speak to Edit.".to_string());
+    }
+
+    let database = open_app_database(&app)?;
+    let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
+    let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
+    streaming::run_streaming_pipeline(
+        request,
+        PipelineContext {
+            profile_id: profile.id,
+            profile_name: profile.name,
+            system_prompt: profile.system_prompt,
+            user_prompt_template: profile.user_prompt_template,
+            target_language: profile.target_language,
+            dictionary_terms,
+            selected_text: None,
+        },
+        Vec::new(),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -383,6 +410,7 @@ pub fn run() {
             save_provider_api_key,
             validate_alpha_pipeline,
             run_audio_file_dictation,
+            run_streaming_dictation,
             start_recording,
             stop_recording,
             copy_text_for_paste,
