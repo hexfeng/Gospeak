@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::io::BufRead;
 
 const KEYRING_SERVICE: &str = "com.gospeak.alpha";
 
@@ -166,7 +167,7 @@ fn has_provider_key(provider: &str) -> bool {
     provider_key(provider).is_ok()
 }
 
-fn provider_key(provider: &str) -> Result<String, ProviderError> {
+pub(crate) fn provider_key(provider: &str) -> Result<String, ProviderError> {
     let env_name = match provider {
         "groq" => "GROQ_API_KEY",
         "openai" => "OPENAI_API_KEY",
@@ -326,6 +327,75 @@ impl OpenAiRewriteProvider {
             client: shared_http_client(),
         }
     }
+
+    pub fn rewrite_streaming<F>(
+        &self,
+        input: &RewriteInput,
+        mut on_delta: F,
+    ) -> Result<RewriteOutput, ProviderError>
+    where
+        F: FnMut(&str) -> Result<(), ProviderError>,
+    {
+        if input.transcript.trim().is_empty() {
+            return Err(ProviderError::InvalidInput(
+                "Transcript cannot be empty".to_string(),
+            ));
+        }
+
+        let body = serde_json::json!({
+          "model": input.model,
+          "instructions": input.system_prompt,
+          "input": input.rendered_prompt,
+          "stream": true
+        });
+
+        let response = self
+            .client
+            .post(format!("{}/responses", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .map_err(|error| {
+                ProviderError::Http(format!("OpenAI rewrite request failed: {error}"))
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().map_err(|error| {
+                ProviderError::Http(format!("OpenAI rewrite response read failed: {error}"))
+            })?;
+            return Err(ProviderError::Http(format!(
+                "OpenAI rewrite returned HTTP {status}: {}",
+                sanitize_provider_body(&body)
+            )));
+        }
+
+        let mut full_text = String::new();
+        for line in std::io::BufReader::new(response).lines() {
+            match parse_openai_streaming_event(&line.map_err(|error| {
+                ProviderError::Http(format!("OpenAI rewrite response read failed: {error}"))
+            })?)? {
+                OpenAiStreamingEvent::TextDelta(delta) => {
+                    full_text.push_str(&delta);
+                    on_delta(&delta)?;
+                }
+                OpenAiStreamingEvent::Done => break,
+                OpenAiStreamingEvent::Ignored => {}
+            }
+        }
+
+        let text = full_text.trim();
+        if text.is_empty() {
+            return Err(ProviderError::ProviderResponse(
+                "OpenAI rewrite response did not include output_text".to_string(),
+            ));
+        }
+
+        Ok(RewriteOutput {
+            text: text.to_string(),
+            usage: None,
+        })
+    }
 }
 
 impl RewriteProvider for OpenAiRewriteProvider {
@@ -475,7 +545,7 @@ fn shared_http_client() -> reqwest::blocking::Client {
     CLIENT.get_or_init(reqwest::blocking::Client::new).clone()
 }
 
-fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
+pub(crate) fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
     if let Some(selected_text) = context
         .selected_text
         .as_deref()
@@ -509,7 +579,7 @@ fn elapsed_ms(started: std::time::Instant) -> u64 {
     started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)
 }
 
-fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
+pub(crate) fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
     let reader = hound::WavReader::open(path).ok()?;
     let spec = reader.spec();
     let samples = f64::from(reader.duration());
@@ -517,7 +587,7 @@ fn wav_duration_seconds(path: &std::path::Path) -> Option<f64> {
     (samples_per_second > 0.0).then_some(samples / samples_per_second)
 }
 
-fn audio_file_bytes(path: &std::path::Path) -> Option<u64> {
+pub(crate) fn audio_file_bytes(path: &std::path::Path) -> Option<u64> {
     std::fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 
@@ -611,6 +681,38 @@ fn parse_openai_rewrite_response(body: &str) -> Result<RewriteOutput, ProviderEr
     Ok(RewriteOutput { text, usage })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum OpenAiStreamingEvent {
+    TextDelta(String),
+    Done,
+    Ignored,
+}
+
+fn parse_openai_streaming_event(line: &str) -> Result<OpenAiStreamingEvent, ProviderError> {
+    let Some(body) = line.strip_prefix("data: ") else {
+        return Ok(OpenAiStreamingEvent::Ignored);
+    };
+    if body.trim() == "[DONE]" {
+        return Ok(OpenAiStreamingEvent::Done);
+    }
+
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
+        ProviderError::ProviderResponse(format!(
+            "OpenAI streaming rewrite returned invalid JSON: {error}"
+        ))
+    })?;
+
+    if value.get("type").and_then(|kind| kind.as_str()) == Some("response.output_text.delta") {
+        Ok(value
+            .get("delta")
+            .and_then(|delta| delta.as_str())
+            .map(|delta| OpenAiStreamingEvent::TextDelta(delta.to_string()))
+            .unwrap_or(OpenAiStreamingEvent::Ignored))
+    } else {
+        Ok(OpenAiStreamingEvent::Ignored)
+    }
+}
+
 fn sanitize_provider_body(body: &str) -> String {
     body.chars().take(500).collect()
 }
@@ -669,6 +771,41 @@ mod tests {
                 output_tokens: 456,
             }),
         );
+    }
+
+    #[test]
+    fn parses_openai_response_text_delta_from_sse_line() {
+        let line = r#"data: {"type":"response.output_text.delta","delta":"hello"}"#;
+
+        assert_eq!(
+            super::parse_openai_streaming_event(line).unwrap(),
+            OpenAiStreamingEvent::TextDelta("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_openai_streaming_done_from_sse_line() {
+        assert_eq!(
+            super::parse_openai_streaming_event("data: [DONE]").unwrap(),
+            OpenAiStreamingEvent::Done
+        );
+    }
+
+    #[test]
+    fn ignores_openai_streaming_non_data_line() {
+        assert_eq!(
+            super::parse_openai_streaming_event("event: response.output_text.delta").unwrap(),
+            OpenAiStreamingEvent::Ignored
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_openai_streaming_json_after_data_prefix() {
+        assert!(matches!(
+            super::parse_openai_streaming_event("data: {not json"),
+            Err(ProviderError::ProviderResponse(message))
+                if message.starts_with("OpenAI streaming rewrite returned invalid JSON:")
+        ));
     }
 
     #[test]

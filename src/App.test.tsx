@@ -13,10 +13,12 @@ import {
   listPreferences,
   listUsageEvents,
   runAudioFileDictation,
+  runStreamingDictation,
   listenForGlobalShortcut,
   publishRecorderState,
   readSelectedTextForEdit,
   startRecording,
+  startStreamingRecording,
   stopRecording,
   upsertDictionaryTerm,
   upsertAppProfileRule,
@@ -30,6 +32,7 @@ vi.mock("./lib/tauri", () => ({
   checkProviderKeys: vi.fn(async () => ({ groq: false, openai: false })),
   saveProviderApiKey: vi.fn(async () => ({ groq: true, openai: true })),
   startRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
+  startStreamingRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   stopRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   runAudioFileDictation: vi.fn(async () => ({
     text: "Polished dictation text",
@@ -40,6 +43,21 @@ vi.mock("./lib/tauri", () => ({
     audio_seconds: 1.5,
     audio_file_bytes: 32000,
     fast_path_used: false,
+  })),
+  runStreamingDictation: vi.fn(async () => ({
+    text: "Streaming dictation text",
+    profile_id: "normal",
+    rewrite_fallback_used: false,
+    stt_latency_ms: 90,
+    rewrite_latency_ms: 70,
+    audio_seconds: 1.4,
+    audio_file_bytes: 30000,
+    fast_path_used: false,
+    streaming_used: true,
+    inserted_streaming: true,
+    first_stt_delta_ms: 35,
+    first_rewrite_delta_ms: 55,
+    first_insert_ms: 75,
   })),
   copyTextForPaste: vi.fn(async () => ({
     copied: true,
@@ -161,6 +179,66 @@ describe("Gospeak Alpha app shell", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Speak to Edit/i)).toBeInTheDocument();
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
+  });
+
+  it("renders experimental streaming dictation toggle", async () => {
+    render(<App />);
+
+    expect(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    ).not.toBeChecked();
+  });
+
+  it("falls back to batch dictation when streaming dictation fails before insertion", async () => {
+    const user = userEvent.setup();
+    vi.mocked(runStreamingDictation).mockRejectedValueOnce(
+      new Error("stream unavailable"),
+    );
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    expect(startStreamingRecording).toHaveBeenCalledTimes(1);
+    await user.click(
+      await screen.findByRole("button", { name: /Stop Dictation/i }),
+    );
+
+    await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
+    expect(runStreamingDictation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stt_model: "gpt-realtime-whisper",
+      }),
+    );
+    await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows streaming first-token diagnostics after streaming output completes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    const diagnostics = await screen.findByLabelText(
+      /Last dictation diagnostics/i,
+    );
+    expect(within(diagnostics).getByText("First STT")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("35 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("First rewrite")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("55 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("First insert")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("75 ms")).toBeInTheDocument();
   });
 
   it("drives the manual dictation flow from the primary button", async () => {
@@ -565,7 +643,7 @@ describe("Gospeak Alpha app shell", () => {
           stt: { providerId: "groq", model: "whisper-large-v3-turbo" },
           rewrite: { providerId: "openai", model: "gpt-5-nano" },
         },
-        performance: { fastMode: false, speakToEdit: false },
+        performance: { fastMode: false, speakToEdit: false, streamingMode: false },
         appRouting: { enabled: false },
         hotkey: { binding: "Alt+Space", mode: "push-to-talk" },
         privacy: {

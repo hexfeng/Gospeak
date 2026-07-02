@@ -49,10 +49,12 @@ import {
   publishRecorderState,
   readSelectedTextForEdit,
   runAudioFileDictation,
+  runStreamingDictation,
   saveProviderApiKey,
   selectExportPath,
   selectImportPath,
   startRecording,
+  startStreamingRecording,
   stopRecording,
   updateGlobalShortcut,
   upsertAppProfileRule,
@@ -119,7 +121,13 @@ type DictationDiagnostics = {
   audioSeconds: number | null;
   audioBytes: number | null;
   fastPathUsed: boolean;
+  firstSttDeltaMs: number | null;
+  firstRewriteDeltaMs: number | null;
+  firstInsertMs: number | null;
+  streamingUsed: boolean;
 };
+
+const STREAMING_STT_MODEL = "gpt-realtime-whisper";
 
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
@@ -357,7 +365,9 @@ function App() {
           setMessage("Editing selected text. Record the edit instruction.");
         }
         const recordingStartStarted = performance.now();
-        const path = await startRecording();
+        const path = await (config.performance.streamingMode
+          ? startStreamingRecording
+          : startRecording)();
         recordingStartLatencyRef.current = elapsedPerformanceMs(
           recordingStartStarted,
         );
@@ -417,7 +427,27 @@ function App() {
           config.performance.fastMode && selectedTextForEditRef.current == null,
       };
       const pipelineStarted = performance.now();
-      const result = await runAudioFileDictation(request);
+      let insertedStreaming = false;
+      let result: Awaited<ReturnType<typeof runAudioFileDictation>> &
+        Partial<Awaited<ReturnType<typeof runStreamingDictation>>>;
+      if (
+        config.performance.streamingMode &&
+        selectedTextForEditRef.current == null
+      ) {
+        try {
+          const streamingResult = await runStreamingDictation({
+            ...request,
+            stt_model: STREAMING_STT_MODEL,
+            streaming_insert: true,
+          });
+          result = streamingResult;
+          insertedStreaming = streamingResult.inserted_streaming;
+        } catch {
+          result = await runAudioFileDictation(request);
+        }
+      } else {
+        result = await runAudioFileDictation(request);
+      }
       const pipelineMs = elapsedPerformanceMs(pipelineStarted);
       if (!result.fast_path_used) {
         dictationStatusRef.current = "rewriting";
@@ -434,8 +464,12 @@ function App() {
         message: "Pasting…",
       });
       const pasteStarted = performance.now();
-      const clipboard = await copyTextForPaste(result.text);
-      const pasteMs = elapsedPerformanceMs(pasteStarted);
+      const completionMessage = insertedStreaming
+        ? "Streaming dictation inserted text into the active app."
+        : (await copyTextForPaste(result.text)).message;
+      const pasteMs = insertedStreaming
+        ? 0
+        : elapsedPerformanceMs(pasteStarted);
       setLastDiagnostics({
         recordingStartMs: recordingStartLatencyRef.current,
         recordingStopMs,
@@ -446,15 +480,19 @@ function App() {
         audioSeconds: result.audio_seconds ?? null,
         audioBytes: result.audio_file_bytes ?? null,
         fastPathUsed: result.fast_path_used === true,
+        firstSttDeltaMs: result.first_stt_delta_ms ?? null,
+        firstRewriteDeltaMs: result.first_rewrite_delta_ms ?? null,
+        firstInsertMs: result.first_insert_ms ?? null,
+        streamingUsed: result.streaming_used === true,
       });
       dictationStatusRef.current = "done";
       dispatchDictation({
         type: "completed",
-        message: clipboard.message,
+        message: completionMessage,
         rewriteFallbackUsed: result.rewrite_fallback_used,
       });
       await refreshUsageEvents();
-      setMessage(clipboard.message);
+      setMessage(completionMessage);
       selectedTextForEditRef.current = null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -702,6 +740,12 @@ function App() {
     setMessage(enabled ? "Speak to Edit enabled." : "Speak to Edit disabled.");
   }
 
+  async function changeStreamingMode(enabled: boolean) {
+    const performanceConfig = { ...config.performance, streamingMode: enabled };
+    setConfig((current) => ({ ...current, performance: performanceConfig }));
+    await persistPreference("performance", performanceConfig);
+  }
+
   async function changeAppRouting(enabled: boolean) {
     const appRouting = { enabled };
     setConfig((current) => ({ ...current, appRouting }));
@@ -878,6 +922,22 @@ function App() {
                   checked={config.performance.speakToEdit}
                   onChange={(event) =>
                     void changeSpeakToEdit(event.target.checked)
+                  }
+                />
+              </label>
+              <label className="checkbox-line">
+                <span>
+                  <strong>Experimental streaming dictation</strong>
+                  <small>
+                    Streams STT and rewrite when available; batch dictation
+                    remains the fallback.
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={config.performance.streamingMode}
+                  onChange={(event) =>
+                    void changeStreamingMode(event.target.checked)
                   }
                 />
               </label>
@@ -1356,6 +1416,12 @@ function LatencyDiagnostics({
         <Metric label="Stop" value={formatMs(diagnostics.recordingStopMs)} />
         <Metric label="STT" value={formatMs(diagnostics.sttMs)} />
         <Metric label="Rewrite" value={rewriteValue} />
+        <Metric label="First STT" value={formatMs(diagnostics.firstSttDeltaMs)} />
+        <Metric
+          label="First rewrite"
+          value={formatMs(diagnostics.firstRewriteDeltaMs)}
+        />
+        <Metric label="First insert" value={formatMs(diagnostics.firstInsertMs)} />
         <Metric label="Pipeline" value={formatMs(diagnostics.pipelineMs)} />
         <Metric label="Paste" value={formatMs(diagnostics.pasteMs)} />
         <Metric label="Audio" value={formatSeconds(diagnostics.audioSeconds)} />

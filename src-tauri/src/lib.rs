@@ -3,19 +3,21 @@ pub mod audio;
 pub mod clipboard;
 pub mod provider;
 pub mod storage;
+mod streaming;
 
 use provider::{
     estimate_groq_stt_cost_usd, estimate_openai_rewrite_cost_usd, provider_key_status,
     run_alpha_pipeline, run_audio_file_pipeline, save_provider_key, AudioFilePipelineRequest,
     PipelineContext, PipelineResult, ProviderRuntimeConfig, RewriteUsage,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[derive(Default)]
 struct RecordingState {
     active: Mutex<Option<audio::ActiveRecording>>,
+    streaming_chunks: std::sync::Arc<Mutex<Vec<Vec<i16>>>>,
 }
 
 #[tauri::command]
@@ -97,6 +99,70 @@ fn run_audio_file_dictation(
 }
 
 #[tauri::command]
+fn run_streaming_dictation(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RecordingState>,
+    request: streaming::StreamingPipelineRequest,
+) -> Result<streaming::StreamingPipelineResult, String> {
+    if !streaming::streaming_eligible(&request) {
+        return Err("Streaming dictation is disabled for Speak to Edit.".to_string());
+    }
+
+    let database = open_app_database(&app)?;
+    let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
+    let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
+    let stt_model = request.stt_model.clone();
+    let llm_model = request.rewrite_model.clone();
+    let pcm_chunks = state
+        .streaming_chunks
+        .lock()
+        .map_err(|_| "Streaming recorder lock poisoned".to_string())?
+        .clone();
+    let result = streaming::run_streaming_pipeline(
+        request,
+        PipelineContext {
+            profile_id: profile.id,
+            profile_name: profile.name,
+            system_prompt: profile.system_prompt,
+            user_prompt_template: profile.user_prompt_template,
+            target_language: profile.target_language,
+            dictionary_terms,
+            selected_text: None,
+        },
+        pcm_chunks,
+    )
+    .map_err(|error| error.to_string())?;
+    match storage::insert_usage_event(
+        &database,
+        &storage::UsageEventRecord {
+            id: format!("usage_{}", uuid::Uuid::new_v4()),
+            stt_provider: "openai-realtime".to_string(),
+            stt_model,
+            llm_provider: "openai".to_string(),
+            llm_model,
+            profile_id: result.profile_id.clone(),
+            audio_seconds: result.audio_seconds,
+            stt_latency_ms: result.stt_latency_ms,
+            rewrite_latency_ms: result.rewrite_latency_ms,
+            rewrite_fallback_used: result.rewrite_fallback_used,
+            stt_estimated_cost: None,
+            rewrite_estimated_cost: None,
+            estimated_cost: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+    ) {
+        Ok(()) => Ok(result),
+        Err(error) if result.inserted_streaming => {
+            log::warn!(
+                "Streaming usage event insert failed after text was inserted; returning streaming result to avoid duplicate fallback: {error}"
+            );
+            Ok(result)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
 fn start_recording(state: tauri::State<'_, RecordingState>) -> Result<String, String> {
     let mut active = state
         .active
@@ -107,6 +173,33 @@ fn start_recording(state: tauri::State<'_, RecordingState>) -> Result<String, St
     }
 
     let recording = audio::start_recording_to_temp()?;
+    let path = recording.path.to_string_lossy().to_string();
+    *active = Some(recording);
+    Ok(path)
+}
+
+#[tauri::command]
+fn start_streaming_recording(state: tauri::State<'_, RecordingState>) -> Result<String, String> {
+    let chunks = state.streaming_chunks.clone();
+    let mut active = state
+        .active
+        .lock()
+        .map_err(|_| "Recorder lock poisoned".to_string())?;
+    if active.is_some() {
+        return Err("Recording is already active".to_string());
+    }
+
+    chunks
+        .lock()
+        .map_err(|_| "Streaming recorder lock poisoned".to_string())?
+        .clear();
+    let consumer_chunks = chunks.clone();
+    let consumer: audio::PcmChunkConsumer = Arc::new(move |chunk| {
+        if let Ok(mut guard) = consumer_chunks.lock() {
+            guard.push(chunk);
+        }
+    });
+    let recording = audio::start_recording_to_temp_with_consumer(Some(consumer))?;
     let path = recording.path.to_string_lossy().to_string();
     *active = Some(recording);
     Ok(path)
@@ -129,6 +222,11 @@ fn stop_recording(state: tauri::State<'_, RecordingState>) -> Result<String, Str
 #[tauri::command]
 fn copy_text_for_paste(text: String) -> Result<clipboard::ClipboardResult, String> {
     clipboard::copy_text_for_paste(&text)
+}
+
+#[tauri::command]
+fn type_text_chunk(text: String) -> Result<(), String> {
+    clipboard::type_text_chunk(&text)
 }
 
 #[tauri::command]
@@ -376,9 +474,12 @@ pub fn run() {
             save_provider_api_key,
             validate_alpha_pipeline,
             run_audio_file_dictation,
+            run_streaming_dictation,
             start_recording,
+            start_streaming_recording,
             stop_recording,
             copy_text_for_paste,
+            type_text_chunk,
             read_selected_text_for_edit,
             cleanup_temp_audio_file,
             update_global_shortcut,

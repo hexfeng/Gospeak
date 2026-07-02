@@ -9,9 +9,33 @@ pub fn copy_text_for_paste(text: &str) -> Result<ClipboardResult, String> {
     copy_text_for_paste_with_injector(text, inject_native_paste)
 }
 
+pub(crate) fn copy_text_only(text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("Cannot copy empty text".to_string());
+    }
+
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|error| format!("Cannot open clipboard: {error}"))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|error| format!("Cannot write clipboard: {error}"))
+}
+
 pub fn read_selected_text_for_edit() -> Result<String, String> {
     let mut clipboard = SystemClipboard::new()?;
     read_selected_text_for_edit_with_clipboard(&mut clipboard, inject_native_copy)
+}
+
+fn validate_type_text_chunk(text: &str) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("Cannot type empty text chunk".to_string());
+    }
+    Ok(())
+}
+
+pub fn type_text_chunk(text: &str) -> Result<(), String> {
+    validate_type_text_chunk(text)?;
+    inject_unicode_text(text)
 }
 
 trait ClipboardAccess {
@@ -177,6 +201,58 @@ fn inject_native_paste() -> Result<(), String> {
     Err("Native paste is only implemented on Windows".to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn inject_unicode_text(text: &str) -> Result<(), String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+    };
+
+    let inputs = text
+        .encode_utf16()
+        .flat_map(|unit| {
+            [
+                unicode_keyboard_input(unit, KEYEVENTF_UNICODE),
+                unicode_keyboard_input(unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP),
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    if sent as usize == inputs.len() {
+        Ok(())
+    } else {
+        Err(format!("SendInput sent {sent} of {} events", inputs.len()))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn unicode_keyboard_input(
+    scan: u16,
+    flags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, VIRTUAL_KEY,
+    };
+
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: scan,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_unicode_text(_text: &str) -> Result<(), String> {
+    Err("Streaming insertion is only implemented on Windows".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +260,11 @@ mod tests {
     #[test]
     fn rejects_empty_clipboard_text() {
         assert!(copy_text_for_paste("   ").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_streaming_type_chunk() {
+        assert!(super::validate_type_text_chunk("  ").is_err());
     }
 
     #[test]

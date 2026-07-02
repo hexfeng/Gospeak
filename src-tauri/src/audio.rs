@@ -11,6 +11,10 @@ use std::{
 
 type SharedWriter = Arc<Mutex<Option<hound::WavWriter<BufWriter<File>>>>>;
 
+pub const STREAMING_SAMPLE_RATE: u32 = 24_000;
+const STREAMING_CHUNK_SAMPLES: usize = 4_800;
+pub type PcmChunkConsumer = Arc<dyn Fn(Vec<i16>) + Send + Sync + 'static>;
+
 pub struct ActiveRecording {
     pub path: PathBuf,
     stream: cpal::Stream,
@@ -45,6 +49,12 @@ impl ActiveRecording {
 }
 
 pub fn start_recording_to_temp() -> Result<ActiveRecording, String> {
+    start_recording_to_temp_with_consumer(None)
+}
+
+pub fn start_recording_to_temp_with_consumer(
+    consumer: Option<PcmChunkConsumer>,
+) -> Result<ActiveRecording, String> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -57,25 +67,52 @@ pub fn start_recording_to_temp() -> Result<ActiveRecording, String> {
     let writer = create_wav_writer(&path, config.sample_rate(), config.channels())?;
     let writer = Arc::new(Mutex::new(Some(writer)));
     let writer_for_stream = writer.clone();
+    let consumer_for_stream = consumer.clone();
+    let sample_rate = config.sample_rate();
+    let channels = config.channels();
     let stream_config = config.clone().into();
     let error_handler = |error| log::error!("Audio stream error: {error}");
 
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &stream_config,
-            move |data: &[f32], _| write_samples(data, &writer_for_stream),
+            move |data: &[f32], _| {
+                write_samples(
+                    data,
+                    &writer_for_stream,
+                    consumer_for_stream.as_ref(),
+                    sample_rate,
+                    channels,
+                )
+            },
             error_handler,
             None,
         ),
         cpal::SampleFormat::I16 => device.build_input_stream(
             &stream_config,
-            move |data: &[i16], _| write_samples(data, &writer_for_stream),
+            move |data: &[i16], _| {
+                write_samples(
+                    data,
+                    &writer_for_stream,
+                    consumer_for_stream.as_ref(),
+                    sample_rate,
+                    channels,
+                )
+            },
             error_handler,
             None,
         ),
         cpal::SampleFormat::U16 => device.build_input_stream(
             &stream_config,
-            move |data: &[u16], _| write_samples(data, &writer_for_stream),
+            move |data: &[u16], _| {
+                write_samples(
+                    data,
+                    &writer_for_stream,
+                    consumer_for_stream.as_ref(),
+                    sample_rate,
+                    channels,
+                )
+            },
             error_handler,
             None,
         ),
@@ -141,6 +178,50 @@ fn create_wav_writer(
     };
     hound::WavWriter::create(path, spec)
         .map_err(|error| format!("Cannot create temporary WAV file: {error}"))
+}
+
+fn pcm_chunks_for_streaming(
+    samples: &[i16],
+    source_rate: u32,
+    source_channels: u16,
+    target_rate: u32,
+    chunk_samples: usize,
+) -> Vec<Vec<i16>> {
+    if samples.is_empty() || source_rate == 0 || source_channels == 0 || target_rate == 0 {
+        return Vec::new();
+    }
+
+    let channels = usize::from(source_channels);
+    let mono = samples
+        .chunks(channels)
+        .filter(|frame| frame.len() == channels)
+        .map(|frame| {
+            let sum: i32 = frame.iter().map(|sample| i32::from(*sample)).sum();
+            (sum / i32::from(source_channels)) as i16
+        })
+        .collect::<Vec<_>>();
+    if mono.is_empty() || chunk_samples == 0 {
+        return Vec::new();
+    }
+
+    let target_len = ((mono.len() as f64) * f64::from(target_rate) / f64::from(source_rate))
+        .round()
+        .max(1.0) as usize;
+    let mut resampled = Vec::with_capacity(target_len);
+    for target_index in 0..target_len {
+        let source_index = ((target_index as f64) * f64::from(source_rate) / f64::from(target_rate))
+            .floor() as usize;
+        resampled.push(
+            mono.get(source_index)
+                .or_else(|| mono.last())
+                .copied()
+                .unwrap_or_default(),
+        );
+    }
+    resampled
+        .chunks(chunk_samples)
+        .map(|chunk| chunk.to_vec())
+        .collect()
 }
 
 fn normalize_recording_for_stt(path: &Path) -> Result<(), String> {
@@ -219,17 +300,37 @@ fn normalize_recording_for_stt(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn write_samples<T>(data: &[T], writer: &SharedWriter)
-where
+fn write_samples<T>(
+    data: &[T],
+    writer: &SharedWriter,
+    consumer: Option<&PcmChunkConsumer>,
+    source_rate: u32,
+    source_channels: u16,
+) where
     T: cpal::Sample + cpal::SizedSample,
     i16: cpal::FromSample<T>,
 {
+    let converted = data
+        .iter()
+        .map(|sample| i16::from_sample(*sample))
+        .collect::<Vec<_>>();
     if let Ok(mut guard) = writer.lock() {
         if let Some(writer) = guard.as_mut() {
-            for sample in data {
-                let converted: i16 = i16::from_sample(*sample);
-                let _ = writer.write_sample(converted);
+            for sample in &converted {
+                let _ = writer.write_sample(*sample);
             }
+        }
+    }
+    if let Some(consumer) = consumer {
+        // ponytail: callback-local chunks are acceptable for first streaming slice; add residual buffering if provider requires fixed-size chunks.
+        for chunk in pcm_chunks_for_streaming(
+            &converted,
+            source_rate,
+            source_channels,
+            STREAMING_SAMPLE_RATE,
+            STREAMING_CHUNK_SAMPLES,
+        ) {
+            consumer(chunk);
         }
     }
 }
@@ -237,6 +338,14 @@ where
 #[cfg(test)]
 mod tests {
     use std::io::Write;
+
+    #[test]
+    fn resamples_stereo_48khz_to_24khz_mono_pcm_chunks() {
+        let input = vec![1000_i16, 3000_i16, 2000, 4000, 3000, 5000, 4000, 6000];
+        let chunks = super::pcm_chunks_for_streaming(&input, 48_000, 2, 24_000, 2);
+
+        assert_eq!(chunks, vec![vec![2000, 4000]]);
+    }
 
     #[test]
     fn temp_recording_paths_are_wav_files() {

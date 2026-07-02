@@ -18,6 +18,10 @@ describe("Gospeak provider configuration", () => {
     expect(DEFAULT_APP_CONFIG.performance.speakToEdit).toBe(false);
   });
 
+  it("defaults experimental streaming dictation off", () => {
+    expect(DEFAULT_APP_CONFIG.performance.streamingMode).toBe(false);
+  });
+
   it("updates provider models without mutating the existing config", () => {
     const next = updateProviderModel(
       DEFAULT_APP_CONFIG,
