@@ -49,10 +49,12 @@ import {
   publishRecorderState,
   readSelectedTextForEdit,
   runAudioFileDictation,
+  runStreamingDictation,
   saveProviderApiKey,
   selectExportPath,
   selectImportPath,
   startRecording,
+  startStreamingRecording,
   stopRecording,
   updateGlobalShortcut,
   upsertAppProfileRule,
@@ -357,7 +359,9 @@ function App() {
           setMessage("Editing selected text. Record the edit instruction.");
         }
         const recordingStartStarted = performance.now();
-        const path = await startRecording();
+        const path = await (config.performance.streamingMode
+          ? startStreamingRecording
+          : startRecording)();
         recordingStartLatencyRef.current = elapsedPerformanceMs(
           recordingStartStarted,
         );
@@ -417,7 +421,25 @@ function App() {
           config.performance.fastMode && selectedTextForEditRef.current == null,
       };
       const pipelineStarted = performance.now();
-      const result = await runAudioFileDictation(request);
+      let insertedStreaming = false;
+      let result: Awaited<ReturnType<typeof runAudioFileDictation>>;
+      if (
+        config.performance.streamingMode &&
+        selectedTextForEditRef.current == null
+      ) {
+        try {
+          const streamingResult = await runStreamingDictation({
+            ...request,
+            streaming_insert: true,
+          });
+          result = streamingResult;
+          insertedStreaming = streamingResult.inserted_streaming;
+        } catch {
+          result = await runAudioFileDictation(request);
+        }
+      } else {
+        result = await runAudioFileDictation(request);
+      }
       const pipelineMs = elapsedPerformanceMs(pipelineStarted);
       if (!result.fast_path_used) {
         dictationStatusRef.current = "rewriting";
@@ -434,8 +456,12 @@ function App() {
         message: "Pasting…",
       });
       const pasteStarted = performance.now();
-      const clipboard = await copyTextForPaste(result.text);
-      const pasteMs = elapsedPerformanceMs(pasteStarted);
+      const completionMessage = insertedStreaming
+        ? "Streaming dictation inserted text into the active app."
+        : (await copyTextForPaste(result.text)).message;
+      const pasteMs = insertedStreaming
+        ? 0
+        : elapsedPerformanceMs(pasteStarted);
       setLastDiagnostics({
         recordingStartMs: recordingStartLatencyRef.current,
         recordingStopMs,
@@ -450,11 +476,11 @@ function App() {
       dictationStatusRef.current = "done";
       dispatchDictation({
         type: "completed",
-        message: clipboard.message,
+        message: completionMessage,
         rewriteFallbackUsed: result.rewrite_fallback_used,
       });
       await refreshUsageEvents();
-      setMessage(clipboard.message);
+      setMessage(completionMessage);
       selectedTextForEditRef.current = null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

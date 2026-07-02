@@ -13,10 +13,12 @@ import {
   listPreferences,
   listUsageEvents,
   runAudioFileDictation,
+  runStreamingDictation,
   listenForGlobalShortcut,
   publishRecorderState,
   readSelectedTextForEdit,
   startRecording,
+  startStreamingRecording,
   stopRecording,
   upsertDictionaryTerm,
   upsertAppProfileRule,
@@ -30,6 +32,7 @@ vi.mock("./lib/tauri", () => ({
   checkProviderKeys: vi.fn(async () => ({ groq: false, openai: false })),
   saveProviderApiKey: vi.fn(async () => ({ groq: true, openai: true })),
   startRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
+  startStreamingRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   stopRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   runAudioFileDictation: vi.fn(async () => ({
     text: "Polished dictation text",
@@ -40,6 +43,18 @@ vi.mock("./lib/tauri", () => ({
     audio_seconds: 1.5,
     audio_file_bytes: 32000,
     fast_path_used: false,
+  })),
+  runStreamingDictation: vi.fn(async () => ({
+    text: "Streaming dictation text",
+    profile_id: "normal",
+    rewrite_fallback_used: false,
+    stt_latency_ms: 90,
+    rewrite_latency_ms: 70,
+    audio_seconds: 1.4,
+    audio_file_bytes: 30000,
+    fast_path_used: false,
+    streaming_used: true,
+    inserted_streaming: true,
   })),
   copyTextForPaste: vi.fn(async () => ({
     copied: true,
@@ -171,6 +186,28 @@ describe("Gospeak Alpha app shell", () => {
         name: /experimental streaming dictation/i,
       }),
     ).not.toBeChecked();
+  });
+
+  it("falls back to batch dictation when streaming dictation fails before insertion", async () => {
+    const user = userEvent.setup();
+    vi.mocked(runStreamingDictation).mockRejectedValueOnce(
+      new Error("stream unavailable"),
+    );
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    expect(startStreamingRecording).toHaveBeenCalledTimes(1);
+    await user.click(
+      await screen.findByRole("button", { name: /Stop Dictation/i }),
+    );
+
+    await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
   });
 
   it("drives the manual dictation flow from the primary button", async () => {
