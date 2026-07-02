@@ -9,6 +9,18 @@ pub fn copy_text_for_paste(text: &str) -> Result<ClipboardResult, String> {
     copy_text_for_paste_with_injector(text, inject_native_paste)
 }
 
+pub(crate) fn copy_text_only(text: &str) -> Result<(), String> {
+    if text.is_empty() {
+        return Err("Cannot copy empty text".to_string());
+    }
+
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|error| format!("Cannot open clipboard: {error}"))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|error| format!("Cannot write clipboard: {error}"))
+}
+
 pub fn read_selected_text_for_edit() -> Result<String, String> {
     let mut clipboard = SystemClipboard::new()?;
     read_selected_text_for_edit_with_clipboard(&mut clipboard, inject_native_copy)

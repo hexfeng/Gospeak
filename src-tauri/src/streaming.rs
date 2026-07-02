@@ -6,10 +6,14 @@ use std::{
 };
 use tungstenite::{http::Request, stream::MaybeTlsStream, Message};
 
-use crate::provider;
+use crate::{clipboard, provider};
 
 const OPENAI_REALTIME_URL: &str = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2";
 const OPENAI_TRANSCRIPT_TIMEOUT: Duration = Duration::from_secs(30);
+const PARTIAL_STREAMING_INSERT_WARNING: &str =
+    "Streaming insertion stopped after partial text was inserted. Final text was copied to clipboard.";
+const PARTIAL_STREAMING_INSERT_COPY_FAILED_WARNING: &str =
+    "Streaming insertion stopped after partial text was inserted. Final text could not be copied to clipboard.";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StreamingPipelineRequest {
@@ -47,6 +51,63 @@ pub struct StreamingPipelineResult {
 
 pub fn streaming_eligible(request: &StreamingPipelineRequest) -> bool {
     request.selected_text.is_none()
+}
+
+type TextInserter<'a> = &'a dyn Fn(&str) -> Result<(), String>;
+
+struct InsertStreamResult {
+    inserted_any: bool,
+    warning: Option<String>,
+}
+
+fn copy_partial_insert_failure_text<F>(text: &str, copy_text: F) -> String
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    if copy_text(text).is_ok() {
+        PARTIAL_STREAMING_INSERT_WARNING.to_string()
+    } else {
+        PARTIAL_STREAMING_INSERT_COPY_FAILED_WARNING.to_string()
+    }
+}
+
+fn stream_delta_to_inserter(
+    delta: &str,
+    pending_insert_text: &mut String,
+    inserted_streaming: bool,
+    inserter: TextInserter<'_>,
+) -> Result<InsertStreamResult, String> {
+    if delta.is_empty() {
+        return Ok(InsertStreamResult {
+            inserted_any: false,
+            warning: None,
+        });
+    }
+
+    pending_insert_text.push_str(delta);
+    if pending_insert_text.trim().is_empty() {
+        return Ok(InsertStreamResult {
+            inserted_any: false,
+            warning: None,
+        });
+    }
+
+    if let Err(error) = inserter(pending_insert_text) {
+        return if inserted_streaming {
+            Ok(InsertStreamResult {
+                inserted_any: false,
+                warning: Some(PARTIAL_STREAMING_INSERT_WARNING.to_string()),
+            })
+        } else {
+            Err(error)
+        };
+    }
+    pending_insert_text.clear();
+
+    Ok(InsertStreamResult {
+        inserted_any: true,
+        warning: None,
+    })
 }
 
 pub fn run_streaming_pipeline(
@@ -105,9 +166,40 @@ pub fn run_streaming_pipeline(
     let rewrite_provider = provider::OpenAiRewriteProvider::new(openai_key);
     let rewrite_started = Instant::now();
     let mut first_rewrite_delta_ms = None;
+    let inserted_streaming = std::cell::Cell::new(false);
+    let first_insert_ms = std::cell::Cell::new(None);
+    let mut streamed_text = String::new();
+    let mut pending_insert_text = String::new();
     match rewrite_provider.rewrite_streaming(&rewrite_input, |delta| {
-        if !delta.is_empty() && first_rewrite_delta_ms.is_none() {
+        if delta.is_empty() {
+            return Ok(());
+        }
+        if first_rewrite_delta_ms.is_none() {
             first_rewrite_delta_ms = Some(elapsed_ms(rewrite_started));
+        }
+        streamed_text.push_str(delta);
+        if request.streaming_insert {
+            let inserter = |chunk: &str| match clipboard::type_text_chunk(chunk) {
+                Ok(()) => Ok(()),
+                Err(_error) if inserted_streaming.get() => {
+                    Err(PARTIAL_STREAMING_INSERT_WARNING.to_string())
+                }
+                Err(error) => Err(error),
+            };
+            let insert_result = stream_delta_to_inserter(
+                delta,
+                &mut pending_insert_text,
+                inserted_streaming.get(),
+                &inserter,
+            )
+            .map_err(provider::ProviderError::ProviderResponse)?;
+            if insert_result.inserted_any && !inserted_streaming.get() {
+                inserted_streaming.set(true);
+                first_insert_ms.set(Some(elapsed_ms(rewrite_started)));
+            }
+            if let Some(warning) = insert_result.warning {
+                return Err(provider::ProviderError::ProviderResponse(warning));
+            }
         }
         Ok(())
     }) {
@@ -123,13 +215,42 @@ pub fn run_streaming_pipeline(
             rewrite_input_tokens: None,
             rewrite_output_tokens: None,
             streaming_used: true,
-            inserted_streaming: false,
+            inserted_streaming: inserted_streaming.get(),
             first_stt_delta_ms,
             first_rewrite_delta_ms,
-            first_insert_ms: None,
+            first_insert_ms: first_insert_ms.get(),
             warning: None,
         }),
         Err(error) => {
+            if request.streaming_insert && inserted_streaming.get() {
+                let text = if streamed_text.is_empty() {
+                    transcript
+                } else {
+                    streamed_text
+                };
+                let warning = copy_partial_insert_failure_text(&text, clipboard::copy_text_only);
+                return Ok(StreamingPipelineResult {
+                    text,
+                    profile_id: context.profile_id,
+                    rewrite_fallback_used: false,
+                    stt_latency_ms,
+                    rewrite_latency_ms: Some(elapsed_ms(rewrite_started)),
+                    audio_seconds,
+                    audio_file_bytes,
+                    fast_path_used: false,
+                    rewrite_input_tokens: None,
+                    rewrite_output_tokens: None,
+                    streaming_used: true,
+                    inserted_streaming: true,
+                    first_stt_delta_ms,
+                    first_rewrite_delta_ms,
+                    first_insert_ms: first_insert_ms.get(),
+                    warning: Some(warning),
+                });
+            }
+            if request.streaming_insert {
+                return Err(error);
+            }
             log::warn!("Streaming rewrite failed; falling back to raw transcript: {error}");
             Ok(StreamingPipelineResult {
                 text: transcript,
@@ -454,5 +575,89 @@ mod tests {
             Err(provider::ProviderError::InvalidInput(message))
                 if message == "No streaming audio chunks were captured"
         ));
+    }
+
+    #[test]
+    fn marks_partial_insert_warning_after_insert_failure() {
+        let mut pending_insert_text = String::new();
+        let inserted = std::cell::RefCell::new(Vec::new());
+        let inserted_streaming = std::cell::Cell::new(false);
+        let mut warning = None;
+
+        for delta in ["hello", " ", "world"] {
+            let result = stream_delta_to_inserter(
+                delta,
+                &mut pending_insert_text,
+                inserted_streaming.get(),
+                &|chunk| {
+                    inserted.borrow_mut().push(chunk.to_string());
+                    if inserted.borrow().len() == 2 {
+                        Err("insert failed".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap();
+            if result.inserted_any {
+                inserted_streaming.set(true);
+            }
+            warning = result.warning;
+            if warning.is_some() {
+                break;
+            }
+        }
+
+        assert_eq!(
+            warning.as_deref(),
+            Some(
+                "Streaming insertion stopped after partial text was inserted. Final text was copied to clipboard."
+            )
+        );
+        assert_eq!(*inserted.borrow(), vec!["hello", " world"]);
+    }
+
+    #[test]
+    fn buffers_whitespace_delta_until_text_delta() {
+        let mut pending_insert_text = String::new();
+        let inserted = std::cell::RefCell::new(Vec::new());
+
+        let whitespace = stream_delta_to_inserter(" ", &mut pending_insert_text, false, &|chunk| {
+            inserted.borrow_mut().push(chunk.to_string());
+            Ok(())
+        })
+        .unwrap();
+        let text = stream_delta_to_inserter("world", &mut pending_insert_text, false, &|chunk| {
+            inserted.borrow_mut().push(chunk.to_string());
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(!whitespace.inserted_any);
+        assert!(text.inserted_any);
+        assert_eq!(*inserted.borrow(), vec![" world"]);
+        assert!(pending_insert_text.is_empty());
+    }
+
+    #[test]
+    fn copies_partial_insert_failure_text() {
+        let copied = std::cell::RefCell::new(String::new());
+
+        let warning = copy_partial_insert_failure_text(" final text ", |text| {
+            *copied.borrow_mut() = text.to_string();
+            Ok(())
+        });
+
+        assert_eq!(*copied.borrow(), " final text ");
+        assert_eq!(warning, PARTIAL_STREAMING_INSERT_WARNING);
+    }
+
+    #[test]
+    fn partial_insert_copy_failure_returns_uncopied_warning() {
+        let warning = copy_partial_insert_failure_text(" final text ", |_text| {
+            Err("clipboard unavailable".to_string())
+        });
+
+        assert_eq!(warning, PARTIAL_STREAMING_INSERT_COPY_FAILED_WARNING);
     }
 }
