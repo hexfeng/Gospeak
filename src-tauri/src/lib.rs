@@ -111,12 +111,14 @@ fn run_streaming_dictation(
     let database = open_app_database(&app)?;
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
+    let stt_model = request.stt_model.clone();
+    let llm_model = request.rewrite_model.clone();
     let pcm_chunks = state
         .streaming_chunks
         .lock()
         .map_err(|_| "Streaming recorder lock poisoned".to_string())?
         .clone();
-    streaming::run_streaming_pipeline(
+    let result = streaming::run_streaming_pipeline(
         request,
         PipelineContext {
             profile_id: profile.id,
@@ -129,7 +131,35 @@ fn run_streaming_dictation(
         },
         pcm_chunks,
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    match storage::insert_usage_event(
+        &database,
+        &storage::UsageEventRecord {
+            id: format!("usage_{}", uuid::Uuid::new_v4()),
+            stt_provider: "openai-realtime".to_string(),
+            stt_model,
+            llm_provider: "openai".to_string(),
+            llm_model,
+            profile_id: result.profile_id.clone(),
+            audio_seconds: result.audio_seconds,
+            stt_latency_ms: result.stt_latency_ms,
+            rewrite_latency_ms: result.rewrite_latency_ms,
+            rewrite_fallback_used: result.rewrite_fallback_used,
+            stt_estimated_cost: None,
+            rewrite_estimated_cost: None,
+            estimated_cost: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        },
+    ) {
+        Ok(()) => Ok(result),
+        Err(error) if result.inserted_streaming => {
+            log::warn!(
+                "Streaming usage event insert failed after text was inserted; returning streaming result to avoid duplicate fallback: {error}"
+            );
+            Ok(result)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[tauri::command]

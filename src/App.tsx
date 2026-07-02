@@ -121,6 +121,10 @@ type DictationDiagnostics = {
   audioSeconds: number | null;
   audioBytes: number | null;
   fastPathUsed: boolean;
+  firstSttDeltaMs: number | null;
+  firstRewriteDeltaMs: number | null;
+  firstInsertMs: number | null;
+  streamingUsed: boolean;
 };
 
 function App() {
@@ -422,7 +426,8 @@ function App() {
       };
       const pipelineStarted = performance.now();
       let insertedStreaming = false;
-      let result: Awaited<ReturnType<typeof runAudioFileDictation>>;
+      let result: Awaited<ReturnType<typeof runAudioFileDictation>> &
+        Partial<Awaited<ReturnType<typeof runStreamingDictation>>>;
       if (
         config.performance.streamingMode &&
         selectedTextForEditRef.current == null
@@ -472,6 +477,10 @@ function App() {
         audioSeconds: result.audio_seconds ?? null,
         audioBytes: result.audio_file_bytes ?? null,
         fastPathUsed: result.fast_path_used === true,
+        firstSttDeltaMs: result.first_stt_delta_ms ?? null,
+        firstRewriteDeltaMs: result.first_rewrite_delta_ms ?? null,
+        firstInsertMs: result.first_insert_ms ?? null,
+        streamingUsed: result.streaming_used === true,
       });
       dictationStatusRef.current = "done";
       dispatchDictation({
@@ -1404,6 +1413,12 @@ function LatencyDiagnostics({
         <Metric label="Stop" value={formatMs(diagnostics.recordingStopMs)} />
         <Metric label="STT" value={formatMs(diagnostics.sttMs)} />
         <Metric label="Rewrite" value={rewriteValue} />
+        <Metric label="First STT" value={formatMs(diagnostics.firstSttDeltaMs)} />
+        <Metric
+          label="First rewrite"
+          value={formatMs(diagnostics.firstRewriteDeltaMs)}
+        />
+        <Metric label="First insert" value={formatMs(diagnostics.firstInsertMs)} />
         <Metric label="Pipeline" value={formatMs(diagnostics.pipelineMs)} />
         <Metric label="Paste" value={formatMs(diagnostics.pasteMs)} />
         <Metric label="Audio" value={formatSeconds(diagnostics.audioSeconds)} />

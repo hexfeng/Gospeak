@@ -55,6 +55,9 @@ vi.mock("./lib/tauri", () => ({
     fast_path_used: false,
     streaming_used: true,
     inserted_streaming: true,
+    first_stt_delta_ms: 35,
+    first_rewrite_delta_ms: 55,
+    first_insert_ms: 75,
   })),
   copyTextForPaste: vi.fn(async () => ({
     copied: true,
@@ -208,6 +211,29 @@ describe("Gospeak Alpha app shell", () => {
 
     await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows streaming first-token diagnostics after streaming output completes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: /experimental streaming dictation/i,
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    const diagnostics = await screen.findByLabelText(
+      /Last dictation diagnostics/i,
+    );
+    expect(within(diagnostics).getByText("First STT")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("35 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("First rewrite")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("55 ms")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("First insert")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("75 ms")).toBeInTheDocument();
   });
 
   it("drives the manual dictation flow from the primary button", async () => {
