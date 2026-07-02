@@ -10,13 +10,14 @@ use provider::{
     run_alpha_pipeline, run_audio_file_pipeline, save_provider_key, AudioFilePipelineRequest,
     PipelineContext, PipelineResult, ProviderRuntimeConfig, RewriteUsage,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[derive(Default)]
 struct RecordingState {
     active: Mutex<Option<audio::ActiveRecording>>,
+    streaming_chunks: std::sync::Arc<Mutex<Vec<Vec<i16>>>>,
 }
 
 #[tauri::command]
@@ -100,6 +101,7 @@ fn run_audio_file_dictation(
 #[tauri::command]
 fn run_streaming_dictation(
     app: tauri::AppHandle,
+    state: tauri::State<'_, RecordingState>,
     request: streaming::StreamingPipelineRequest,
 ) -> Result<streaming::StreamingPipelineResult, String> {
     if !streaming::streaming_eligible(&request) {
@@ -109,6 +111,11 @@ fn run_streaming_dictation(
     let database = open_app_database(&app)?;
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
+    let pcm_chunks = state
+        .streaming_chunks
+        .lock()
+        .map_err(|_| "Streaming recorder lock poisoned".to_string())?
+        .clone();
     streaming::run_streaming_pipeline(
         request,
         PipelineContext {
@@ -120,7 +127,7 @@ fn run_streaming_dictation(
             dictionary_terms,
             selected_text: None,
         },
-        Vec::new(),
+        pcm_chunks,
     )
     .map_err(|error| error.to_string())
 }
@@ -136,6 +143,33 @@ fn start_recording(state: tauri::State<'_, RecordingState>) -> Result<String, St
     }
 
     let recording = audio::start_recording_to_temp()?;
+    let path = recording.path.to_string_lossy().to_string();
+    *active = Some(recording);
+    Ok(path)
+}
+
+#[tauri::command]
+fn start_streaming_recording(state: tauri::State<'_, RecordingState>) -> Result<String, String> {
+    let chunks = state.streaming_chunks.clone();
+    let mut active = state
+        .active
+        .lock()
+        .map_err(|_| "Recorder lock poisoned".to_string())?;
+    if active.is_some() {
+        return Err("Recording is already active".to_string());
+    }
+
+    chunks
+        .lock()
+        .map_err(|_| "Streaming recorder lock poisoned".to_string())?
+        .clear();
+    let consumer_chunks = chunks.clone();
+    let consumer: audio::PcmChunkConsumer = Arc::new(move |chunk| {
+        if let Ok(mut guard) = consumer_chunks.lock() {
+            guard.push(chunk);
+        }
+    });
+    let recording = audio::start_recording_to_temp_with_consumer(Some(consumer))?;
     let path = recording.path.to_string_lossy().to_string();
     *active = Some(recording);
     Ok(path)
@@ -412,6 +446,7 @@ pub fn run() {
             run_audio_file_dictation,
             run_streaming_dictation,
             start_recording,
+            start_streaming_recording,
             stop_recording,
             copy_text_for_paste,
             type_text_chunk,

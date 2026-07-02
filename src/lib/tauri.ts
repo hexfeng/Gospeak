@@ -156,6 +156,14 @@ export async function startRecording(): Promise<string> {
   return invoke<string>("start_recording");
 }
 
+export async function startStreamingRecording(): Promise<string> {
+  if (!hasTauriRuntime()) {
+    return "browser-preview-gospeak.wav";
+  }
+
+  return invoke<string>("start_streaming_recording");
+}
+
 export async function stopRecording(): Promise<string> {
   if (!hasTauriRuntime()) {
     return "browser-preview-gospeak.wav";
