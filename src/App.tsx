@@ -449,6 +449,17 @@ function App() {
         result = await runAudioFileDictation(request);
       }
       const pipelineMs = elapsedPerformanceMs(pipelineStarted);
+      if (result.no_speech) {
+        dictationStatusRef.current = "idle";
+        dispatchDictation({ type: "reset" });
+        await publishRecorderStateSafely({
+          status: "idle",
+          message: "Ready for dictation.",
+        });
+        setMessage("Ready for dictation.");
+        selectedTextForEditRef.current = null;
+        return;
+      }
       if (!result.fast_path_used) {
         dictationStatusRef.current = "rewriting";
         dispatchDictation({ type: "rewriting" });

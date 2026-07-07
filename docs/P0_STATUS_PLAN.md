@@ -88,6 +88,7 @@ acceptance as of 2026-07-01.
 - No remaining P0 Alpha implementation items.
 - Sync/WebDAV/local Whisper remain deferred follow-up features, not P0 scope.
 - Experimental streaming dictation path implemented behind `performance.streamingMode`: OpenAI realtime STT, OpenAI streaming rewrite, guarded Windows Unicode insertion, and current batch dictation fallback.
+- Local light rewrite implemented after STT for short safe dictation: filler cleanup, punctuation repair, simple casing, and conservative numbered-list formatting before falling back to LLM rewrite.
 
 ## Next Plan
 
