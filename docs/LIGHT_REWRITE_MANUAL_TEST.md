@@ -36,7 +36,7 @@ Turn off Experimental streaming dictation.
 | Short Chinese cleanup | `嗯 今天开会 然后讨论项目` | Output removes obvious filler and adds conservative punctuation. `Rewrite = Skipped`. |
 | Short question | Say a short Chinese question ending without punctuation | Output should end with `？`. `Rewrite = Skipped`. |
 | Semantic list fallback | Say a list using `including`, `respectively`, `mainly includes`, `如下`, or `以下`, but without explicit `1/2/3` or `第一/第二/第三` markers | Should use model rewrite and format parallel items one per line when appropriate. `Rewrite` shows latency, not `Skipped`. |
-| Long text fallback | Say more than 50 visible characters without clear local structure | Should use model rewrite. It must not paste raw transcript when OpenAI rewrite is unavailable. |
+| Long text fallback | Say more than 100 visible characters without clear local structure | Should use model rewrite. It must not paste raw transcript when OpenAI rewrite is unavailable. |
 | Preserve semantic words | `you know the answer` | Output keeps `you know`; it must not remove those words. |
 | Preserve like | `i like rust` | Output should be `I like rust.`; it must not remove `like`. |
 | Preserve decimal | `today 3.5 dollars` | Output keeps `3.5`; it must not become `3. 5` or another punctuation split. |
@@ -50,7 +50,7 @@ Turn on Experimental streaming dictation. Keep Fast dictation off.
 | Case | Say | Expected |
 | --- | --- | --- |
 | Streaming list | `todo one buy milk two reply email` | Final inserted text is a numbered list. `Rewrite = Skipped`; `First STT` may be populated; `First rewrite` is empty. |
-| Streaming fallback | Say a longer paragraph, over 50 visible characters | Should use streaming rewrite. `Rewrite` should show latency, not `Skipped`. |
+| Streaming fallback | Say a longer paragraph, over 100 visible characters | Should use streaming rewrite. `Rewrite` should show latency, not `Skipped`. |
 | Empty recording | Start recording, say nothing, then stop | The recorder returns to idle. No red error overlay, no paste/copy, no usage event. |
 
 ## Gating Tests

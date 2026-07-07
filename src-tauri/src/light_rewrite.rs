@@ -95,7 +95,7 @@ pub fn light_rewrite(transcript: &str, context: &LightRewriteContext) -> LightRe
 
 fn too_long(text: &str) -> bool {
     let visible = text.chars().filter(|ch| !ch.is_whitespace()).count();
-    visible > 50
+    visible > 100
 }
 
 fn clean_text(text: &str) -> String {
@@ -653,12 +653,22 @@ mod tests {
 
     #[test]
     fn long_fast_text_requires_model() {
-        let input = "\u{4eca}\u{5929}\u{6211}\u{4eec}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{7684}\u{539f}\u{56e0}\u{548c}\u{540e}\u{7eed}\u{4fee}\u{590d}\u{8ba1}\u{5212}\u{7136}\u{540e}\u{628a}\u{7ed3}\u{8bba}\u{540c}\u{6b65}\u{7ed9}\u{8bbe}\u{8ba1}\u{548c}\u{5de5}\u{7a0b}\u{56e2}\u{961f}\u{5e76}\u{660e}\u{786e}\u{8d23}\u{4efb}\u{4eba}\u{548c}\u{65f6}\u{95f4}\u{8282}\u{70b9}\u{4ee5}\u{53ca}\u{9a8c}\u{6536}\u{6807}\u{51c6}";
+        let input = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
         assert_eq!(
             light_rewrite(input, &LightRewriteContext::normal()),
             LightRewriteDecision::NeedsModel(LightRewriteReason::LongText)
         );
+    }
+
+    #[test]
+    fn medium_fast_text_stays_local_under_new_limit() {
+        let input = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdef";
+
+        assert!(matches!(
+            light_rewrite(input, &LightRewriteContext::normal()),
+            LightRewriteDecision::Local(_)
+        ));
     }
 
     #[test]

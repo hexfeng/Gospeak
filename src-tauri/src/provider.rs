@@ -1329,7 +1329,7 @@ mod tests {
         struct MockStt;
         impl SttProvider for MockStt {
             fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
-                Ok("\u{4eca}\u{5929}\u{6211}\u{4eec}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{7684}\u{539f}\u{56e0}\u{548c}\u{540e}\u{7eed}\u{4fee}\u{590d}\u{8ba1}\u{5212}\u{7136}\u{540e}\u{628a}\u{7ed3}\u{8bba}\u{540c}\u{6b65}\u{7ed9}\u{8bbe}\u{8ba1}\u{548c}\u{5de5}\u{7a0b}\u{56e2}\u{961f}\u{5e76}\u{660e}\u{786e}\u{8d23}\u{4efb}\u{4eba}\u{548c}\u{65f6}\u{95f4}\u{8282}\u{70b9}\u{4ee5}\u{53ca}\u{9a8c}\u{6536}\u{6807}\u{51c6}".to_string())
+                Ok("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".to_string())
             }
         }
 
@@ -1339,7 +1339,9 @@ mod tests {
         impl RewriteProvider for CountingRewrite {
             fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
                 self.calls.set(self.calls.get() + 1);
-                assert!(input.rendered_prompt.contains("\u{4eca}\u{5929}"));
+                assert!(input
+                    .rendered_prompt
+                    .contains("ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"));
                 Ok(RewriteOutput {
                     text: "\u{4eca}\u{5929}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{3002}".to_string(),
                     usage: None,
@@ -1384,7 +1386,7 @@ mod tests {
         struct MockStt;
         impl SttProvider for MockStt {
             fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
-                Ok("\u{4eca}\u{5929}\u{6211}\u{4eec}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{7684}\u{539f}\u{56e0}\u{548c}\u{540e}\u{7eed}\u{4fee}\u{590d}\u{8ba1}\u{5212}\u{7136}\u{540e}\u{628a}\u{7ed3}\u{8bba}\u{540c}\u{6b65}\u{7ed9}\u{8bbe}\u{8ba1}\u{548c}\u{5de5}\u{7a0b}\u{56e2}\u{961f}\u{5e76}\u{660e}\u{786e}\u{8d23}\u{4efb}\u{4eba}\u{548c}\u{65f6}\u{95f4}\u{8282}\u{70b9}\u{4ee5}\u{53ca}\u{9a8c}\u{6536}\u{6807}\u{51c6}".to_string())
+                Ok("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".to_string())
             }
         }
 
