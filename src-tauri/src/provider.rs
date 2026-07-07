@@ -109,8 +109,9 @@ pub fn validate_pipeline_readiness_for_options(
 fn validate_audio_file_pipeline_readiness(
     config: &ProviderRuntimeConfig,
     status: &ProviderKeyStatus,
+    options: PipelineOptions,
 ) -> Result<(), ProviderError> {
-    validate_pipeline_readiness_for_options(config, status, PipelineOptions { skip_rewrite: true })
+    validate_pipeline_readiness_for_options(config, status, options)
 }
 
 pub fn provider_key_status() -> ProviderKeyStatus {
@@ -151,10 +152,12 @@ pub fn run_audio_file_pipeline(
     let options = PipelineOptions {
         skip_rewrite: request.skip_rewrite && request.selected_text.is_none(),
     };
-    validate_audio_file_pipeline_readiness(
-        &config,
-        &ProviderKeyStatus::from_presence(has_provider_key("groq"), false),
-    )?;
+    let status = if options.skip_rewrite {
+        ProviderKeyStatus::from_presence(has_provider_key("groq"), false)
+    } else {
+        provider_key_status()
+    };
+    validate_audio_file_pipeline_readiness(&config, &status, options)?;
 
     let groq_key = provider_key("groq")?;
     let stt_provider = GroqSttProvider::new(groq_key);
@@ -1666,8 +1669,27 @@ mod tests {
         let result = validate_audio_file_pipeline_readiness(
             &config,
             &ProviderKeyStatus::from_presence(true, false),
+            PipelineOptions { skip_rewrite: true },
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn audio_file_pipeline_readiness_requires_openai_key_when_rewrite_runs() {
+        let config = ProviderRuntimeConfig {
+            stt_provider: "groq".to_string(),
+            stt_model: "whisper-large-v3-turbo".to_string(),
+            rewrite_provider: "openai".to_string(),
+            rewrite_model: "gpt-5-nano".to_string(),
+        };
+
+        let result = validate_audio_file_pipeline_readiness(
+            &config,
+            &ProviderKeyStatus::from_presence(true, false),
+            PipelineOptions::default(),
+        );
+
+        assert!(matches!(result, Err(ProviderError::MissingKey(provider)) if provider == "openai"));
     }
 }

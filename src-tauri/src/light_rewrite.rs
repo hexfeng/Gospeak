@@ -221,7 +221,7 @@ fn add_comma_before_connector(text: &str, connector: &str) -> String {
 fn finish_sentence(text: &str) -> String {
     let mut text = fix_english_i(text);
     if !text.chars().last().is_some_and(is_terminal_punctuation) {
-        text.push(if text.chars().any(is_cjk_question_marker) {
+        text.push(if is_cjk_question(&text) {
             '\u{ff1f}'
         } else if text.chars().any(is_cjk) {
             '\u{3002}'
@@ -511,11 +511,13 @@ fn is_cjk(ch: char) -> bool {
     matches!(ch, '\u{4e00}'..='\u{9fff}')
 }
 
-fn is_cjk_question_marker(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{5417}' | '\u{5462}' | '\u{5427}' | '\u{5565}' | '\u{4ec0}' | '\u{600e}'
-    )
+fn is_cjk_question(text: &str) -> bool {
+    let text = text.trim_end();
+    text.ends_with(['\u{5417}', '\u{5462}', '\u{5565}'])
+        || text.ends_with("\u{4ec0}\u{4e48}")
+        || text.ends_with("\u{600e}\u{4e48}")
+        || text.starts_with("\u{4e3a}\u{4ec0}\u{4e48}")
+        || text.starts_with("\u{600e}\u{4e48}")
 }
 
 fn is_cjk_or_punctuation(ch: char) -> bool {
@@ -796,6 +798,20 @@ mod tests {
         .unwrap();
 
         assert_eq!(output.text, "\u{7b54}\u{6848}\u{5c31}\u{662f}42\u{3002}");
+    }
+
+    #[test]
+    fn keeps_chinese_statement_with_question_word_as_statement() {
+        let output = light_rewrite(
+            "\u{6211}\u{4e0d}\u{77e5}\u{9053}\u{4ec0}\u{4e48}\u{539f}\u{56e0}",
+            &LightRewriteContext::normal(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            output.text,
+            "\u{6211}\u{4e0d}\u{77e5}\u{9053}\u{4ec0}\u{4e48}\u{539f}\u{56e0}\u{3002}"
+        );
     }
 
     #[test]
