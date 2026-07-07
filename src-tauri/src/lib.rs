@@ -1,6 +1,7 @@
 pub mod app_context;
 pub mod audio;
 pub mod clipboard;
+mod light_rewrite;
 pub mod provider;
 pub mod storage;
 mod streaming;
@@ -51,6 +52,7 @@ fn run_audio_file_dictation(
         PipelineContext {
             profile_id: profile.id,
             profile_name: profile.name,
+            profile_mode: profile.mode,
             system_prompt: profile.system_prompt,
             user_prompt_template: profile.user_prompt_template,
             target_language: profile.target_language,
@@ -59,6 +61,9 @@ fn run_audio_file_dictation(
         },
     )
     .map_err(|error| error.to_string())?;
+    if result.no_speech {
+        return Ok(result);
+    }
     let stt_estimated_cost = estimate_groq_stt_cost_usd(&request.stt_model, result.audio_seconds);
     let rewrite_estimated_cost = estimate_openai_rewrite_cost_usd(
         &request.rewrite_model,
@@ -123,6 +128,7 @@ fn run_streaming_dictation(
         PipelineContext {
             profile_id: profile.id,
             profile_name: profile.name,
+            profile_mode: profile.mode,
             system_prompt: profile.system_prompt,
             user_prompt_template: profile.user_prompt_template,
             target_language: profile.target_language,
@@ -132,6 +138,9 @@ fn run_streaming_dictation(
         pcm_chunks,
     )
     .map_err(|error| error.to_string())?;
+    if result.no_speech {
+        return Ok(result);
+    }
     match storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {

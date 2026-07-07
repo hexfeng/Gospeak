@@ -33,6 +33,7 @@ export type PipelineResult = {
   audio_seconds?: number | null;
   audio_file_bytes?: number | null;
   fast_path_used?: boolean;
+  no_speech?: boolean;
   rewrite_input_tokens?: number | null;
   rewrite_output_tokens?: number | null;
 };
@@ -185,6 +186,7 @@ export async function runAudioFileDictation(
       audio_seconds: 1,
       audio_file_bytes: 32000,
       fast_path_used: request.skip_rewrite,
+      no_speech: false,
     };
   }
 
@@ -204,6 +206,7 @@ export async function runStreamingDictation(
       audio_seconds: 1,
       audio_file_bytes: 32000,
       fast_path_used: request.skip_rewrite,
+      no_speech: false,
       streaming_used: true,
       inserted_streaming: request.streaming_insert,
       first_stt_delta_ms: 120,

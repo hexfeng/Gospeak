@@ -39,6 +39,7 @@ pub struct AudioFilePipelineRequest {
 pub struct PipelineContext {
     pub profile_id: String,
     pub profile_name: String,
+    pub profile_mode: String,
     pub system_prompt: String,
     pub user_prompt_template: String,
     pub target_language: Option<String>,
@@ -56,6 +57,7 @@ pub struct PipelineResult {
     pub audio_seconds: Option<f64>,
     pub audio_file_bytes: Option<u64>,
     pub fast_path_used: bool,
+    pub no_speech: bool,
     pub rewrite_input_tokens: Option<u64>,
     pub rewrite_output_tokens: Option<u64>,
 }
@@ -104,6 +106,13 @@ pub fn validate_pipeline_readiness_for_options(
     }
 }
 
+fn validate_audio_file_pipeline_readiness(
+    config: &ProviderRuntimeConfig,
+    status: &ProviderKeyStatus,
+) -> Result<(), ProviderError> {
+    validate_pipeline_readiness_for_options(config, status, PipelineOptions { skip_rewrite: true })
+}
+
 pub fn provider_key_status() -> ProviderKeyStatus {
     ProviderKeyStatus::from_presence(has_provider_key("groq"), has_provider_key("openai"))
 }
@@ -140,18 +149,16 @@ pub fn run_audio_file_pipeline(
         rewrite_model: request.rewrite_model.clone(),
     };
     let options = PipelineOptions {
-        skip_rewrite: request.skip_rewrite,
+        skip_rewrite: request.skip_rewrite && request.selected_text.is_none(),
     };
-    validate_pipeline_readiness_for_options(&config, &provider_key_status(), options)?;
+    validate_audio_file_pipeline_readiness(
+        &config,
+        &ProviderKeyStatus::from_presence(has_provider_key("groq"), false),
+    )?;
 
     let groq_key = provider_key("groq")?;
-    let openai_key = if request.skip_rewrite {
-        String::new()
-    } else {
-        provider_key("openai")?
-    };
     let stt_provider = GroqSttProvider::new(groq_key);
-    let rewrite_provider = OpenAiRewriteProvider::new(openai_key);
+    let rewrite_provider = DeferredOpenAiRewriteProvider;
 
     run_alpha_pipeline_with_clients(
         &config,
@@ -438,6 +445,102 @@ impl RewriteProvider for OpenAiRewriteProvider {
     }
 }
 
+struct DeferredOpenAiRewriteProvider;
+
+impl RewriteProvider for DeferredOpenAiRewriteProvider {
+    fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+        OpenAiRewriteProvider::new(provider_key("openai")?).rewrite(input)
+    }
+}
+
+pub(crate) fn render_light_rewrite_model_prompt(
+    context: &PipelineContext,
+    transcript: &str,
+    reason: crate::light_rewrite::LightRewriteReason,
+) -> String {
+    let mut prompt = render_user_prompt(context, transcript);
+    match reason {
+        crate::light_rewrite::LightRewriteReason::SemanticList => prompt.push_str(
+            "\n\nInternal formatting instruction: if the transcript contains parallel list items, return a numbered list with one item per line. Preserve any short title before the list.",
+        ),
+        crate::light_rewrite::LightRewriteReason::LongText => prompt.push_str(
+            "\n\nInternal formatting instruction: repair punctuation and sentence breaks conservatively. Return only the final text.",
+        ),
+    }
+    prompt
+}
+
+fn no_speech_pipeline_result(
+    context: &PipelineContext,
+    audio_path: &str,
+    stt_latency_ms: u64,
+) -> PipelineResult {
+    let path = std::path::Path::new(audio_path);
+    PipelineResult {
+        text: String::new(),
+        profile_id: context.profile_id.clone(),
+        rewrite_fallback_used: false,
+        stt_latency_ms,
+        rewrite_latency_ms: None,
+        audio_seconds: wav_duration_seconds(path),
+        audio_file_bytes: audio_file_bytes(path),
+        fast_path_used: false,
+        no_speech: true,
+        rewrite_input_tokens: None,
+        rewrite_output_tokens: None,
+    }
+}
+
+fn wav_has_speech(path: &std::path::Path) -> Option<bool> {
+    let mut reader = hound::WavReader::open(path).ok()?;
+    let spec = reader.spec();
+    let duration_samples = reader.duration();
+    let samples_per_second = u32::from(spec.channels).saturating_mul(spec.sample_rate);
+    if samples_per_second == 0 || duration_samples < samples_per_second / 4 {
+        return Some(false);
+    }
+
+    let mut total_samples = 0u64;
+    let mut sum_squares = 0f64;
+    let mut max_abs = 0f64;
+    let mut add_sample = |value: f64| {
+        let abs = value.abs();
+        max_abs = max_abs.max(abs);
+        sum_squares += value * value;
+        total_samples += 1;
+    };
+
+    match spec.sample_format {
+        hound::SampleFormat::Float => {
+            for sample in reader.samples::<f32>() {
+                let value = sample.ok()? as f64 * 32767.0;
+                add_sample(value);
+            }
+        }
+        hound::SampleFormat::Int if spec.bits_per_sample <= 16 => {
+            for sample in reader.samples::<i16>() {
+                add_sample(sample.ok()? as f64);
+            }
+        }
+        hound::SampleFormat::Int => {
+            let scale = if spec.bits_per_sample > 16 {
+                2f64.powi(i32::from(spec.bits_per_sample) - 16)
+            } else {
+                1.0
+            };
+            for sample in reader.samples::<i32>() {
+                add_sample(sample.ok()? as f64 / scale);
+            }
+        }
+    }
+
+    if total_samples == 0 {
+        return Some(false);
+    }
+    let rms = (sum_squares / total_samples as f64).sqrt();
+    Some(!(max_abs < 500.0 && rms < 80.0))
+}
+
 pub fn run_alpha_pipeline_with_clients<S, R>(
     config: &ProviderRuntimeConfig,
     audio_path: String,
@@ -450,6 +553,13 @@ where
     S: SttProvider,
     R: RewriteProvider,
 {
+    if matches!(
+        wav_has_speech(std::path::Path::new(&audio_path)),
+        Some(false)
+    ) {
+        return Ok(no_speech_pipeline_result(&context, &audio_path, 0));
+    }
+
     let stt_started = std::time::Instant::now();
     let transcript = stt_provider.transcribe(&SttInput {
         audio_path: audio_path.clone(),
@@ -458,22 +568,52 @@ where
         prompt: (!context.dictionary_terms.is_empty()).then(|| context.dictionary_terms.join("\n")),
     })?;
     let stt_latency_ms = elapsed_ms(stt_started);
-    if options.skip_rewrite {
-        return Ok(PipelineResult {
-            text: transcript,
-            profile_id: context.profile_id,
-            rewrite_fallback_used: false,
-            stt_latency_ms,
-            rewrite_latency_ms: None,
-            audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
-            audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
-            fast_path_used: true,
-            rewrite_input_tokens: None,
-            rewrite_output_tokens: None,
-        });
-    }
+    let light_rewrite_profile_mode = if options.skip_rewrite && context.selected_text.is_none() {
+        "normal".to_string()
+    } else {
+        context.profile_mode.clone()
+    };
+    let light_rewrite_decision = crate::light_rewrite::light_rewrite(
+        &transcript,
+        &crate::light_rewrite::LightRewriteContext {
+            profile_mode: light_rewrite_profile_mode,
+            selected_text: context.selected_text.clone(),
+        },
+    );
+    let model_reason = match light_rewrite_decision {
+        crate::light_rewrite::LightRewriteDecision::Local(output) => {
+            return Ok(PipelineResult {
+                text: output.text,
+                profile_id: context.profile_id,
+                rewrite_fallback_used: false,
+                stt_latency_ms,
+                rewrite_latency_ms: None,
+                audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
+                audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
+                fast_path_used: true,
+                no_speech: false,
+                rewrite_input_tokens: None,
+                rewrite_output_tokens: None,
+            });
+        }
+        crate::light_rewrite::LightRewriteDecision::NoSpeech => {
+            return Ok(no_speech_pipeline_result(
+                &context,
+                &audio_path,
+                stt_latency_ms,
+            ));
+        }
+        crate::light_rewrite::LightRewriteDecision::NeedsModel(reason) => Some(reason),
+        crate::light_rewrite::LightRewriteDecision::NotApplicable => None,
+    };
 
-    let rendered_prompt = render_user_prompt(&context, &transcript);
+    let skip_rewrite = options.skip_rewrite && context.selected_text.is_none();
+    let rendered_prompt = match model_reason {
+        Some(reason) if skip_rewrite => {
+            render_light_rewrite_model_prompt(&context, &transcript, reason)
+        }
+        _ => render_user_prompt(&context, &transcript),
+    };
     let rewrite_input = RewriteInput {
         transcript: transcript.clone(),
         model: config.rewrite_model.clone(),
@@ -496,11 +636,21 @@ where
                 audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
                 audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
                 fast_path_used: false,
+                no_speech: false,
                 rewrite_input_tokens: usage.map(|value| value.input_tokens),
                 rewrite_output_tokens: usage.map(|value| value.output_tokens),
             })
         }
         Err(error) => {
+            if let ProviderError::MissingKey(_) = &error {
+                return Err(error);
+            }
+            if model_reason.is_some() {
+                return Err(error);
+            }
+            if context.selected_text.is_some() {
+                return Err(error);
+            }
             log::warn!("Rewrite failed; falling back to raw transcript: {error}");
             Ok(PipelineResult {
                 text: transcript,
@@ -511,6 +661,7 @@ where
                 audio_seconds: wav_duration_seconds(std::path::Path::new(&audio_path)),
                 audio_file_bytes: audio_file_bytes(std::path::Path::new(&audio_path)),
                 fast_path_used: false,
+                no_speech: false,
                 rewrite_input_tokens: None,
                 rewrite_output_tokens: None,
             })
@@ -865,6 +1016,7 @@ mod tests {
             PipelineContext {
                 profile_id: "email".to_string(),
                 profile_name: "Email".to_string(),
+                profile_mode: "prompt".to_string(),
                 system_prompt: "Write a concise email.".to_string(),
                 user_prompt_template: "Transcript:\n{{transcript}}\nTerms:\n{{dictionaryTerms}}"
                     .to_string(),
@@ -914,6 +1066,7 @@ mod tests {
             PipelineContext {
                 profile_id: "normal".to_string(),
                 profile_name: "Normal".to_string(),
+                profile_mode: "prompt".to_string(),
                 system_prompt: "Clean the transcript.".to_string(),
                 user_prompt_template: "{{transcript}}".to_string(),
                 target_language: None,
@@ -931,7 +1084,49 @@ mod tests {
     }
 
     #[test]
-    fn fast_mode_returns_transcript_without_rewrite() {
+    fn returns_missing_rewrite_key_instead_of_raw_transcript() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("raw transcript".to_string())
+            }
+        }
+
+        struct MissingKeyRewrite;
+        impl RewriteProvider for MissingKeyRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                Err(ProviderError::MissingKey("openai".to_string()))
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "prompt".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions::default(),
+            &MockStt,
+            &MissingKeyRewrite,
+        );
+
+        assert!(matches!(result, Err(ProviderError::MissingKey(provider)) if provider == "openai"));
+    }
+
+    #[test]
+    fn fast_mode_applies_light_rewrite_without_llm_rewrite() {
         struct MockStt;
         impl SttProvider for MockStt {
             fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
@@ -957,6 +1152,7 @@ mod tests {
             PipelineContext {
                 profile_id: "normal".to_string(),
                 profile_name: "Normal".to_string(),
+                profile_mode: "prompt".to_string(),
                 system_prompt: "Clean the transcript.".to_string(),
                 user_prompt_template: "{{transcript}}".to_string(),
                 target_language: None,
@@ -969,9 +1165,301 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(result.text, "raw transcript");
+        assert_eq!(result.text, "Raw transcript.");
         assert!(result.fast_path_used);
         assert_eq!(result.rewrite_latency_ms, None);
+    }
+
+    #[test]
+    fn fast_mode_applies_light_rewrite_for_prompt_profile() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("\u{51e0}\u{4e2a}\u{70b9}\u{5e2e}\u{6211}\u{8bb0}\u{5f55}\u{4e00}\u{4e0b}\u{4e00},UI\u{9700}\u{8981}\u{5168}\u{90e8}\u{91cd}\u{6784}\u{4e8c},logo\u{9700}\u{8981}\u{6362}\u{4e00}\u{4e2a}\u{65b0}\u{7684}\u{4e09},\u{5c31}\u{662f}\u{8fd9}\u{4e2a}\u{76d1}\u{542c}\u{72b6}\u{6001}\u{7684}\u{60ac}\u{6d6e}\u{7a97}\u{7684}\u{56fe}\u{6807}\u{8981}\u{91cd}\u{65b0}\u{505a}\u{4e00}\u{4e0b}".to_string())
+            }
+        }
+
+        struct PanickingRewrite;
+        impl RewriteProvider for PanickingRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                panic!("fast light rewrite should not call rewrite");
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "prompt_profile".to_string(),
+                profile_name: "Prompt".to_string(),
+                profile_mode: "prompt".to_string(),
+                system_prompt: "Format notes.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions { skip_rewrite: true },
+            &MockStt,
+            &PanickingRewrite,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.text,
+            "\u{51e0}\u{4e2a}\u{70b9}\u{5e2e}\u{6211}\u{8bb0}\u{5f55}\u{4e00}\u{4e0b}\n1. UI\u{9700}\u{8981}\u{5168}\u{90e8}\u{91cd}\u{6784}\n2. logo\u{9700}\u{8981}\u{6362}\u{4e00}\u{4e2a}\u{65b0}\u{7684}\n3. \u{76d1}\u{542c}\u{72b6}\u{6001}\u{7684}\u{60ac}\u{6d6e}\u{7a97}\u{7684}\u{56fe}\u{6807}\u{8981}\u{91cd}\u{65b0}\u{505a}\u{4e00}\u{4e0b}"
+        );
+        assert!(result.fast_path_used);
+        assert_eq!(result.rewrite_latency_ms, None);
+    }
+
+    #[test]
+    fn speak_to_edit_ignores_fast_mode_skip_rewrite() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("make it concise".to_string())
+            }
+        }
+
+        struct CountingRewrite {
+            calls: std::cell::Cell<u32>,
+        }
+        impl RewriteProvider for CountingRewrite {
+            fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                self.calls.set(self.calls.get() + 1);
+                assert_eq!(input.transcript, "make it concise");
+                Ok(RewriteOutput {
+                    text: "Concise selected text.".to_string(),
+                    usage: None,
+                })
+            }
+        }
+
+        let rewrite = CountingRewrite {
+            calls: std::cell::Cell::new(0),
+        };
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Edit the selected text.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: Some("Selected text that should be rewritten.".to_string()),
+            },
+            PipelineOptions { skip_rewrite: true },
+            &MockStt,
+            &rewrite,
+        )
+        .unwrap();
+
+        assert_eq!(result.text, "Concise selected text.");
+        assert_eq!(rewrite.calls.get(), 1);
+        assert!(!result.fast_path_used);
+    }
+
+    #[test]
+    fn light_rewrite_formats_short_list_in_fast_mode_without_rewrite_provider() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("\u{4ee3}\u{529e}\u{4e8b}\u{9879}\u{7b2c}\u{4e00}\u{4e70}\u{725b}\u{5976}\u{7b2c}\u{4e8c}\u{56de}\u{590d}\u{90ae}\u{4ef6}".to_string())
+            }
+        }
+
+        struct PanickingRewrite;
+        impl RewriteProvider for PanickingRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                panic!("light rewrite should not call rewrite");
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions { skip_rewrite: true },
+            &MockStt,
+            &PanickingRewrite,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.text,
+            "\u{4ee3}\u{529e}\u{4e8b}\u{9879}\n1. \u{4e70}\u{725b}\u{5976}\n2. \u{56de}\u{590d}\u{90ae}\u{4ef6}"
+        );
+        assert!(result.fast_path_used);
+        assert_eq!(result.rewrite_latency_ms, None);
+    }
+
+    #[test]
+    fn fast_mode_uses_rewrite_when_light_rewrite_needs_model() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("\u{4eca}\u{5929}\u{6211}\u{4eec}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{7684}\u{539f}\u{56e0}\u{548c}\u{540e}\u{7eed}\u{4fee}\u{590d}\u{8ba1}\u{5212}\u{7136}\u{540e}\u{628a}\u{7ed3}\u{8bba}\u{540c}\u{6b65}\u{7ed9}\u{8bbe}\u{8ba1}\u{548c}\u{5de5}\u{7a0b}\u{56e2}\u{961f}\u{5e76}\u{660e}\u{786e}\u{8d23}\u{4efb}\u{4eba}\u{548c}\u{65f6}\u{95f4}\u{8282}\u{70b9}\u{4ee5}\u{53ca}\u{9a8c}\u{6536}\u{6807}\u{51c6}".to_string())
+            }
+        }
+
+        struct CountingRewrite {
+            calls: std::cell::Cell<u32>,
+        }
+        impl RewriteProvider for CountingRewrite {
+            fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                self.calls.set(self.calls.get() + 1);
+                assert!(input.rendered_prompt.contains("\u{4eca}\u{5929}"));
+                Ok(RewriteOutput {
+                    text: "\u{4eca}\u{5929}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{3002}".to_string(),
+                    usage: None,
+                })
+            }
+        }
+
+        let rewrite = CountingRewrite {
+            calls: std::cell::Cell::new(0),
+        };
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions { skip_rewrite: true },
+            &MockStt,
+            &rewrite,
+        )
+        .unwrap();
+
+        assert_eq!(rewrite.calls.get(), 1);
+        assert_eq!(result.text, "\u{4eca}\u{5929}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{3002}");
+        assert!(!result.fast_path_used);
+    }
+
+    #[test]
+    fn fast_mode_missing_rewrite_key_does_not_paste_raw_when_model_is_required() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("\u{4eca}\u{5929}\u{6211}\u{4eec}\u{9700}\u{8981}\u{8ba8}\u{8bba}\u{4ea7}\u{54c1}\u{5ef6}\u{8fdf}\u{7684}\u{539f}\u{56e0}\u{548c}\u{540e}\u{7eed}\u{4fee}\u{590d}\u{8ba1}\u{5212}\u{7136}\u{540e}\u{628a}\u{7ed3}\u{8bba}\u{540c}\u{6b65}\u{7ed9}\u{8bbe}\u{8ba1}\u{548c}\u{5de5}\u{7a0b}\u{56e2}\u{961f}\u{5e76}\u{660e}\u{786e}\u{8d23}\u{4efb}\u{4eba}\u{548c}\u{65f6}\u{95f4}\u{8282}\u{70b9}\u{4ee5}\u{53ca}\u{9a8c}\u{6536}\u{6807}\u{51c6}".to_string())
+            }
+        }
+
+        struct MissingKeyRewrite;
+        impl RewriteProvider for MissingKeyRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                Err(ProviderError::MissingKey("openai".to_string()))
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions { skip_rewrite: true },
+            &MockStt,
+            &MissingKeyRewrite,
+        );
+
+        assert!(matches!(result, Err(ProviderError::MissingKey(provider)) if provider == "openai"));
+    }
+
+    #[test]
+    fn filler_only_stt_result_returns_no_speech_without_rewrite() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("\u{55ef} \u{5443}".to_string())
+            }
+        }
+
+        struct PanickingRewrite;
+        impl RewriteProvider for PanickingRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                panic!("no speech should not call rewrite");
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: None,
+            },
+            PipelineOptions::default(),
+            &MockStt,
+            &PanickingRewrite,
+        )
+        .unwrap();
+
+        assert!(result.no_speech);
+        assert_eq!(result.text, "");
     }
 
     #[test]
@@ -1010,6 +1498,7 @@ mod tests {
             PipelineContext {
                 profile_id: "product_email".to_string(),
                 profile_name: "Product Email".to_string(),
+                profile_mode: "prompt".to_string(),
                 system_prompt: "Write a concise product email.".to_string(),
                 user_prompt_template:
                     "Target: {{targetLanguage}}\n{{transcript}}\n{{dictionaryTerms}}".to_string(),
@@ -1069,6 +1558,7 @@ mod tests {
             PipelineContext {
                 profile_id: "normal".to_string(),
                 profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
                 system_prompt: "Clean the transcript.".to_string(),
                 user_prompt_template: "{{transcript}}".to_string(),
                 target_language: None,
@@ -1087,6 +1577,48 @@ mod tests {
             result.text,
             "I would like to share our vision and mission for the Turing Research Center with all of you."
         );
+    }
+
+    #[test]
+    fn speak_to_edit_returns_rewrite_error_instead_of_raw_instruction() {
+        struct MockStt;
+        impl SttProvider for MockStt {
+            fn transcribe(&self, _input: &SttInput) -> Result<String, ProviderError> {
+                Ok("make it shorter".to_string())
+            }
+        }
+
+        struct MissingKeyRewrite;
+        impl RewriteProvider for MissingKeyRewrite {
+            fn rewrite(&self, _input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+                Err(ProviderError::MissingKey("openai".to_string()))
+            }
+        }
+
+        let result = run_alpha_pipeline_with_clients(
+            &ProviderRuntimeConfig {
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                rewrite_provider: "openai".to_string(),
+                rewrite_model: "gpt-5-nano".to_string(),
+            },
+            "sample.wav".to_string(),
+            PipelineContext {
+                profile_id: "normal".to_string(),
+                profile_name: "Normal".to_string(),
+                profile_mode: "normal".to_string(),
+                system_prompt: "Clean the transcript.".to_string(),
+                user_prompt_template: "{{transcript}}".to_string(),
+                target_language: None,
+                dictionary_terms: Vec::new(),
+                selected_text: Some("This sentence is too long.".to_string()),
+            },
+            PipelineOptions::default(),
+            &MockStt,
+            &MissingKeyRewrite,
+        );
+
+        assert!(matches!(result, Err(ProviderError::MissingKey(provider)) if provider == "openai"));
     }
 
     #[test]
@@ -1117,6 +1649,23 @@ mod tests {
             &config,
             &ProviderKeyStatus::from_presence(true, false),
             PipelineOptions { skip_rewrite: true },
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn audio_file_pipeline_readiness_only_requires_stt_key() {
+        let config = ProviderRuntimeConfig {
+            stt_provider: "groq".to_string(),
+            stt_model: "whisper-large-v3-turbo".to_string(),
+            rewrite_provider: "openai".to_string(),
+            rewrite_model: "gpt-5-nano".to_string(),
+        };
+
+        let result = validate_audio_file_pipeline_readiness(
+            &config,
+            &ProviderKeyStatus::from_presence(true, false),
         );
 
         assert!(result.is_ok());

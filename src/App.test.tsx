@@ -339,6 +339,32 @@ describe("Gospeak Alpha app shell", () => {
     expect(await screen.findByText("Skipped")).toBeInTheDocument();
   });
 
+  it("silently cancels dictation when no speech is detected", async () => {
+    const user = userEvent.setup();
+    vi.mocked(runAudioFileDictation).mockResolvedValueOnce({
+      text: "",
+      profile_id: "normal",
+      rewrite_fallback_used: false,
+      stt_latency_ms: 0,
+      rewrite_latency_ms: null,
+      audio_seconds: 0.2,
+      audio_file_bytes: 4096,
+      fast_path_used: false,
+      no_speech: true,
+    });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+
+    await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
+    expect(copyTextForPaste).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Start Dictation/i })).toBeInTheDocument();
+    expect(publishRecorderState).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "error" }),
+    );
+  });
+
   it("renders App Rules navigation with a rule form and detected app preview", async () => {
     const user = userEvent.setup();
     vi.mocked(getForegroundAppContext).mockResolvedValueOnce({
