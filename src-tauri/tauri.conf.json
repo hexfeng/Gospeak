@@ -22,10 +22,11 @@
       {
         "label": "recorder",
         "title": "Gospeak Recorder",
-        "width": 380,
-        "height": 150,
+        "width": 148,
+        "height": 36,
         "resizable": false,
         "fullscreen": false,
+        "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,

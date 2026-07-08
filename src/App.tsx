@@ -4,7 +4,6 @@ import {
   Database,
   Download,
   KeyRound,
-  Mic,
   Play,
   Route,
   Settings,
@@ -777,7 +776,7 @@ function App() {
       <aside className="sidebar" aria-label="Gospeak navigation">
         <div className="brand">
           <span className="brand-mark">
-            <Mic size={18} />
+            <img alt="" src="/favicon.png?v=flat-bars-2" />
           </span>
           <div>
             <strong>Gospeak</strong>

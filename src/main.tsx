@@ -8,6 +8,8 @@ import { RecorderWindow } from './components/RecorderOverlay.tsx'
 const isRecorderWindow =
   '__TAURI_INTERNALS__' in window && getCurrentWindow().label === 'recorder'
 
+document.documentElement.dataset.window = isRecorderWindow ? 'recorder' : 'main'
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {isRecorderWindow ? <RecorderWindow /> : <App />}

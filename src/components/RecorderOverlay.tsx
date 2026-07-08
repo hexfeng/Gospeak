@@ -9,45 +9,19 @@ const statusMeta: Record<
     tone: string;
   }
 > = {
-  idle: {
-    label: "ready",
-    tone: "idle",
-  },
-  recording: {
-    label: "speaking",
-    tone: "recording",
-  },
-  transcribing: {
-    label: "转译中",
-    tone: "processing",
-  },
-  rewriting: {
-    label: "润色中",
-    tone: "processing",
-  },
-  pasting: {
-    label: "粘贴中",
-    tone: "pasting",
-  },
-  done: {
-    label: "完成",
-    tone: "done",
-  },
-  error: {
-    label: "错误",
-    tone: "error",
-  },
+  idle: { label: "ready", tone: "idle" },
+  recording: { label: "\u5f55\u97f3\u4e2d", tone: "recording" },
+  transcribing: { label: "\u8f6c\u8bd1\u4e2d", tone: "processing" },
+  rewriting: { label: "\u8f6c\u8bd1\u4e2d", tone: "processing" },
+  pasting: { label: "\u7c98\u8d34\u4e2d", tone: "pasting" },
+  done: { label: "\u5b8c\u6210", tone: "done" },
+  error: { label: "\u9519\u8bef", tone: "error" },
 };
 
-const waveformBars = [16, 28, 42, 58, 76, 58, 42, 28, 16];
+const waveformBars = [36, 64, 92, 64, 36];
 
-export function RecorderOverlay({
-  status,
-}: {
-  status: string;
-}) {
+export function RecorderOverlay({ status }: { status: string }) {
   const meta = statusMeta[status] ?? statusMeta.idle;
-  const isSpeaking = status === "recording";
 
   return (
     <main
@@ -56,11 +30,8 @@ export function RecorderOverlay({
       data-status={status}
       data-tone={meta.tone}
     >
-      <section
-        aria-label="Audio waveform"
-        className="recorder-audio-card"
-        data-active={isSpeaking ? "true" : "false"}
-      >
+      <div className="recorder-progress" aria-hidden="true" />
+      <section aria-label="Audio waveform" className="recorder-wave">
         <div className="audio-wave" aria-hidden="true">
           {waveformBars.map((height, index) => (
             <span
@@ -70,13 +41,9 @@ export function RecorderOverlay({
             />
           ))}
         </div>
-        <span>Audio</span>
       </section>
-
-      <div className="recorder-status-pill">
-        <span className="recorder-state-dot" aria-hidden="true" />
-        <strong>{meta.label}</strong>
-      </div>
+      <span className="recorder-state-dot" aria-hidden="true" />
+      <strong>{meta.label}</strong>
     </main>
   );
 }
@@ -97,9 +64,5 @@ export function RecorderWindow() {
     return () => unlisten?.();
   }, []);
 
-  return (
-    <RecorderOverlay
-      status={state.status}
-    />
-  );
+  return <RecorderOverlay status={state.status} />;
 }

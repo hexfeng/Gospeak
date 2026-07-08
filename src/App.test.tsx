@@ -597,6 +597,28 @@ describe("Gospeak Alpha app shell", () => {
     );
   });
 
+  it("surfaces recording start errors in the main app and recorder overlay", async () => {
+    const user = userEvent.setup();
+    vi.mocked(startRecording).mockRejectedValueOnce(
+      new Error("No input microphone is available"),
+    );
+
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+
+    expect(
+      await screen.findByText("No input microphone is available"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(publishRecorderState).toHaveBeenCalledWith({
+        status: "error",
+        message: "No input microphone is available",
+      }),
+    );
+    expect(stopRecording).not.toHaveBeenCalled();
+  });
+
   it("keeps dictation output running when recorder overlay publishing fails", async () => {
     const user = userEvent.setup();
     vi.mocked(publishRecorderState).mockRejectedValue(

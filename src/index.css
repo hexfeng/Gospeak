@@ -1,9 +1,9 @@
 :root {
-  --bg: #edf2f1;
-  --border: #dce4e2;
-  --text: #334155;
-  --text-muted: #64748b;
-  --text-strong: #0f172a;
+  --bg: #fbfbfa;
+  --border: #e8e6e2;
+  --text: #4b5563;
+  --text-muted: #767b83;
+  --text-strong: #151515;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -15,191 +15,207 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html[data-window="recorder"],
+html[data-window="recorder"] body,
+html[data-window="recorder"] #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+html[data-window="recorder"] body {
+  min-width: 0;
+}
+
 .recorder-overlay {
   position: relative;
   isolation: isolate;
-  min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: 7px;
+  padding: 0 11px;
   overflow: hidden;
   --status-color: #64748b;
-  --status-soft: rgb(100 116 139 / 18%);
-  --status-glow: rgb(100 116 139 / 30%);
-  --wave-speed: 1.35s;
-  background:
-    radial-gradient(circle at 18% 0%, var(--status-soft), transparent 40%),
-    linear-gradient(135deg, rgb(7 10 14 / 96%), rgb(16 21 26 / 96%));
-  color: white;
-  border: 1px solid var(--status-soft);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 5%),
-    0 18px 42px rgb(0 0 0 / 34%),
-    0 0 34px var(--status-glow);
+  --status-soft: rgb(100 116 139 / 12%);
+  --status-glow: transparent;
+  --wave-speed: 1.4s;
+  border: 0;
+  border-radius: 999px;
+  background: #f7f8f7;
+  color: #111827;
+  box-shadow: none;
 }
 
 .recorder-overlay-recording {
-  --status-color: #22c55e;
-  --status-soft: rgb(34 197 94 / 20%);
-  --status-glow: rgb(34 197 94 / 30%);
-  --wave-speed: 0.78s;
+  --status-color: #34c759;
+  --status-soft: rgb(52 199 89 / 12%);
+  --status-glow: transparent;
+  --wave-speed: 0.72s;
 }
 
 .recorder-overlay-processing {
   --status-color: #38bdf8;
-  --status-soft: rgb(56 189 248 / 20%);
-  --status-glow: rgb(56 189 248 / 28%);
-  --wave-speed: 1.08s;
+  --status-soft: rgb(56 189 248 / 12%);
+  --status-glow: transparent;
+  --wave-speed: 1s;
 }
 
 .recorder-overlay-pasting {
   --status-color: #f59e0b;
-  --status-soft: rgb(245 158 11 / 20%);
-  --status-glow: rgb(245 158 11 / 28%);
-  --wave-speed: 1s;
+  --status-soft: rgb(245 158 11 / 12%);
+  --status-glow: transparent;
 }
 
 .recorder-overlay-done {
   --status-color: #14b8a6;
-  --status-soft: rgb(20 184 166 / 18%);
-  --status-glow: rgb(20 184 166 / 25%);
+  --status-soft: rgb(20 184 166 / 12%);
+  --status-glow: transparent;
 }
 
 .recorder-overlay-error {
   --status-color: #fb7185;
-  --status-soft: rgb(251 113 133 / 22%);
-  --status-glow: rgb(251 113 133 / 34%);
+  --status-soft: rgb(251 113 133 / 12%);
+  --status-glow: transparent;
 }
 
-.recorder-audio-card {
+.recorder-progress {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  z-index: 0;
+  background: linear-gradient(90deg, transparent, var(--status-soft));
+}
+
+.recorder-wave,
+.recorder-state-dot,
+.recorder-overlay strong {
+  position: relative;
+  z-index: 1;
+}
+
+.recorder-overlay-processing .recorder-progress,
+.recorder-overlay-pasting .recorder-progress {
+  animation: recorder-fill 1.65s ease-in-out infinite;
+}
+
+.recorder-wave {
   min-width: 0;
-  height: 128px;
-  display: grid;
-  place-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  border-radius: 8px;
-  background:
-    radial-gradient(circle at 50% 42%, var(--status-soft), transparent 44%),
-    #030405;
-  border: 1px solid rgb(255 255 255 / 8%);
-  box-shadow:
-    inset 0 0 24px rgb(255 255 255 / 4%),
-    inset 0 -18px 46px rgb(0 0 0 / 46%);
-}
-
-.recorder-audio-card > span {
-  color: rgb(226 232 240 / 78%);
-  font-size: 12px;
-  line-height: 1;
 }
 
 .audio-wave {
-  height: 58px;
-  width: min(180px, 100%);
+  height: 20px;
+  width: 31px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 3px;
 }
 
 .audio-wave span {
-  width: 5px;
+  width: 3px;
   height: var(--bar-height);
-  min-height: 10px;
+  min-height: 8px;
   border-radius: 999px;
   background: var(--status-color);
-  box-shadow: 0 0 16px var(--status-glow);
+  box-shadow: none;
   transform-origin: center;
   animation: audio-wave var(--wave-speed) ease-in-out infinite;
 }
 
 .audio-wave span:nth-child(2n) {
-  animation-delay: -0.18s;
+  animation-delay: -0.15s;
 }
 
 .audio-wave span:nth-child(3n) {
-  animation-delay: -0.32s;
-}
-
-.recorder-audio-card[data-active="false"] .audio-wave span {
-  animation-duration: 1.8s;
-  opacity: 0.75;
-}
-
-.recorder-status-pill {
-  width: 118px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 7%);
-  border: 1px solid var(--status-soft);
-  box-shadow: inset 0 0 18px var(--status-soft);
-  flex-shrink: 0;
-}
-
-.recorder-status-pill strong {
-  color: rgb(248 250 252 / 94%);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-  white-space: nowrap;
+  animation-delay: -0.28s;
 }
 
 .recorder-state-dot {
-  width: 10px;
-  height: 10px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--status-color);
   box-shadow:
-    0 0 0 5px var(--status-soft),
-    0 0 18px var(--status-color);
-  animation: recorder-pulse 1.35s ease-in-out infinite;
+    0 0 0 4px var(--status-soft),
+    0 0 0 transparent;
+  animation: recorder-pulse 1.2s ease-in-out infinite;
+}
+
+.recorder-overlay strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 @keyframes audio-wave {
-  0% {
-    transform: scaleY(0.48);
+  0%,
+  100% {
+    transform: scaleY(0.54);
   }
 
   50% {
     transform: scaleY(1.08);
-  }
-
-  100% {
-    transform: scaleY(0.54);
   }
 }
 
 @keyframes recorder-pulse {
   0%,
   100% {
-    transform: scale(0.92);
+    transform: scale(0.94);
   }
 
   50% {
-    transform: scale(1.14);
+    transform: scale(1.12);
+  }
+}
+
+@keyframes recorder-fill {
+  0% {
+    width: 18%;
+    opacity: 0.7;
+  }
+
+  72% {
+    width: 100%;
+    opacity: 1;
+  }
+
+  100% {
+    width: 100%;
+    opacity: 0.55;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .audio-wave span,
-  .recorder-state-dot {
+  .recorder-state-dot,
+  .recorder-progress {
     animation: none;
   }
 }

@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  PhysicalPosition,
+  availableMonitors,
+  cursorPosition,
+  monitorFromPoint,
+  primaryMonitor,
+} from "@tauri-apps/api/window";
 import type {
   ApiKeyPresence,
   AppProfileRule,
@@ -459,16 +466,64 @@ export async function publishRecorderState(payload: {
   if (!hasTauriRuntime()) {
     return;
   }
+  if (recorderErrorTimer !== undefined) {
+    window.clearTimeout(recorderErrorTimer);
+    recorderErrorTimer = undefined;
+  }
   await emit("gospeak://recorder-state", payload);
   const recorder = await WebviewWindow.getByLabel("recorder");
-  if (!recorder) {
+  if (payload.status === "idle" || payload.status === "done") {
+    await recorder?.hide();
+  } else {
+    if (recorder) {
+      try {
+        await positionRecorderWindow(recorder);
+      } catch (error) {
+        console.warn("Recorder positioning failed", error);
+      }
+      await recorder.show();
+    }
+    if (payload.status === "error") {
+      recorderErrorTimer = window.setTimeout(() => {
+        recorderErrorTimer = undefined;
+        void hideRecorderAndFocusMain(recorder);
+      }, 5000);
+    }
+  }
+}
+
+let recorderErrorTimer: number | undefined;
+
+async function hideRecorderAndFocusMain(recorder: WebviewWindow | null) {
+  await recorder?.hide();
+  const main = await WebviewWindow.getByLabel("main");
+  await main?.show();
+  await main?.setFocus();
+}
+
+const recorderWindowSize = {
+  width: 148,
+  height: 36,
+  bottomMargin: 22,
+};
+
+async function positionRecorderWindow(recorder: WebviewWindow) {
+  const cursor = await cursorPosition().catch(() => null);
+  const monitor =
+    (cursor ? await monitorFromPoint(cursor.x, cursor.y) : null) ??
+    (await primaryMonitor()) ??
+    (await availableMonitors())[0];
+  if (!monitor) {
     return;
   }
-  if (payload.status === "idle" || payload.status === "done") {
-    await recorder.hide();
-  } else {
-    await recorder.show();
-  }
+  const scale = monitor.scaleFactor;
+  const width = recorderWindowSize.width * scale;
+  const height = recorderWindowSize.height * scale;
+  const bottomMargin = recorderWindowSize.bottomMargin * scale;
+  const workArea = monitor.workArea;
+  const x = workArea.position.x + (workArea.size.width - width) / 2;
+  const y = workArea.position.y + workArea.size.height - height - bottomMargin;
+  await recorder.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
 }
 
 export async function listenForTrayAction(
