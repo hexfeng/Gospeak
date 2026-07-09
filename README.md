@@ -11,6 +11,10 @@ Live provider calls require user-supplied Groq and OpenAI keys. The app can be
 developed and tested without keys through mocked frontend behavior and Rust unit
 tests.
 
+## Screenshot
+
+![Gospeak Alpha home screen](artifacts/gospeak-home.png)
+
 ## Product Documents
 
 - [Original PRD and technical architecture](docs/PRODUCT_PRD.md)
