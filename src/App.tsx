@@ -1,18 +1,14 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
-  Database,
-  Download,
-  KeyRound,
-  Play,
   Route,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  Upload,
 } from "lucide-react";
 import "./App.css";
+import { GeneralPage } from "./components/GeneralPage";
+import { SettingsPage } from "./components/SettingsPage";
 import {
   DEFAULT_APP_CONFIG,
   type ApiKeyPresence,
@@ -22,7 +18,6 @@ import {
   type ForegroundAppContext,
   type PromptProfile,
   buildExportPayload,
-  getProviderReadiness,
   resolveActiveProfileId,
   resolveProfileForContext,
   updateProviderModel,
@@ -31,6 +26,7 @@ import {
   DICTATION_INITIAL_STATE,
   dictationReducer,
 } from "./domain/dictation";
+import type { SettingsTab } from "./domain/navigation";
 import {
   checkProviderKeys,
   cleanupTempAudioFile,
@@ -89,26 +85,20 @@ const seedDictionaryTerms: DictionaryTerm[] = [
 
 type AppSection =
   | "general"
-  | "providers"
   | "profiles"
   | "app-rules"
   | "dictionary"
-  | "privacy"
-  | "import-export";
+  | "settings";
 
-const navItems: Array<{
-  id: AppSection;
-  label: string;
-  icon: typeof Settings;
-}> = [
+const navItems = [
   { id: "general", label: "General", icon: Settings },
-  { id: "providers", label: "Providers", icon: KeyRound },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
   { id: "app-rules", label: "App Rules", icon: Route },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
-  { id: "privacy", label: "Privacy", icon: ShieldCheck },
-  { id: "import-export", label: "Import/Export", icon: Database },
-];
+  { id: "settings", label: "Settings", icon: Settings },
+] satisfies Array<{ id: AppSection; label: string; icon: typeof Settings }>;
+
+type AppNotice = { text: string; tone: "info" | "error" } | null;
 
 type DictationDiagnostics = {
   recordingStartMs: number;
@@ -130,6 +120,7 @@ const STREAMING_STT_MODEL = "gpt-realtime-whisper";
 
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("dictation");
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
   const [keyPresence, setKeyPresence] = useState<ApiKeyPresence>({
     groq: false,
@@ -171,25 +162,23 @@ function App() {
     DICTATION_INITIAL_STATE,
   );
   const [isDictationBusy, setIsDictationBusy] = useState(false);
-  const [message, setMessage] = useState(
-    "Provider interfaces are configured. Add keys when you are ready for live calls.",
-  );
+  const [notice, setNotice] = useState<AppNotice>(null);
   const [lastDiagnostics, setLastDiagnostics] =
     useState<DictationDiagnostics | null>(null);
 
-  const readiness = useMemo(
-    () => getProviderReadiness(config, keyPresence),
-    [config, keyPresence],
-  );
-  const usageCostTotals = useMemo(
-    () => summarizeUsageCosts(usageEvents),
-    [usageEvents],
-  );
+  useEffect(() => {
+    if (notice?.tone !== "info") return;
+    const timeout = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   async function refreshKeys() {
     const status = await checkProviderKeys();
     setKeyPresence(status);
-    setMessage("Credential status refreshed without exposing key values.");
+    setNotice({
+      text: "Credential status refreshed without exposing key values.",
+      tone: "info",
+    });
   }
 
   async function saveKey(provider: "groq" | "openai", apiKey: string) {
@@ -197,12 +186,18 @@ function App() {
     setKeyPresence(status);
     setGroqKey("");
     setOpenAiKey("");
-    setMessage(`${provider.toUpperCase()} key saved to the OS credential store.`);
+    setNotice({
+      text: `${provider.toUpperCase()} key saved to the OS credential store.`,
+      tone: "info",
+    });
   }
 
   async function saveProfile() {
     if (!profileDraft.name.trim() || !profileDraft.systemPrompt.trim()) {
-      setMessage("Profile name and system prompt are required.");
+      setNotice({
+        text: "Profile name and system prompt are required.",
+        tone: "error",
+      });
       return;
     }
 
@@ -242,12 +237,15 @@ function App() {
       systemPrompt: "",
       targetLanguage: "",
     }));
-    setMessage(`Profile saved: ${profile.name}`);
+    setNotice({ text: `Profile saved: ${profile.name}`, tone: "info" });
   }
 
   async function saveDictionaryTerm() {
     if (!dictionaryDraft.spoken.trim() || !dictionaryDraft.written.trim()) {
-      setMessage("Dictionary spoken and written phrases are required.");
+      setNotice({
+        text: "Dictionary spoken and written phrases are required.",
+        tone: "error",
+      });
       return;
     }
 
@@ -278,14 +276,14 @@ function App() {
     await upsertDictionaryTerm(record);
     setDictionaryTerms((current) => upsertById(current, term));
     setDictionaryDraft({ spoken: "", written: "", aliases: "", tags: "" });
-    setMessage(`Dictionary term saved: ${term.written}`);
+    setNotice({ text: `Dictionary term saved: ${term.written}`, tone: "info" });
   }
 
   async function saveAppRule() {
     const appId = appRuleDraft.appId.trim();
     const titlePattern = appRuleDraft.windowTitlePattern.trim();
     if (!appId) {
-      setMessage("App rule needs an app id.");
+      setNotice({ text: "App rule needs an app id.", tone: "error" });
       return;
     }
 
@@ -310,7 +308,10 @@ function App() {
       windowTitlePattern: "",
       priority: 0,
     }));
-    setMessage(`App rule saved for ${appId || titlePattern}.`);
+    setNotice({
+      text: `App rule saved for ${appId || titlePattern}.`,
+      tone: "info",
+    });
   }
 
   async function exportConfiguration() {
@@ -319,10 +320,17 @@ function App() {
       return;
     }
     await exportConfigToFile(path, exportPreview);
-    setMessage(`Configuration exported to ${path}`);
+    setNotice({ text: `Configuration exported to ${path}`, tone: "info" });
   }
 
   async function importConfiguration() {
+    if (
+      !window.confirm(
+        "Importing will replace local Profiles, Dictionary terms, App Rules, and preferences. Continue?",
+      )
+    ) {
+      return;
+    }
     const path = await selectImportPath();
     if (!path) {
       return;
@@ -332,7 +340,7 @@ function App() {
     setProfiles(payload.data.promptProfiles);
     setDictionaryTerms(payload.data.dictionaryTerms);
     setAppRules(payload.data.appRules ?? []);
-    setMessage(`Configuration imported from ${path}`);
+    setNotice({ text: `Configuration imported from ${path}`, tone: "info" });
   }
 
   async function publishRecorderStateSafely(payload: {
@@ -361,7 +369,10 @@ function App() {
         selectedTextForEditRef.current = null;
         if (config.performance.speakToEdit) {
           selectedTextForEditRef.current = await readSelectedTextForEdit();
-          setMessage("Editing selected text. Record the edit instruction.");
+          setNotice({
+            text: "Editing selected text. Record the edit instruction.",
+            tone: "info",
+          });
         }
         const recordingStartStarted = performance.now();
         const path = await (config.performance.streamingMode
@@ -372,11 +383,12 @@ function App() {
         );
         dictationStatusRef.current = "recording";
         dispatchDictation({ type: "recording-started", audioPath: path });
-        setMessage(
-          config.performance.speakToEdit
+        setNotice({
+          text: config.performance.speakToEdit
             ? "Editing selected text. Press Stop Speak to Edit to replace it."
             : "Recording to temporary WAV. Press Stop Dictation to transcribe.",
-        );
+          tone: "info",
+        });
         if (
           shortcutModeRef.current === "push-to-talk" &&
           stopAfterStartRef.current
@@ -397,7 +409,10 @@ function App() {
         status: "transcribing",
         message: "Transcribing with Groq…",
       });
-      setMessage("Recording stopped. Running STT and rewrite pipeline.");
+      setNotice({
+        text: "Recording stopped. Running STT and rewrite pipeline.",
+        tone: "info",
+      });
 
       let profileId = config.activeProfileId;
       if (config.appRouting.enabled) {
@@ -455,7 +470,7 @@ function App() {
           status: "idle",
           message: "Ready for dictation.",
         });
-        setMessage("Ready for dictation.");
+        setNotice({ text: "Ready for dictation.", tone: "info" });
         selectedTextForEditRef.current = null;
         return;
       }
@@ -502,13 +517,13 @@ function App() {
         rewriteFallbackUsed: result.rewrite_fallback_used,
       });
       await refreshUsageEvents();
-      setMessage(completionMessage);
+      setNotice({ text: completionMessage, tone: "info" });
       selectedTextForEditRef.current = null;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       dictationStatusRef.current = "error";
       dispatchDictation({ type: "failed", message: errorMessage });
-      setMessage(errorMessage);
+      setNotice({ text: errorMessage, tone: "error" });
     } finally {
       if (dictationStatusRef.current !== "recording") {
         selectedTextForEditRef.current = null;
@@ -680,7 +695,7 @@ function App() {
     }
 
     loadStoredConfig().catch((error) => {
-      setMessage(`Could not load local config: ${error}`);
+      setNotice({ text: `Could not load local config: ${error}`, tone: "error" });
     });
 
     return () => {
@@ -703,7 +718,7 @@ function App() {
   async function changeActiveProfile(profileId: string) {
     setConfig((current) => ({ ...current, activeProfileId: profileId }));
     await persistPreference("active_profile_id", profileId);
-    setMessage(`Active profile changed to ${profileId}.`);
+    setNotice({ text: `Active profile changed to ${profileId}.`, tone: "info" });
   }
 
   async function changeHotkey(
@@ -715,7 +730,7 @@ function App() {
     }
     setConfig((current) => ({ ...current, hotkey }));
     await persistPreference("hotkey", hotkey);
-    setMessage(`Global shortcut updated: ${hotkey.binding} (${hotkey.mode}).`);
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changeProviderModel(
@@ -725,6 +740,7 @@ function App() {
     const next = updateProviderModel(config, kind, model);
     setConfig(next);
     await persistPreference("providers", next.providers);
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changePrivacy(
@@ -734,35 +750,35 @@ function App() {
     const privacy = { ...config.privacy, [key]: enabled };
     setConfig((current) => ({ ...current, privacy }));
     await persistPreference("privacy", privacy);
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changeFastMode(enabled: boolean) {
     const performanceConfig = { ...config.performance, fastMode: enabled };
     setConfig((current) => ({ ...current, performance: performanceConfig }));
     await persistPreference("performance", performanceConfig);
-    setMessage(enabled ? "Fast dictation enabled." : "Fast dictation disabled.");
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changeSpeakToEdit(enabled: boolean) {
     const performanceConfig = { ...config.performance, speakToEdit: enabled };
     setConfig((current) => ({ ...current, performance: performanceConfig }));
     await persistPreference("performance", performanceConfig);
-    setMessage(enabled ? "Speak to Edit enabled." : "Speak to Edit disabled.");
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changeStreamingMode(enabled: boolean) {
     const performanceConfig = { ...config.performance, streamingMode: enabled };
     setConfig((current) => ({ ...current, performance: performanceConfig }));
     await persistPreference("performance", performanceConfig);
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   async function changeAppRouting(enabled: boolean) {
     const appRouting = { enabled };
     setConfig((current) => ({ ...current, appRouting }));
     await persistPreference("app_routing", appRouting);
-    setMessage(
-      enabled ? "App-aware routing enabled." : "App-aware routing disabled.",
-    );
+    setNotice({ text: "Saved", tone: "info" });
   }
 
   const exportPreview = buildExportPayload({
@@ -809,69 +825,75 @@ function App() {
       </aside>
 
       <section className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>Gospeak Alpha</h1>
-            <p>
-              Windows-first Tauri shell for hotkey voice input, provider setup,
-              profiles, dictionary, and privacy-safe export.
-            </p>
-          </div>
-          <button
-            className="primary-action"
-            type="button"
-            onClick={handleDictationToggle}
-            disabled={isDictationBusy}
+        {notice ? (
+          <p
+            className="app-message"
+            role={notice.tone === "error" ? "alert" : "status"}
           >
-            <Play size={16} />
-            {dictation.status === "recording"
-              ? config.performance.speakToEdit
-                ? "Stop Speak to Edit"
-                : "Stop Dictation"
-              : config.performance.speakToEdit
-                ? "Start Speak to Edit"
-                : "Start Dictation"}
-          </button>
-        </header>
-
-        <p className="app-message" role="status">
-          {message}
-        </p>
+            {notice.text}
+          </p>
+        ) : null}
 
         <div className="module-stage">
           {activeSection === "general" ? (
-          <section className="panel module-panel" id="general">
-            <PanelHeader
-              icon={<Settings size={19} />}
-              title="General"
-              description="Choose the profile and global shortcut used by the live pipeline."
+            <GeneralPage
+              config={config}
+              keyPresence={keyPresence}
+              profiles={profiles}
+              usageEvents={usageEvents}
+              isDictationBusy={isDictationBusy}
+              dictationLabel={dictationButtonLabel(config, dictation.status)}
+              diagnostics={
+                lastDiagnostics ? (
+                  <LatencyDiagnostics diagnostics={lastDiagnostics} />
+                ) : null
+              }
+              onStartDictation={() => void handleDictationToggle()}
+              onOpenProfiles={() => setActiveSection("profiles")}
+              onOpenSettings={(tab) => {
+                setSettingsTab(tab);
+                setActiveSection("settings");
+              }}
             />
-            <section className="status-grid" aria-label="Alpha status">
-              <StatusTile
-                label="STT"
-                value="Groq STT"
-                detail={readiness.stt.ready ? "Key ready" : readiness.stt.reason}
-                tone={readiness.stt.ready ? "good" : "warn"}
-              />
-              <StatusTile
-                label="Rewrite"
-                value="OpenAI Rewrite"
-                detail={
-                  readiness.rewrite.ready ? "Key ready" : readiness.rewrite.reason
-                }
-                tone={readiness.rewrite.ready ? "good" : "warn"}
-              />
-              <StatusTile
-                label="History"
-                value="Off"
-                detail="Transcript history disabled"
-              />
-              <StatusTile
-                label="Storage"
-                value="Local"
-                detail="SQLite enabled as source of truth"
-              />
-            </section>
+          ) : null}
+
+          {activeSection === "settings" ? (
+            <SettingsPage
+              activeTab={settingsTab}
+              config={config}
+              keyPresence={keyPresence}
+              groqKey={groqKey}
+              openAiKey={openAiKey}
+              onTabChange={setSettingsTab}
+              onGroqKeyChange={setGroqKey}
+              onOpenAiKeyChange={setOpenAiKey}
+              onSaveKey={(provider, key) => void saveKey(provider, key)}
+              onRefreshKeys={() => void refreshKeys()}
+              onChangeHotkey={(next) => void changeHotkey(next)}
+              onChangeProviderModel={(kind, model) =>
+                void changeProviderModel(kind, model)
+              }
+              onChangePrivacy={(key, enabled) =>
+                void changePrivacy(key, enabled)
+              }
+              onChangeFastMode={(enabled) => void changeFastMode(enabled)}
+              onChangeSpeakToEdit={(enabled) => void changeSpeakToEdit(enabled)}
+              onChangeStreamingMode={(enabled) =>
+                void changeStreamingMode(enabled)
+              }
+              onChangeAppRouting={(enabled) => void changeAppRouting(enabled)}
+              onExport={() => void exportConfiguration()}
+              onImport={() => void importConfiguration()}
+            />
+          ) : null}
+
+          {activeSection === "profiles" ? (
+          <section className="panel module-panel" id="profiles">
+            <PanelHeader
+              icon={<Sparkles size={19} />}
+              title="Prompt Profiles"
+              description="P0 ships with fixed profile templates before App-aware routing."
+            />
             <div className="compact-form">
               <label>
                 Active profile
@@ -888,177 +910,6 @@ function App() {
                     ))}
                 </select>
               </label>
-              <label>
-                Hotkey binding
-                <input
-                  value={config.hotkey.binding}
-                  onChange={(event) =>
-                    setConfig((current) => ({
-                      ...current,
-                      hotkey: { ...current.hotkey, binding: event.target.value },
-                    }))
-                  }
-                  onBlur={(event) =>
-                    void changeHotkey({ binding: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Hotkey mode
-                <select
-                  value={config.hotkey.mode}
-                  onChange={(event) =>
-                    void changeHotkey({
-                      mode: event.target.value as AppConfig["hotkey"]["mode"],
-                    })
-                  }
-                >
-                  <option value="push-to-talk">Push-to-talk</option>
-                  <option value="toggle">Toggle</option>
-                </select>
-              </label>
-              <label className="checkbox-line">
-                <span>Fast dictation</span>
-                <input
-                  type="checkbox"
-                  checked={config.performance.fastMode}
-                  onChange={(event) => void changeFastMode(event.target.checked)}
-                />
-              </label>
-              <label className="checkbox-line">
-                <span>Speak to Edit</span>
-                <input
-                  type="checkbox"
-                  checked={config.performance.speakToEdit}
-                  onChange={(event) =>
-                    void changeSpeakToEdit(event.target.checked)
-                  }
-                />
-              </label>
-              <label className="checkbox-line">
-                <span>
-                  <strong>Experimental streaming dictation</strong>
-                  <small>
-                    Streams STT and rewrite when available; batch dictation
-                    remains the fallback.
-                  </small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={config.performance.streamingMode}
-                  onChange={(event) =>
-                    void changeStreamingMode(event.target.checked)
-                  }
-                />
-              </label>
-            </div>
-            {lastDiagnostics ? (
-              <LatencyDiagnostics diagnostics={lastDiagnostics} />
-            ) : null}
-          </section>
-          ) : null}
-
-          {activeSection === "providers" ? (
-          <section className="panel module-panel providers-panel" id="providers">
-            <PanelHeader
-              icon={<KeyRound size={19} />}
-              title="Provider Configuration"
-              description="Separate STT and rewrite providers so each can evolve independently."
-            />
-
-            <div className="provider-row">
-              <div>
-                <h3>Groq STT</h3>
-                <p>Default low-cost, low-latency transcription path.</p>
-              </div>
-              <label>
-                STT model
-                <select
-                  value={config.providers.stt.model}
-                  onChange={(event) =>
-                    void changeProviderModel("stt", event.target.value)
-                  }
-                >
-                  <option value="whisper-large-v3-turbo">
-                    whisper-large-v3-turbo
-                  </option>
-                  <option value="whisper-large-v3">whisper-large-v3</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="key-row">
-              <input
-                aria-label="Groq API key"
-                onChange={(event) => setGroqKey(event.target.value)}
-                placeholder="Groq API key"
-                type="password"
-                value={groqKey}
-              />
-              <button
-                type="button"
-                onClick={() => saveKey("groq", groqKey)}
-                disabled={!groqKey.trim()}
-              >
-                Save Groq key
-              </button>
-            </div>
-
-            <div className="provider-row">
-              <div>
-                <h3>OpenAI Rewrite</h3>
-                <p>Default text cleanup, formatting, translation, and prompt shaping.</p>
-              </div>
-              <label>
-                Rewrite model
-                <select
-                  value={config.providers.rewrite.model}
-                  onChange={(event) =>
-                    void changeProviderModel("rewrite", event.target.value)
-                  }
-                >
-                  <option value="gpt-5-nano">gpt-5-nano</option>
-                  <option value="gpt-5-mini">gpt-5-mini</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="key-row">
-              <input
-                aria-label="OpenAI API key"
-                onChange={(event) => setOpenAiKey(event.target.value)}
-                placeholder="OpenAI API key"
-                type="password"
-                value={openAiKey}
-              />
-              <button
-                type="button"
-                onClick={() => saveKey("openai", openAiKey)}
-                disabled={!openAiKey.trim()}
-              >
-                Save OpenAI key
-              </button>
-            </div>
-
-            <UsageCostTotals totals={usageCostTotals} />
-
-            <div className="message-row">
-              <span>{message}</span>
-              <button type="button" onClick={refreshKeys}>
-                Refresh key status
-              </button>
-            </div>
-          </section>
-          ) : null}
-
-          {activeSection === "profiles" ? (
-          <section className="panel module-panel" id="profiles">
-            <PanelHeader
-              icon={<Sparkles size={19} />}
-              title="Prompt Profiles"
-              description="P0 ships with fixed profile templates before App-aware routing."
-            />
-            <div className="compact-form">
               <label>
                 Profile name
                 <input
@@ -1123,15 +974,6 @@ function App() {
               title="App Rules"
               description="Resolve the dictation profile from the foreground app before each request."
             />
-            <label className="privacy-line app-routing-toggle">
-              <span>Enable app-aware routing</span>
-              <input
-                aria-label="Enable app-aware routing"
-                type="checkbox"
-                checked={config.appRouting.enabled}
-                onChange={(event) => void changeAppRouting(event.target.checked)}
-              />
-            </label>
             <section className="app-context-preview" aria-label="Current app preview">
               <Metric
                 label="Detected app"
@@ -1300,64 +1142,6 @@ function App() {
           </section>
           ) : null}
 
-          {activeSection === "privacy" ? (
-          <section className="panel module-panel" id="privacy">
-            <PanelHeader
-              icon={<ShieldCheck size={19} />}
-              title="Privacy Defaults"
-              description="The Alpha keeps sensitive content out of local export and logs."
-            />
-            <div className="privacy-list">
-              <PrivacyLine
-                label="Save raw audio"
-                enabled={config.privacy.saveRawAudio}
-                onChange={(enabled) => void changePrivacy("saveRawAudio", enabled)}
-              />
-              <PrivacyLine
-                label="Save transcript history"
-                enabled={config.privacy.saveTranscriptHistory}
-                onChange={(enabled) =>
-                  void changePrivacy("saveTranscriptHistory", enabled)
-                }
-              />
-              <PrivacyLine
-                label="Sync transcript history"
-                enabled={config.privacy.syncTranscriptHistory}
-                onChange={(enabled) =>
-                  void changePrivacy("syncTranscriptHistory", enabled)
-                }
-              />
-              <PrivacyLine
-                label="Crash report includes transcript"
-                enabled={config.privacy.crashReportIncludesTranscript}
-                onChange={(enabled) =>
-                  void changePrivacy("crashReportIncludesTranscript", enabled)
-                }
-              />
-            </div>
-          </section>
-          ) : null}
-
-          {activeSection === "import-export" ? (
-          <section className="panel module-panel export-panel" id="import-export">
-            <PanelHeader
-              icon={<Database size={19} />}
-              title="Import / Export"
-              description="Config export excludes API keys, audio, logs, and transcript history."
-            />
-            <div className="button-row">
-              <button type="button" onClick={exportConfiguration}>
-                <Download size={15} />
-                Export configuration
-              </button>
-              <button type="button" onClick={importConfiguration}>
-                <Upload size={15} />
-                Import configuration
-              </button>
-            </div>
-            <pre>{JSON.stringify(exportPreview.data.providers, null, 2)}</pre>
-          </section>
-          ) : null}
         </div>
       </section>
     </main>
@@ -1381,32 +1165,6 @@ function PanelHeader({
         <p>{description}</p>
       </div>
     </header>
-  );
-}
-
-type UsageCostSummary = {
-  sttCost: number;
-  rewriteCost: number;
-};
-
-function UsageCostTotals({ totals }: { totals: UsageCostSummary }) {
-  return (
-    <section className="cost-panel" aria-label="Usage cost totals">
-      <div className="pricing-heading">
-        <h3>Usage cost</h3>
-        <span>Completed dictations</span>
-      </div>
-      <div className="cost-grid">
-        <div className="cost-metric">
-          <span>STT cost</span>
-          <strong>{formatUsd(totals.sttCost)}</strong>
-        </div>
-        <div className="cost-metric">
-          <span>Rewrite cost</span>
-          <strong>{formatUsd(totals.rewriteCost)}</strong>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -1447,48 +1205,6 @@ function Metric({ label, value }: { label: string; value: string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
-  );
-}
-
-function StatusTile({
-  label,
-  value,
-  detail,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone?: "neutral" | "good" | "warn";
-}) {
-  return (
-    <article className={`status-tile ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{detail}</p>
-    </article>
-  );
-}
-
-function PrivacyLine({
-  label,
-  enabled,
-  onChange,
-}: {
-  label: string;
-  enabled: boolean;
-  onChange: (enabled: boolean) => void;
-}) {
-  return (
-    <label className="privacy-line">
-      <span>{label}</span>
-      <input
-        aria-label={label}
-        type="checkbox"
-        checked={enabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-    </label>
   );
 }
 
@@ -1591,16 +1307,6 @@ function elapsedPerformanceMs(started: number) {
   return Math.max(0, Math.round(performance.now() - started));
 }
 
-function summarizeUsageCosts(events: UsageEventRecord[]): UsageCostSummary {
-  return events.reduce(
-    (totals, event) => ({
-      sttCost: totals.sttCost + (event.stt_estimated_cost ?? 0),
-      rewriteCost: totals.rewriteCost + (event.rewrite_estimated_cost ?? 0),
-    }),
-    { sttCost: 0, rewriteCost: 0 },
-  );
-}
-
 function formatMs(value: number | null | undefined) {
   return value == null ? "N/A" : `${Math.round(value)} ms`;
 }
@@ -1619,8 +1325,15 @@ function formatBytes(value: number | null | undefined) {
   return `${(value / 1024).toFixed(1)} KB`;
 }
 
-function formatUsd(value: number) {
-  return `$${value.toFixed(value >= 0.01 ? 2 : 4)}`;
+function dictationButtonLabel(config: AppConfig, status: string): string {
+  if (status === "recording") {
+    return config.performance.speakToEdit
+      ? "Stop Speak to Edit"
+      : "Stop Dictation";
+  }
+  return config.performance.speakToEdit
+    ? "Start Speak to Edit"
+    : "Start Dictation";
 }
 
 export default App;
