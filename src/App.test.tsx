@@ -444,6 +444,45 @@ describe("Gospeak Alpha app shell", () => {
     confirm.mockRestore();
   });
 
+  it("keeps a new Profile draft open when primary navigation discard is cancelled", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("heading", { name: "New Profile" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("falls back to Normal before saving an active disabled Profile", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "email" }),
+      ),
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Enabled" }));
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "normal" }),
+      ),
+    );
+    expect(upsertProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "email", enabled: false }),
+    );
+  });
+
   it("soft-deletes an active Profile, its App Rules, and falls back to Normal", async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);

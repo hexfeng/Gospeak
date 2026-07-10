@@ -172,25 +172,32 @@ function App() {
   }
 
   async function saveProfile(profile: PromptProfile) {
+    const nextProfile =
+      profile.id === "normal" && !profile.enabled
+        ? { ...profile, enabled: true }
+        : profile;
+    if (config.activeProfileId === nextProfile.id && !nextProfile.enabled) {
+      await changeActiveProfile("normal");
+    }
     const record: ProfileRecord = {
-      id: profile.id,
-      name: profile.name,
-      mode: profile.mode,
-      system_prompt: profile.systemPrompt,
-      user_prompt_template: profile.userPromptTemplate,
-      target_language: profile.targetLanguage ?? null,
-      enabled: profile.enabled,
-      updated_at: profile.updatedAt,
+      id: nextProfile.id,
+      name: nextProfile.name,
+      mode: nextProfile.mode,
+      system_prompt: nextProfile.systemPrompt,
+      user_prompt_template: nextProfile.userPromptTemplate,
+      target_language: nextProfile.targetLanguage ?? null,
+      enabled: nextProfile.enabled,
+      updated_at: nextProfile.updatedAt,
       deleted_at: null,
     };
 
     await upsertProfile(record);
-    setProfiles((current) => upsertById(current, profile));
+    setProfiles((current) => upsertById(current, nextProfile));
     setConfig((current) => ({
       ...current,
-      promptProfiles: upsertById(current.promptProfiles, profile),
+      promptProfiles: upsertById(current.promptProfiles, nextProfile),
     }));
-    setNotice({ text: `Profile saved: ${profile.name}`, tone: "info" });
+    setNotice({ text: `Profile saved: ${nextProfile.name}`, tone: "info" });
   }
 
   async function deleteProfile(profile: PromptProfile) {

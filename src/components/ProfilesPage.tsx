@@ -29,9 +29,20 @@ type ProfilesPageProps = {
   onDirtyChange: (dirty: boolean) => void;
 };
 
-type RuleDraft = { appId: string; windowTitlePattern: string; priority: number };
+type RuleDraft = {
+  id?: string;
+  appId: string;
+  windowTitlePattern: string;
+  priority: number;
+  enabled: boolean;
+};
 
-const emptyRuleDraft: RuleDraft = { appId: "", windowTitlePattern: "", priority: 0 };
+const emptyRuleDraft: RuleDraft = {
+  appId: "",
+  windowTitlePattern: "",
+  priority: 0,
+  enabled: true,
+};
 
 function toDraft(profile: PromptProfile): ProfileDraft {
   const { id, name, mode, systemPrompt, userPromptTemplate, targetLanguage, enabled } = profile;
@@ -58,7 +69,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
   const [query, setQuery] = useState("");
   const [ruleDraft, setRuleDraft] = useState(emptyRuleDraft);
   const selected = props.profiles.find((profile) => profile.id === selectedId);
-  const dirty = selected !== undefined && draft !== null && JSON.stringify(toDraft(selected)) !== JSON.stringify(draft);
+  const dirty = draft !== null && (selected === undefined || JSON.stringify(toDraft(selected)) !== JSON.stringify(draft));
   const rules = props.appRules.filter((rule) => rule.profileId === selectedId && !rule.deletedAt);
 
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
@@ -94,6 +105,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
   }
 
   function duplicateProfile(profile: PromptProfile) {
+    if (!discardOrContinue()) return;
     const copy = { ...profile, id: `profile_${crypto.randomUUID()}`, name: `${profile.name} Copy`, updatedAt: new Date().toISOString() };
     props.onSaveProfile(copy);
     setSelectedId(copy.id);
@@ -115,18 +127,36 @@ export function ProfilesPage(props: ProfilesPageProps) {
   }
 
   function saveRule() {
-    if (!draft || !ruleDraft.appId.trim()) return;
+    if (!selected || !ruleDraft.appId.trim()) return;
     props.onSaveRule({
-      id: `rule_${crypto.randomUUID()}`,
+      id: ruleDraft.id ?? `rule_${crypto.randomUUID()}`,
       appId: ruleDraft.appId.trim(),
       windowTitlePattern: ruleDraft.windowTitlePattern.trim() || null,
-      profileId: draft.id,
+      profileId: selected.id,
       priority: ruleDraft.priority,
-      enabled: true,
+      enabled: ruleDraft.enabled,
       updatedAt: new Date().toISOString(),
       deletedAt: null,
     });
     setRuleDraft(emptyRuleDraft);
+  }
+
+  function editRule(rule: AppProfileRule) {
+    setRuleDraft({
+      id: rule.id,
+      appId: rule.appId,
+      windowTitlePattern: rule.windowTitlePattern ?? "",
+      priority: rule.priority,
+      enabled: rule.enabled,
+    });
+  }
+
+  function toggleRule(rule: AppProfileRule) {
+    props.onSaveRule({
+      ...rule,
+      enabled: !rule.enabled,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   const visibleProfiles = props.profiles.filter((profile) => profile.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
@@ -163,13 +193,14 @@ export function ProfilesPage(props: ProfilesPageProps) {
           <section aria-labelledby="app-rules-title">
             <h3 id="app-rules-title">App Rules</h3>
             <section aria-label="Current app preview" className="app-context-preview"><span>{props.foregroundContext?.appId || "No app detected"}</span><span>{props.foregroundContext?.windowTitle || "No window title"}</span></section>
-            <div className="compact-form app-rule-form">
+            {selected ? <><div className="compact-form app-rule-form">
               <label>App id<input onChange={(event) => setRuleDraft((current) => ({ ...current, appId: event.target.value }))} placeholder="chrome.exe" value={ruleDraft.appId} /></label>
               <label>Title contains<input onChange={(event) => setRuleDraft((current) => ({ ...current, windowTitlePattern: event.target.value }))} placeholder="ChatGPT" value={ruleDraft.windowTitlePattern} /></label>
               <label>Priority<input onChange={(event) => setRuleDraft((current) => ({ ...current, priority: Number(event.target.value) }))} type="number" value={ruleDraft.priority} /></label>
               <button disabled={!ruleDraft.appId.trim()} onClick={saveRule} type="button">Save app rule</button>
             </div>
-            <div className="rule-list">{rules.length > 0 ? rules.map((rule) => <article className="rule-item" key={rule.id}><strong>{rule.appId}</strong><span>{rule.windowTitlePattern || "Any title"}</span><small>Priority {rule.priority}</small><button onClick={() => window.confirm(`Delete rule for ${rule.appId}?`) && props.onDeleteRule(rule)} type="button">Delete rule for {rule.appId}</button></article>) : <p className="empty-note">No App Rules for this Profile.</p>}</div>
+            <div className="rule-list">{rules.length > 0 ? rules.map((rule) => <article className="rule-item" key={rule.id}><strong>{rule.appId}</strong><span>{rule.windowTitlePattern || "Any title"}</span><small>Priority {rule.priority}</small><label><span>Enable rule for {rule.appId}</span><input aria-label={`Enable rule for ${rule.appId}`} checked={rule.enabled} onChange={() => toggleRule(rule)} type="checkbox" /></label><button onClick={() => editRule(rule)} type="button">Edit rule for {rule.appId}</button><button onClick={() => window.confirm(`Delete rule for ${rule.appId}?`) && props.onDeleteRule(rule)} type="button">Delete rule for {rule.appId}</button></article>) : <p className="empty-note">No App Rules for this Profile.</p>}</div>
+            </> : <p className="empty-note">Save the Profile before adding automatic switching rules</p>}
           </section>
         </section> : <p>Select or create a Profile.</p>}
       </div>

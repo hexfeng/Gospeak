@@ -46,6 +46,16 @@ const rules: AppProfileRule[] = [
     updatedAt: "2026-07-10T00:00:00.000Z",
     deletedAt: null,
   },
+  {
+    id: "rule_deleted",
+    appId: "legacy.exe",
+    windowTitlePattern: null,
+    profileId: "email",
+    priority: 0,
+    enabled: false,
+    updatedAt: "2026-07-10T00:00:00.000Z",
+    deletedAt: "2026-07-10T01:00:00.000Z",
+  },
 ];
 
 const profileProps = {
@@ -67,6 +77,7 @@ describe("ProfilesPage", () => {
     expect(screen.getByRole("heading", { name: "Email" })).toBeInTheDocument();
     expect(screen.getByText("outlook.exe")).toBeInTheDocument();
     expect(screen.queryByText("code.exe")).not.toBeInTheDocument();
+    expect(screen.queryByText("legacy.exe")).not.toBeInTheDocument();
   });
 
   it("does not offer deletion for the Normal fallback", () => {
@@ -163,5 +174,110 @@ describe("ProfilesPage", () => {
         deletedAt: null,
       }),
     );
+  });
+
+  it("treats a new Profile as dirty before selecting another Profile", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onDirtyChange = vi.fn();
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="normal"
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("heading", { name: "New Profile" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("requires saving a new Profile before adding App Rules", async () => {
+    const user = userEvent.setup();
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
+
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
+
+    expect(
+      screen.getByText("Save the Profile before adding automatic switching rules"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("App id")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Duplicate/i })).not.toBeInTheDocument();
+  });
+
+  it("edits an existing App Rule without changing its id", async () => {
+    const user = userEvent.setup();
+    const onSaveRule = vi.fn();
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="email"
+        onSaveRule={onSaveRule}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit rule for outlook.exe" }));
+    expect(screen.getByLabelText("App id")).toHaveValue("outlook.exe");
+    await user.type(screen.getByLabelText("Title contains"), "Inbox");
+    await user.click(screen.getByRole("button", { name: "Save app rule" }));
+
+    expect(onSaveRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rule_outlook",
+        appId: "outlook.exe",
+        windowTitlePattern: "Inbox",
+        profileId: "email",
+        enabled: true,
+      }),
+    );
+  });
+
+  it("toggles an existing App Rule through the same rule callback", async () => {
+    const user = userEvent.setup();
+    const onSaveRule = vi.fn();
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="email"
+        onSaveRule={onSaveRule}
+      />,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe" }));
+
+    expect(onSaveRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "rule_outlook",
+        enabled: false,
+        deletedAt: null,
+      }),
+    );
+  });
+
+  it("keeps dirty edits when duplicate confirmation is cancelled", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onSaveProfile = vi.fn();
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="email"
+        onSaveProfile={onSaveProfile}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
+    await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(onSaveProfile).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Changed Email" })).toBeInTheDocument();
+    confirm.mockRestore();
   });
 });
