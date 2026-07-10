@@ -30,11 +30,26 @@ describe("SettingsPage", () => {
   it("shows four settings tabs and routes controls to their owner", async () => {
     const user = userEvent.setup();
     const onTabChange = vi.fn();
-    render(<SettingsPage {...settingsProps} onTabChange={onTabChange} />);
+    const { rerender } = render(
+      <SettingsPage {...settingsProps} onTabChange={onTabChange} />,
+    );
 
     expect(screen.getAllByRole("tab")).toHaveLength(4);
     await user.click(screen.getByRole("tab", { name: "Providers" }));
     expect(onTabChange).toHaveBeenCalledWith("providers");
+    rerender(
+      <SettingsPage
+        {...settingsProps}
+        activeTab="providers"
+        onTabChange={onTabChange}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Providers" })).toHaveClass(
+      "settings-tab-active",
+    );
+    expect(screen.getByRole("tab", { name: "Dictation" })).not.toHaveClass(
+      "settings-tab-active",
+    );
   });
 
   it("moves Settings tabs with arrow keys", async () => {

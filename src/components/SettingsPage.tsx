@@ -48,6 +48,9 @@ export function SettingsPage(props: SettingsPageProps) {
           <button
             aria-controls="settings-content"
             aria-selected={props.activeTab === tab.id}
+            className={
+              props.activeTab === tab.id ? "settings-tab-active" : undefined
+            }
             id={`settings-tab-${tab.id}`}
             key={tab.id}
             onClick={() => props.onTabChange(tab.id)}

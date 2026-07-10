@@ -249,6 +249,28 @@ button:disabled {
   min-height: min(510px, calc(100vh - 194px));
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgb(17 24 39 / 8%);
+}
+
+.settings-tabs button {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.settings-tabs button[aria-selected="true"] {
+  background: #191919;
+  color: #ffffff;
+}
+
+.settings-content {
+  min-height: 320px;
+}
+
 .providers-panel,
 .export-panel {
   grid-column: 1 / -1;

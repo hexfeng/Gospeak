@@ -550,6 +550,7 @@ describe("Gospeak Alpha app shell", () => {
   });
 
   it("renders cumulative provider cost totals", async () => {
+    vi.useFakeTimers({ now: new Date("2026-07-10T12:00:00Z") });
     vi.mocked(listUsageEvents).mockResolvedValueOnce([
       {
         id: "usage_1",
@@ -584,14 +585,21 @@ describe("Gospeak Alpha app shell", () => {
         created_at: "2026-07-01T12:01:00Z",
       },
     ]);
-    render(<App />);
+    try {
+      render(<App />);
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
 
-    const costs = (await screen.findByText("This month's cost")).closest("section");
-    expect(costs).not.toBeNull();
-    expect(within(costs!).getByText("STT")).toBeInTheDocument();
-    expect(await within(costs!).findByText("$0.0016")).toBeInTheDocument();
-    expect(within(costs!).getByText("Rewrite")).toBeInTheDocument();
-    expect(within(costs!).getByText("$0.0027")).toBeInTheDocument();
+      const costs = screen.getByText("This month's cost").closest("section");
+      expect(costs).not.toBeNull();
+      expect(within(costs!).getByText("STT")).toBeInTheDocument();
+      expect(within(costs!).getByText("$0.0016")).toBeInTheDocument();
+      expect(within(costs!).getByText("Rewrite")).toBeInTheDocument();
+      expect(within(costs!).getByText("$0.0027")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("publishes visible recorder progress while processing dictation", async () => {

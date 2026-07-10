@@ -38,6 +38,7 @@ The earlier implementer left no test report. Their original RED run cannot be re
 
 - `src/App.tsx`
 - `src/App.test.tsx`
+- `src/App.css`
 - `src/components/SettingsPage.tsx`
 - `src/components/SettingsPage.test.tsx`
 - `.superpowers/sdd/task-3-report.md`
@@ -53,3 +54,32 @@ The earlier implementer left no test report. Their original RED run cannot be re
 ## Concerns
 
 The only evidence gap is historical: the interrupted implementer's original RED run and report were not available. Current behavior is covered by the recovered tests and fresh verification above.
+
+## Review Fixes
+
+### Scoped Settings panel and active tab
+
+- Kept the existing `module-panel` class on the `SettingsPage` outer section.
+- Added the minimal scoped `.settings-tabs` and `.settings-content` layout rules in `src/App.css`.
+- Added current-palette styling for `.settings-tabs button[aria-selected="true"]` and an explicit `settings-tab-active` class for the selected tab.
+- Extended the focused Settings test to rerender the controlled component after the tab callback and verify the selected tab has the active class while Dictation does not.
+
+RED: `npm test -- src/components/SettingsPage.test.tsx` failed 1 test because the selected Providers tab had no `settings-tab-active` class. The first assertion attempt also exposed that the test's callback mock did not update controlled `activeTab`; the test was corrected to rerender with `activeTab="providers"` before the final assertion.
+
+GREEN: `npm test -- src/components/SettingsPage.test.tsx` passed 1 file and 4 tests.
+
+### Monthly cost clock isolation
+
+- Updated the cumulative monthly-cost App test to use `vi.useFakeTimers({ now: new Date("2026-07-10T12:00:00Z") })` and restore with `vi.useRealTimers()` in `finally`.
+- Used `vi.runAllTimersAsync()` before querying the rendered summary so the test remains deterministic under fake timers.
+
+RED: With the same test clock frozen to August 10, 2026, `npm test -- src/App.test.tsx -t "renders cumulative provider cost totals"` failed because the July events were excluded and the rendered STT and Rewrite values were `$0.0000` instead of `$0.0016` and `$0.0027`.
+
+GREEN: With the clock frozen to July 10, 2026, the focused command passed 1 test; the Settings focused command also passed 4 tests.
+
+## Review-Fix Verification
+
+- `npm test`: 10 files, 62 tests passed.
+- `npm run lint`: passed, exit 0.
+- `npm run build`: TypeScript and Vite build passed, exit 0.
+- `git diff --check`: passed with no whitespace errors.
