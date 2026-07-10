@@ -76,7 +76,7 @@
 .nav-item {
   gap: 9px;
   width: 100%;
-  height: 32px;
+  min-height: 40px;
   padding: 0 10px;
   border: 0;
   border-radius: 7px;
@@ -189,6 +189,10 @@ button:disabled {
   opacity: 0.55;
 }
 
+.app-shell button {
+  min-height: 40px;
+}
+
 .primary-action {
   display: inline-flex;
   align-items: center;
@@ -249,9 +253,113 @@ button:disabled {
   min-height: min(510px, calc(100vh - 194px));
 }
 
+.general-page,
+.dictionary-page {
+  padding: 20px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgb(17 24 39 / 6%);
+}
+
+.page-heading,
+.profile-split,
+.summary-grid,
+.settings-tabs,
+.dictionary-row,
+.activity-row {
+  display: grid;
+}
+
+.page-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.page-heading h1,
+.page-heading h2 {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.page-heading h1 {
+  font-size: 23px;
+  line-height: 1.12;
+}
+
+.page-heading h2 {
+  font-size: 16px;
+}
+
+.page-heading p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-item {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 13px;
+  background: #f7f7f5;
+  text-align: left;
+}
+
+.summary-item span,
+.summary-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.summary-item span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.summary-item strong {
+  margin-top: 4px;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.usage-section {
+  margin-top: 18px;
+}
+
+.usage-section h2,
+.general-page > section > h2 {
+  margin: 0 0 10px;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.profile-split {
+  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.profile-split > aside {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.profile-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+}
+
 .settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 16px;
   padding-bottom: 6px;
@@ -270,6 +378,103 @@ button:disabled {
 
 .settings-content {
   min-height: 320px;
+}
+
+.dictionary-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dictionary-row,
+.activity-row {
+  grid-template-columns: minmax(180px, 1.5fr) minmax(160px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 13px;
+  background: #f7f7f5;
+}
+
+.dictionary-row > button {
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.dictionary-row > button span,
+.dictionary-row > button strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.dictionary-row > button span,
+.dictionary-row > span,
+.activity-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dictionary-row > button strong,
+.activity-row strong {
+  color: var(--text-strong);
+}
+
+.row-menu {
+  position: relative;
+}
+
+.row-menu summary {
+  display: grid;
+  width: 40px;
+  min-height: 40px;
+  place-items: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.row-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-menu[open] > button {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+}
+
+dialog {
+  width: min(520px, calc(100vw - 32px));
+  border: 0;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgb(17 24 39 / 24%);
+}
+
+dialog::backdrop {
+  background: rgb(17 24 39 / 28%);
+}
+
+dialog form {
+  display: grid;
+  gap: 12px;
+}
+
+dialog h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+dialog [role="alert"] {
+  margin: 0;
+  color: #b45309;
+  font-size: 12px;
 }
 
 .providers-panel,
@@ -675,6 +880,11 @@ input[type="checkbox"]:checked::before {
   color: #111827;
 }
 
+.privacy-line small {
+  display: block;
+  margin-top: 2px;
+}
+
 .button-row {
   gap: 8px;
   margin-bottom: 12px;
@@ -715,7 +925,16 @@ pre {
   }
 
   .status-grid,
-  .content-grid {
+  .content-grid,
+  .summary-grid,
+  .settings-tabs,
+  .dictionary-row,
+  .activity-row,
+  .page-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-split {
     grid-template-columns: 1fr;
   }
 

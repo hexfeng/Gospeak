@@ -19,9 +19,23 @@ describe("Gospeak responsive layout CSS", () => {
 });
 
 describe("Settings CSS contract", () => {
-  it("wraps settings tabs when the available width is narrow", () => {
+  it("keeps the final primary navigation to stable desktop targets", () => {
+    expect(css).toMatch(/\.nav-item\s*\{[^}]*min-height:\s*40px/s);
+  });
+
+  it("collapses the Profile split layout below the existing breakpoint", () => {
     expect(css).toMatch(
-      /\.settings-tabs\s*{[^}]*flex-wrap:\s*wrap\s*;/s,
+      /@media \(max-width: 980px\)[\s\S]*\.profile-split\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
+  });
+
+  it("gives Settings tabs a bounded non-shifting layout", () => {
+    expect(css).toMatch(
+      /\.settings-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+    );
+  });
+
+  it("keeps Advanced settings labels from running into their status text", () => {
+    expect(css).toMatch(/\.privacy-line small\s*\{[^}]*display:\s*block/s);
   });
 });
