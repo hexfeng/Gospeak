@@ -30,7 +30,13 @@ export function GeneralPage(props: GeneralPageProps) {
   const activeProfile = props.profiles.find(
     (profile) => profile.id === props.config.activeProfileId,
   );
-  const ready = readiness.stt.ready && readiness.rewrite.ready;
+  const hotkeyReady = Boolean(props.config.hotkey.binding.trim());
+  const activeProfileReady = activeProfile?.enabled === true;
+  const ready =
+    readiness.stt.ready &&
+    readiness.rewrite.ready &&
+    hotkeyReady &&
+    activeProfileReady;
 
   return (
     <section className="module-panel general-page" aria-labelledby="general-title">
@@ -55,13 +61,10 @@ export function GeneralPage(props: GeneralPageProps) {
       </strong>
 
       <section className="summary-grid" aria-label="Readiness">
-        <Status label="STT" value={readiness.stt.ready ? "Ready" : readiness.stt.reason} />
-        <Status label="Rewrite" value={readiness.rewrite.ready ? "Ready" : readiness.rewrite.reason} />
-        <Status label="Hotkey" value={`${props.config.hotkey.binding} (${props.config.hotkey.mode})`} />
-        <button aria-label={`Open Profiles for active profile: ${activeProfile?.name ?? "Normal"}`} className="summary-item" onClick={props.onOpenProfiles} type="button">
-          <span>Active Profile</span>
-          <strong>{activeProfile?.name ?? "Normal"}</strong>
-        </button>
+        <Status label="STT" value={readiness.stt.ready ? "Ready" : readiness.stt.reason} onRepair={readiness.stt.ready ? undefined : () => props.onOpenSettings("providers")} repairLabel="Fix STT" />
+        <Status label="Rewrite" value={readiness.rewrite.ready ? "Ready" : readiness.rewrite.reason} onRepair={readiness.rewrite.ready ? undefined : () => props.onOpenSettings("providers")} repairLabel="Fix Rewrite" />
+        <Status label="Hotkey" value={hotkeyReady ? `${props.config.hotkey.binding} (${props.config.hotkey.mode})` : "A hotkey binding is required."} onRepair={hotkeyReady ? undefined : () => props.onOpenSettings("dictation")} repairLabel="Fix Hotkey" />
+        <Status label="Active Profile" value={activeProfileReady ? activeProfile.name : "Choose an enabled Profile."} onRepair={activeProfileReady ? props.onOpenProfiles : () => props.onOpenProfiles()} repairLabel={activeProfileReady ? `Open Profiles for active profile: ${activeProfile.name}` : "Fix Active Profile"} />
       </section>
 
       <section aria-labelledby="current-setup-title" className="usage-section">
@@ -105,8 +108,9 @@ export function GeneralPage(props: GeneralPageProps) {
   );
 }
 
-function Status({ label, value }: { label: string; value: string }) {
-  return <article className="summary-item"><span>{label}</span><strong>{value}</strong></article>;
+function Status({ label, value, onRepair, repairLabel }: { label: string; value: string; onRepair?: () => void; repairLabel?: string }) {
+  const content = <><span>{label}</span><strong>{value}</strong></>;
+  return onRepair ? <button aria-label={repairLabel} className="summary-item" onClick={onRepair} type="button">{content}</button> : <article className="summary-item">{content}</article>;
 }
 
 function UsageSummary({ title, values }: { title: string; values: string[][] }) {

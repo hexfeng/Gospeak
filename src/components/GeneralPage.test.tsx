@@ -41,4 +41,35 @@ describe("GeneralPage", () => {
     );
     expect(onOpenProfiles).toHaveBeenCalledOnce();
   });
+
+  it("marks invalid hotkey and inactive Profile as setup work with direct repairs", async () => {
+    const user = userEvent.setup();
+    const onOpenProfiles = vi.fn();
+    const onOpenSettings = vi.fn();
+    render(
+      <GeneralPage
+        config={{
+          ...DEFAULT_APP_CONFIG,
+          activeProfileId: "missing",
+          hotkey: { ...DEFAULT_APP_CONFIG.hotkey, binding: "   " },
+        }}
+        keyPresence={{ groq: true, openai: true }}
+        profiles={DEFAULT_APP_CONFIG.promptProfiles}
+        usageEvents={[]}
+        isDictationBusy={false}
+        dictationLabel="Start Dictation"
+        diagnostics={null}
+        onStartDictation={vi.fn()}
+        onOpenProfiles={onOpenProfiles}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    expect(screen.getByText("Needs setup")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Fix Hotkey" }));
+    await user.click(screen.getByRole("button", { name: "Fix Active Profile" }));
+
+    expect(onOpenSettings).toHaveBeenCalledWith("dictation");
+    expect(onOpenProfiles).toHaveBeenCalledOnce();
+  });
 });

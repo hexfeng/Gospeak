@@ -88,6 +88,35 @@ describe("ProfilesPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps the normal id undeletable even when its editable mode changes", () => {
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="normal"
+        profiles={profiles.map((profile) =>
+          profile.id === "normal" ? { ...profile, mode: "email" } : profile,
+        )}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Delete Normal" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows enabled, active, and App Rule count for every Profile row", () => {
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
+
+    const normal = screen.getByRole("button", { name: "Normal" });
+    const email = screen.getByRole("button", { name: "Email" });
+    expect(normal).toHaveTextContent("Enabled");
+    expect(normal).toHaveTextContent("Active");
+    expect(normal).toHaveTextContent("1 App Rule");
+    expect(email).toHaveTextContent("Enabled");
+    expect(email).toHaveTextContent("Inactive");
+    expect(email).toHaveTextContent("1 App Rule");
+  });
+
   it("saves a new Profile through the profile callback", async () => {
     const user = userEvent.setup();
     const onSaveProfile = vi.fn();

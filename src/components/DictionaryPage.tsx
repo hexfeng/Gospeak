@@ -4,13 +4,13 @@ import type { DictionaryTerm } from "../domain/config";
 
 type DictionaryPageProps = {
   terms: DictionaryTerm[];
-  onSaveTerm: (term: DictionaryTerm) => void;
+  onSaveTerm: (term: DictionaryTerm) => Promise<void>;
   onDeleteTerm: (term: DictionaryTerm) => void;
   onToggleTerm: (term: DictionaryTerm, enabled: boolean) => void;
 };
 
 type DictionaryDialogState =
-  | { mode: "new"; seed?: DictionaryTerm }
+  | { mode: "new"; seed?: DictionaryTerm; spoken?: string }
   | { mode: "edit"; term: DictionaryTerm }
   | null;
 
@@ -128,6 +128,29 @@ export function DictionaryPage(props: DictionaryPageProps) {
             </details>
           </article>
         ))}
+        {visible.length === 0 ? (
+          <p className="empty-note">
+            {query.trim()
+              ? `No Dictionary terms match "${query.trim()}".`
+              : "No Dictionary terms yet."}
+            <button
+              aria-label={
+                query.trim()
+                  ? `Add "${query.trim()}" to Dictionary`
+                  : "Add first Dictionary term"
+              }
+              onClick={(event) =>
+                openDialog(
+                  { mode: "new", spoken: query.trim() || undefined },
+                  event.currentTarget,
+                )
+              }
+              type="button"
+            >
+              Add term
+            </button>
+          </p>
+        ) : null}
       </div>
       {dialogState ? (
         <DictionaryDialog
@@ -145,14 +168,15 @@ type DictionaryDialogProps = {
   state: Exclude<DictionaryDialogState, null>;
   terms: DictionaryTerm[];
   onClose: () => void;
-  onSave: (term: DictionaryTerm) => void;
+  onSave: (term: DictionaryTerm) => Promise<void>;
 };
 
 function DictionaryDialog(props: DictionaryDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [draft, setDraft] = useState<DictionaryDraft>(() =>
-    toDraft(props.state.mode === "edit" ? props.state.term : props.state.seed),
-  );
+  const [draft, setDraft] = useState<DictionaryDraft>(() => ({
+    ...toDraft(props.state.mode === "edit" ? props.state.term : props.state.seed),
+    spoken: props.state.mode === "new" ? props.state.spoken ?? props.state.seed?.spoken ?? "" : props.state.term.spoken,
+  }));
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -175,7 +199,7 @@ function DictionaryDialog(props: DictionaryDialogProps) {
     props.onClose();
   }
 
-  function saveTerm(event: React.FormEvent<HTMLFormElement>) {
+  async function saveTerm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft.spoken.trim() || !draft.written.trim()) {
       setError("Spoken and written phrases are required.");
@@ -194,17 +218,21 @@ function DictionaryDialog(props: DictionaryDialogProps) {
       return;
     }
 
-    props.onSave({
-      id: currentId ?? `dict_${crypto.randomUUID()}`,
-      spoken: draft.spoken.trim(),
-      written: draft.written.trim(),
-      aliases: splitList(draft.aliases),
-      tags: splitList(draft.tags),
-      enabled:
-        editingTerm?.enabled ?? seedTerm?.enabled ?? true,
-      updatedAt: new Date().toISOString(),
-    });
-    closeDialog();
+    try {
+      await props.onSave({
+        id: currentId ?? `dict_${crypto.randomUUID()}`,
+        spoken: draft.spoken.trim(),
+        written: draft.written.trim(),
+        aliases: splitList(draft.aliases),
+        tags: splitList(draft.tags),
+        enabled:
+          editingTerm?.enabled ?? seedTerm?.enabled ?? true,
+        updatedAt: new Date().toISOString(),
+      });
+      closeDialog();
+    } catch {
+      setError("Couldn't save this Dictionary term. Try again.");
+    }
   }
 
   return (

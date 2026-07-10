@@ -114,6 +114,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
   }
 
   function deleteProfile(profile: PromptProfile) {
+    if (profile.id === "normal") return;
     if (!window.confirm(`Delete ${profile.name}?`)) return;
     props.onDeleteProfile(profile);
     const fallback =
@@ -169,7 +170,12 @@ export function ProfilesPage(props: ProfilesPageProps) {
           <label>Search profiles<input onChange={(event) => setQuery(event.target.value)} value={query} /></label>
           <button onClick={newProfile} type="button">New Profile</button>
           <div className="profile-list">
-            {visibleProfiles.map((profile) => <button aria-label={profile.name} aria-pressed={profile.id === selectedId} className="profile-item" key={profile.id} onClick={() => chooseProfile(profile)} type="button"><strong>{profile.name}</strong><span>{profile.mode}</span></button>)}
+            {visibleProfiles.map((profile) => {
+              const ruleCount = props.appRules.filter(
+                (rule) => rule.profileId === profile.id && !rule.deletedAt,
+              ).length;
+              return <button aria-label={profile.name} aria-pressed={profile.id === selectedId} className="profile-item" key={profile.id} onClick={() => chooseProfile(profile)} type="button"><strong>{profile.name}</strong><span>{profile.mode}</span><small>{profile.enabled ? "Enabled" : "Disabled"} - {profile.id === props.activeProfileId ? "Active" : "Inactive"}</small><small>{ruleCount} App Rule{ruleCount === 1 ? "" : "s"}</small></button>;
+            })}
           </div>
         </aside>
         {draft ? <section aria-labelledby="profile-editor-title">
@@ -188,7 +194,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
             <button disabled={!draft.name.trim() || !draft.systemPrompt.trim()} onClick={saveProfile} type="button">Save Profile</button>
             {selected ? <button onClick={() => props.onSetActive(selected.id)} type="button">Set Active</button> : null}
             {selected ? <button onClick={() => duplicateProfile(selected)} type="button">Duplicate {selected.name}</button> : null}
-            {selected && selected.mode !== "normal" ? <button onClick={() => deleteProfile(selected)} type="button">Delete {selected.name}</button> : null}
+            {selected && selected.id !== "normal" ? <button onClick={() => deleteProfile(selected)} type="button">Delete {selected.name}</button> : null}
           </div>
           <section aria-labelledby="app-rules-title">
             <h3 id="app-rules-title">App Rules</h3>

@@ -28,7 +28,7 @@ const terms = [
 function renderDictionary() {
   const props = {
     terms,
-    onSaveTerm: vi.fn(),
+    onSaveTerm: vi.fn(async () => undefined),
     onDeleteTerm: vi.fn(),
     onToggleTerm: vi.fn(),
   };
@@ -42,7 +42,7 @@ describe("DictionaryPage", () => {
     const close = vi.spyOn(HTMLDialogElement.prototype, "close");
     const props = {
       terms,
-      onSaveTerm: vi.fn(),
+      onSaveTerm: vi.fn(async () => undefined),
       onDeleteTerm: vi.fn(),
       onToggleTerm: vi.fn(),
     };
@@ -99,6 +99,66 @@ describe("DictionaryPage", () => {
       screen.getByText("A term with this spoken phrase already exists."),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("keeps the dialog open with retryable input after persistence rejects", async () => {
+    const user = userEvent.setup();
+    const onSaveTerm = vi.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    render(
+      <DictionaryPage
+        terms={terms}
+        onDeleteTerm={vi.fn()}
+        onSaveTerm={onSaveTerm}
+        onToggleTerm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
+    await user.type(screen.getByLabelText("Spoken phrase"), "gospeak");
+    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
+    await user.click(screen.getByRole("button", { name: "Save term" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't save this Dictionary term. Try again.",
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Spoken phrase")).toHaveValue("gospeak");
+    expect(onSaveTerm).toHaveBeenCalledOnce();
+  });
+
+  it("explains empty and no-match results with a contextual add action", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <DictionaryPage
+        terms={[]}
+        onDeleteTerm={vi.fn()}
+        onSaveTerm={vi.fn(async () => undefined)}
+        onToggleTerm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No Dictionary terms yet.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add first Dictionary term" }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <DictionaryPage
+        terms={terms}
+        onDeleteTerm={vi.fn()}
+        onSaveTerm={vi.fn(async () => undefined)}
+        onToggleTerm={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByRole("searchbox", { name: "Search Dictionary" }), "gospeak");
+
+    expect(screen.getByText('No Dictionary terms match "gospeak".')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: 'Add "gospeak" to Dictionary' }),
+    );
+    expect(screen.getByLabelText("Spoken phrase")).toHaveValue("gospeak");
   });
 
   it("saves comma-separated values and returns focus to the add action", async () => {

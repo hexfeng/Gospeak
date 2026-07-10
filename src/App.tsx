@@ -196,7 +196,7 @@ function App() {
   }
 
   async function deleteProfile(profile: PromptProfile) {
-    if (profile.mode === "normal") return;
+    if (profile.id === "normal") return;
     const deletedAt = new Date().toISOString();
     const associatedRules = appRules.filter(
       (rule) => rule.profileId === profile.id && !rule.deletedAt,
@@ -887,7 +887,7 @@ function App() {
           {activeSection === "dictionary" ? (
             <DictionaryPage
               onDeleteTerm={(term) => void deleteDictionaryTerm(term)}
-              onSaveTerm={(term) => void saveDictionaryTerm(term)}
+              onSaveTerm={saveDictionaryTerm}
               onToggleTerm={(term, enabled) => void toggleDictionaryTerm(term, enabled)}
               terms={dictionaryTerms}
             />
