@@ -10,7 +10,13 @@ describe("GeneralPage", () => {
     const onOpenProfiles = vi.fn();
     render(
       <GeneralPage
-        config={DEFAULT_APP_CONFIG}
+        config={{
+          ...DEFAULT_APP_CONFIG,
+          performance: {
+            ...DEFAULT_APP_CONFIG.performance,
+            speakToEdit: true,
+          },
+        }}
         keyPresence={{ groq: true, openai: true }}
         profiles={DEFAULT_APP_CONFIG.promptProfiles}
         usageEvents={[]}
@@ -23,10 +29,16 @@ describe("GeneralPage", () => {
       />,
     );
 
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getAllByText("Ready")).toHaveLength(3);
+    expect(screen.getByText("Speak to Edit")).toBeInTheDocument();
+    expect(screen.getByText("On")).toBeInTheDocument();
     expect(screen.getByText("Today's usage")).toBeInTheDocument();
     expect(screen.getByText("This month's cost")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Profiles" }));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Open Profiles for active profile: Normal",
+      }),
+    );
     expect(onOpenProfiles).toHaveBeenCalledOnce();
   });
 });

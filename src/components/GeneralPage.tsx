@@ -55,10 +55,10 @@ export function GeneralPage(props: GeneralPageProps) {
       </strong>
 
       <section className="summary-grid" aria-label="Readiness">
-        <Status label="STT" value={readiness.stt.ready ? "Configured" : readiness.stt.reason} />
-        <Status label="Rewrite" value={readiness.rewrite.ready ? "Configured" : readiness.rewrite.reason} />
+        <Status label="STT" value={readiness.stt.ready ? "Ready" : readiness.stt.reason} />
+        <Status label="Rewrite" value={readiness.rewrite.ready ? "Ready" : readiness.rewrite.reason} />
         <Status label="Hotkey" value={`${props.config.hotkey.binding} (${props.config.hotkey.mode})`} />
-        <button aria-label="Open Profiles" className="summary-item" onClick={props.onOpenProfiles} type="button">
+        <button aria-label={`Open Profiles for active profile: ${activeProfile?.name ?? "Normal"}`} className="summary-item" onClick={props.onOpenProfiles} type="button">
           <span>Active Profile</span>
           <strong>{activeProfile?.name ?? "Normal"}</strong>
         </button>
@@ -70,6 +70,7 @@ export function GeneralPage(props: GeneralPageProps) {
           <button className="summary-item" onClick={() => props.onOpenSettings("providers")} type="button"><span>STT model</span><strong>{props.config.providers.stt.model}</strong></button>
           <button className="summary-item" onClick={() => props.onOpenSettings("providers")} type="button"><span>Rewrite model</span><strong>{props.config.providers.rewrite.model}</strong></button>
           <button className="summary-item" onClick={() => props.onOpenSettings("dictation")} type="button"><span>Dictation</span><strong>{props.config.performance.fastMode ? "Fast" : "Standard"}</strong></button>
+          <button className="summary-item" onClick={() => props.onOpenSettings("dictation")} type="button"><span>Speak to Edit</span><strong>{props.config.performance.speakToEdit ? "On" : "Off"}</strong></button>
           <button className="summary-item" onClick={() => props.onOpenSettings("advanced")} type="button"><span>App routing</span><strong>{props.config.appRouting.enabled ? "On" : "Off"}</strong></button>
         </div>
       </section>
