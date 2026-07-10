@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -36,6 +37,32 @@ function renderDictionary() {
 }
 
 describe("DictionaryPage", () => {
+  it("keeps the add dialog open under StrictMode", async () => {
+    const user = userEvent.setup();
+    const close = vi.spyOn(HTMLDialogElement.prototype, "close");
+    const props = {
+      terms,
+      onSaveTerm: vi.fn(),
+      onDeleteTerm: vi.fn(),
+      onToggleTerm: vi.fn(),
+    };
+    render(
+      <StrictMode>
+        <DictionaryPage {...props} />
+      </StrictMode>,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Add Dictionary term" }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Add Dictionary term" }),
+    ).toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    close.mockRestore();
+  });
+
   it("filters terms and opens one add dialog", async () => {
     const user = userEvent.setup();
     renderDictionary();

@@ -157,8 +157,7 @@ function DictionaryDialog(props: DictionaryDialogProps) {
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    dialog?.showModal();
-    return () => dialog?.close();
+    if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
   const editingTerm = props.state.mode === "edit" ? props.state.term : undefined;
