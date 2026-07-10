@@ -735,10 +735,11 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: /Dictionary/i }));
-    await user.type(screen.getByLabelText(/Spoken phrase/i), "gawspeak");
-    await user.type(screen.getByLabelText(/Written phrase/i), "Gospeak");
-    await user.type(screen.getByLabelText(/Dictionary aliases/i), "go speak");
-    await user.click(screen.getByRole("button", { name: /Save dictionary term/i }));
+    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
+    await user.type(screen.getByLabelText("Spoken phrase"), "gawspeak");
+    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
+    await user.type(screen.getByLabelText("Aliases"), "go speak");
+    await user.click(screen.getByRole("button", { name: "Save term" }));
 
     expect(upsertDictionaryTerm).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -6,6 +6,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import "./App.css";
+import { DictionaryPage } from "./components/DictionaryPage";
 import { GeneralPage } from "./components/GeneralPage";
 import { ProfilesPage } from "./components/ProfilesPage";
 import { SettingsPage } from "./components/SettingsPage";
@@ -129,12 +130,6 @@ function App() {
   const [usageEvents, setUsageEvents] = useState<UsageEventRecord[]>([]);
   const [foregroundContext, setForegroundContext] =
     useState<ForegroundAppContext | null>(null);
-  const [dictionaryDraft, setDictionaryDraft] = useState({
-    spoken: "",
-    written: "",
-    aliases: "",
-    tags: "",
-  });
   const [profileDirty, setProfileDirty] = useState(false);
   const [dictation, dispatchDictation] = useReducer(
     dictationReducer,
@@ -238,43 +233,40 @@ function App() {
     }));
   }
 
-  async function saveDictionaryTerm() {
-    if (!dictionaryDraft.spoken.trim() || !dictionaryDraft.written.trim()) {
-      setNotice({
-        text: "Dictionary spoken and written phrases are required.",
-        tone: "error",
-      });
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const id = `dict_${slug(dictionaryDraft.spoken)}`;
-    const aliases = splitList(dictionaryDraft.aliases);
-    const tags = splitList(dictionaryDraft.tags);
-    const term: DictionaryTerm = {
-      id,
-      spoken: dictionaryDraft.spoken.trim(),
-      written: dictionaryDraft.written.trim(),
-      aliases,
-      tags,
-      enabled: true,
-      updatedAt: now,
-    };
+  async function saveDictionaryTerm(term: DictionaryTerm) {
     const record: DictionaryRecord = {
-      id,
+      id: term.id,
       spoken: term.spoken,
       written: term.written,
-      aliases_json: JSON.stringify(aliases),
-      tags_json: JSON.stringify(tags),
-      enabled: true,
-      updated_at: now,
+      aliases_json: JSON.stringify(term.aliases),
+      tags_json: JSON.stringify(term.tags),
+      enabled: term.enabled,
+      updated_at: term.updatedAt,
       deleted_at: null,
     };
 
     await upsertDictionaryTerm(record);
     setDictionaryTerms((current) => upsertById(current, term));
-    setDictionaryDraft({ spoken: "", written: "", aliases: "", tags: "" });
     setNotice({ text: `Dictionary term saved: ${term.written}`, tone: "info" });
+  }
+
+  async function deleteDictionaryTerm(term: DictionaryTerm) {
+    const deletedAt = new Date().toISOString();
+    await upsertDictionaryTerm({
+      id: term.id,
+      spoken: term.spoken,
+      written: term.written,
+      aliases_json: JSON.stringify(term.aliases),
+      tags_json: JSON.stringify(term.tags),
+      enabled: false,
+      updated_at: deletedAt,
+      deleted_at: deletedAt,
+    });
+    setDictionaryTerms((current) => current.filter((item) => item.id !== term.id));
+  }
+
+  async function toggleDictionaryTerm(term: DictionaryTerm, enabled: boolean) {
+    await saveDictionaryTerm({ ...term, enabled, updatedAt: new Date().toISOString() });
   }
 
   async function saveAppRule(rule: AppProfileRule) {
@@ -895,100 +887,17 @@ function App() {
           ) : null}
 
           {activeSection === "dictionary" ? (
-          <section className="panel module-panel" id="dictionary">
-            <PanelHeader
-              icon={<BookMarked size={19} />}
-              title="Personal Dictionary"
-              description="Terms are injected into rewrite prompts and exported as config."
+            <DictionaryPage
+              onDeleteTerm={(term) => void deleteDictionaryTerm(term)}
+              onSaveTerm={(term) => void saveDictionaryTerm(term)}
+              onToggleTerm={(term, enabled) => void toggleDictionaryTerm(term, enabled)}
+              terms={dictionaryTerms}
             />
-            <div className="dictionary-list">
-              <div className="compact-form dictionary-form">
-                <label>
-                  Spoken phrase
-                  <input
-                    value={dictionaryDraft.spoken}
-                    onChange={(event) =>
-                      setDictionaryDraft((current) => ({
-                        ...current,
-                        spoken: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Written phrase
-                  <input
-                    value={dictionaryDraft.written}
-                    onChange={(event) =>
-                      setDictionaryDraft((current) => ({
-                        ...current,
-                        written: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Dictionary aliases
-                  <input
-                    value={dictionaryDraft.aliases}
-                    onChange={(event) =>
-                      setDictionaryDraft((current) => ({
-                        ...current,
-                        aliases: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Dictionary tags
-                  <input
-                    value={dictionaryDraft.tags}
-                    onChange={(event) =>
-                      setDictionaryDraft((current) => ({
-                        ...current,
-                        tags: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <button type="button" onClick={saveDictionaryTerm}>
-                  Save dictionary term
-                </button>
-              </div>
-              {dictionaryTerms.map((term) => (
-                <article className="dict-item" key={term.id}>
-                  <span>{term.spoken}</span>
-                  <strong>{term.written}</strong>
-                  <small>{term.tags.join(", ")}</small>
-                </article>
-              ))}
-            </div>
-          </section>
           ) : null}
 
         </div>
       </section>
     </main>
-  );
-}
-
-function PanelHeader({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <header className="panel-header">
-      <span>{icon}</span>
-      <div>
-        <h2>{title}</h2>
-        <p>{description}</p>
-      </div>
-    </header>
   );
 }
 
@@ -1030,21 +939,6 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </article>
   );
-}
-
-function slug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function splitList(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function upsertById<T extends { id: string }>(items: T[], item: T) {
