@@ -17,6 +17,7 @@ import {
   importConfigFromFile,
   getForegroundAppContext,
   listAppProfileRules,
+  listDictionaryTerms,
   listPreferences,
   listUsageEvents,
   runAudioFileDictation,
@@ -752,6 +753,18 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() =>
       expect(screen.getAllByText("Gospeak").length).toBeGreaterThan(1),
     );
+  });
+
+  it("uses an empty stored Dictionary after loading", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDictionaryTerms).mockResolvedValueOnce([]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Dictionary" }));
+    await waitFor(() => expect(screen.getByText("0 terms")).toBeInTheDocument());
+
+    expect(screen.queryByText("AI Agent Security")).not.toBeInTheDocument();
+    expect(screen.queryByText("runtime monitoring")).not.toBeInTheDocument();
   });
 
   it("exports and imports configuration through file commands", async () => {

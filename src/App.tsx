@@ -636,9 +636,7 @@ function App() {
         const mappedProfiles = storedProfiles.map(profileRecordToProfile);
         setProfiles(mappedProfiles);
       }
-      if (storedDictionary.length > 0) {
-        setDictionaryTerms(storedDictionary.map(dictionaryRecordToTerm));
-      }
+      setDictionaryTerms(storedDictionary.map(dictionaryRecordToTerm));
       setAppRules(storedAppRules);
       const preferences = Object.fromEntries(
         storedPreferences.map((preference) => [preference.key, preference.value]),
