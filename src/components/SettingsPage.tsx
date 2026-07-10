@@ -36,7 +36,7 @@ const tabs: Array<{ id: SettingsTab; label: string }> = [
 
 export function SettingsPage(props: SettingsPageProps) {
   return (
-    <section className="module-panel settings-page" aria-labelledby="settings-title">
+    <section className="panel module-panel settings-page" aria-labelledby="settings-title">
       <header className="page-heading">
         <div>
           <h1 id="settings-title">Settings</h1>

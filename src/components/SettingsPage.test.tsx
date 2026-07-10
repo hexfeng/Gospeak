@@ -35,6 +35,11 @@ describe("SettingsPage", () => {
     );
 
     expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getByRole("region", { name: "Settings" })).toHaveClass(
+      "panel",
+      "module-panel",
+      "settings-page",
+    );
     await user.click(screen.getByRole("tab", { name: "Providers" }));
     expect(onTabChange).toHaveBeenCalledWith("providers");
     rerender(

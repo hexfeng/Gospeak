@@ -34,6 +34,25 @@ The earlier implementer left no test report. Their original RED run cannot be re
 - `npm run build`: TypeScript and Vite build passed, exit 0.
 - `git diff --check`: passed with no whitespace errors.
 
+## Second Review Fix
+
+- Updated the `SettingsPage` outer section to use the existing `panel module-panel settings-page` surface classes.
+- Added `flex-wrap: wrap` to the scoped `.settings-tabs` rule so the four tabs can wrap at narrow widths; final responsive polish remains deferred to Task 6.
+- Added a focused DOM contract for the three panel classes and `src/App.css.test.ts` to read the actual stylesheet and verify the `.settings-tabs` rule contains `flex-wrap: wrap`.
+
+### RED/GREEN Evidence
+
+- RED: `npm test -- src/components/SettingsPage.test.tsx` failed 1 test because the Settings region had `module-panel settings-page` but no `panel` class.
+- RED: `npm test -- src/App.css.test.ts` failed 1 test because `.settings-tabs` had no `flex-wrap: wrap` declaration.
+- GREEN: `npm test -- src/components/SettingsPage.test.tsx src/App.css.test.ts` passed 2 files and 5 tests after the JSX/CSS fixes. The stylesheet contract was adjusted to use a dependency-free dynamic Node import because this repo has no Node typings and Vite's CSS raw imports are empty in this Vitest setup.
+
+### Final Verification
+
+- `npm test`: 10 files, 61 tests passed.
+- `npm run lint`: passed, exit 0.
+- `npm run build`: TypeScript and Vite build passed, exit 0.
+- `git diff --check`: passed with no whitespace errors.
+
 ## Changed Files
 
 - `src/App.tsx`
