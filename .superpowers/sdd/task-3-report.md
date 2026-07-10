@@ -34,6 +34,24 @@ The earlier implementer left no test report. Their original RED run cannot be re
 - `npm run build`: TypeScript and Vite build passed, exit 0.
 - `git diff --check`: passed with no whitespace errors.
 
+## Final Task 3 Review Fix
+
+- Restored the two pre-existing `src/App.css.test.ts` tests exactly from base `b0bf090`: form-control shrinkability and auto-fitting panel form grids.
+- Kept the Settings tab-wrap assertion as a third test in the same file.
+- No production code was changed.
+
+### RED/GREEN Evidence
+
+- RED: Not applicable to this test-only restoration. The recovered pre-fix file contained only the Settings wrap test; no failing behavioral test was fabricated for restoring the two base tests.
+- GREEN: `npm test -- src/App.css.test.ts` passed 1 file and 3 tests, covering both restored base contracts plus the Settings wrap contract.
+
+### Final Verification
+
+- `npm test`: 10 files, 63 tests passed.
+- `npm run lint`: passed, exit 0.
+- `npm run build`: TypeScript and Vite build passed, exit 0.
+- `git diff --check`: passed with no whitespace errors.
+
 ## Second Review Fix
 
 - Updated the `SettingsPage` outer section to use the existing `panel module-panel settings-page` surface classes.
