@@ -1,13 +1,13 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
-  Route,
+  Gauge,
   Settings,
   SlidersHorizontal,
-  Sparkles,
 } from "lucide-react";
 import "./App.css";
 import { GeneralPage } from "./components/GeneralPage";
+import { ProfilesPage } from "./components/ProfilesPage";
 import { SettingsPage } from "./components/SettingsPage";
 import {
   DEFAULT_APP_CONFIG,
@@ -26,7 +26,7 @@ import {
   DICTATION_INITIAL_STATE,
   dictationReducer,
 } from "./domain/dictation";
-import type { SettingsTab } from "./domain/navigation";
+import type { AppSection, SettingsTab } from "./domain/navigation";
 import {
   checkProviderKeys,
   cleanupTempAudioFile,
@@ -83,17 +83,9 @@ const seedDictionaryTerms: DictionaryTerm[] = [
   },
 ];
 
-type AppSection =
-  | "general"
-  | "profiles"
-  | "app-rules"
-  | "dictionary"
-  | "settings";
-
 const navItems = [
-  { id: "general", label: "General", icon: Settings },
+  { id: "general", label: "General", icon: Gauge },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
-  { id: "app-rules", label: "App Rules", icon: Route },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
   { id: "settings", label: "Settings", icon: Settings },
 ] satisfies Array<{ id: AppSection; label: string; icon: typeof Settings }>;
@@ -137,26 +129,13 @@ function App() {
   const [usageEvents, setUsageEvents] = useState<UsageEventRecord[]>([]);
   const [foregroundContext, setForegroundContext] =
     useState<ForegroundAppContext | null>(null);
-  const [profileDraft, setProfileDraft] = useState({
-    name: "",
-    mode: "normal" as PromptProfile["mode"],
-    systemPrompt: "",
-    userPromptTemplate:
-      "Transcript:\n{{transcript}}\n\nDictionary terms:\n{{dictionaryTerms}}",
-    targetLanguage: "",
-  });
   const [dictionaryDraft, setDictionaryDraft] = useState({
     spoken: "",
     written: "",
     aliases: "",
     tags: "",
   });
-  const [appRuleDraft, setAppRuleDraft] = useState({
-    appId: "",
-    windowTitlePattern: "",
-    profileId: DEFAULT_APP_CONFIG.activeProfileId,
-    priority: 0,
-  });
+  const [profileDirty, setProfileDirty] = useState(false);
   const [dictation, dispatchDictation] = useReducer(
     dictationReducer,
     DICTATION_INITIAL_STATE,
@@ -192,36 +171,16 @@ function App() {
     });
   }
 
-  async function saveProfile() {
-    if (!profileDraft.name.trim() || !profileDraft.systemPrompt.trim()) {
-      setNotice({
-        text: "Profile name and system prompt are required.",
-        tone: "error",
-      });
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const id = `profile_${slug(profileDraft.name)}`;
-    const profile: PromptProfile = {
-      id,
-      name: profileDraft.name.trim(),
-      mode: profileDraft.mode,
-      systemPrompt: profileDraft.systemPrompt.trim(),
-      userPromptTemplate: profileDraft.userPromptTemplate,
-      targetLanguage: profileDraft.targetLanguage.trim() || undefined,
-      enabled: true,
-      updatedAt: now,
-    };
+  async function saveProfile(profile: PromptProfile) {
     const record: ProfileRecord = {
-      id,
+      id: profile.id,
       name: profile.name,
       mode: profile.mode,
       system_prompt: profile.systemPrompt,
       user_prompt_template: profile.userPromptTemplate,
       target_language: profile.targetLanguage ?? null,
-      enabled: true,
-      updated_at: now,
+      enabled: profile.enabled,
+      updated_at: profile.updatedAt,
       deleted_at: null,
     };
 
@@ -231,13 +190,45 @@ function App() {
       ...current,
       promptProfiles: upsertById(current.promptProfiles, profile),
     }));
-    setProfileDraft((current) => ({
-      ...current,
-      name: "",
-      systemPrompt: "",
-      targetLanguage: "",
-    }));
     setNotice({ text: `Profile saved: ${profile.name}`, tone: "info" });
+  }
+
+  async function deleteProfile(profile: PromptProfile) {
+    if (profile.mode === "normal") return;
+    const deletedAt = new Date().toISOString();
+    const associatedRules = appRules.filter(
+      (rule) => rule.profileId === profile.id && !rule.deletedAt,
+    );
+
+    if (config.activeProfileId === profile.id) {
+      await changeActiveProfile("normal");
+    }
+    await Promise.all(
+      associatedRules.map((rule) =>
+        upsertAppProfileRule({
+          record: { ...rule, enabled: false, updatedAt: deletedAt, deletedAt },
+        }),
+      ),
+    );
+    await upsertProfile({
+      id: profile.id,
+      name: profile.name,
+      mode: profile.mode,
+      system_prompt: profile.systemPrompt,
+      user_prompt_template: profile.userPromptTemplate,
+      target_language: profile.targetLanguage ?? null,
+      enabled: false,
+      updated_at: deletedAt,
+      deleted_at: deletedAt,
+    });
+    setAppRules((current) =>
+      current.filter((rule) => rule.profileId !== profile.id),
+    );
+    setProfiles((current) => current.filter((item) => item.id !== profile.id));
+    setConfig((current) => ({
+      ...current,
+      promptProfiles: current.promptProfiles.filter((item) => item.id !== profile.id),
+    }));
   }
 
   async function saveDictionaryTerm() {
@@ -279,39 +270,21 @@ function App() {
     setNotice({ text: `Dictionary term saved: ${term.written}`, tone: "info" });
   }
 
-  async function saveAppRule() {
-    const appId = appRuleDraft.appId.trim();
-    const titlePattern = appRuleDraft.windowTitlePattern.trim();
-    if (!appId) {
-      setNotice({ text: "App rule needs an app id.", tone: "error" });
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const profileId = appRuleDraft.profileId || config.activeProfileId;
-    const record: AppProfileRule = {
-      id: `rule_${slug([appId, titlePattern, profileId, now].join("_"))}`,
-      appId,
-      windowTitlePattern: titlePattern || null,
-      profileId,
-      priority: appRuleDraft.priority,
-      enabled: true,
-      updatedAt: now,
-      deletedAt: null,
-    };
-
-    await upsertAppProfileRule({ record });
-    setAppRules((current) => upsertById(current, record));
-    setAppRuleDraft((current) => ({
-      ...current,
-      appId: "",
-      windowTitlePattern: "",
-      priority: 0,
-    }));
+  async function saveAppRule(rule: AppProfileRule) {
+    await upsertAppProfileRule({ record: rule });
+    setAppRules((current) => upsertById(current, rule));
     setNotice({
-      text: `App rule saved for ${appId || titlePattern}.`,
+      text: `App rule saved for ${rule.appId}.`,
       tone: "info",
     });
+  }
+
+  async function deleteAppRule(rule: AppProfileRule) {
+    const deletedAt = new Date().toISOString();
+    await upsertAppProfileRule({
+      record: { ...rule, enabled: false, updatedAt: deletedAt, deletedAt },
+    });
+    setAppRules((current) => current.filter((item) => item.id !== rule.id));
   }
 
   async function exportConfiguration() {
@@ -604,7 +577,7 @@ function App() {
   }, [dictation.message, dictation.status]);
 
   useEffect(() => {
-    if (activeSection !== "app-rules") {
+    if (activeSection !== "profiles") {
       return;
     }
     let disposed = false;
@@ -721,6 +694,18 @@ function App() {
     setNotice({ text: `Active profile changed to ${profileId}.`, tone: "info" });
   }
 
+  function navigate(section: AppSection) {
+    if (
+      activeSection === "profiles" &&
+      section !== "profiles" &&
+      profileDirty &&
+      !window.confirm("Discard unsaved Profile changes?")
+    ) {
+      return;
+    }
+    setActiveSection(section);
+  }
+
   async function changeHotkey(
     next: Partial<AppConfig["hotkey"]>,
   ) {
@@ -806,7 +791,7 @@ function App() {
               aria-current={activeSection === item.id ? "page" : undefined}
               className={activeSection === item.id ? "nav-item active" : "nav-item"}
               key={item.label}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => navigate(item.id)}
               type="button"
             >
               <item.icon size={17} />
@@ -849,10 +834,10 @@ function App() {
                 ) : null
               }
               onStartDictation={() => void handleDictationToggle()}
-              onOpenProfiles={() => setActiveSection("profiles")}
+              onOpenProfiles={() => navigate("profiles")}
               onOpenSettings={(tab) => {
                 setSettingsTab(tab);
-                setActiveSection("settings");
+                navigate("settings");
               }}
             />
           ) : null}
@@ -888,186 +873,18 @@ function App() {
           ) : null}
 
           {activeSection === "profiles" ? (
-          <section className="panel module-panel" id="profiles">
-            <PanelHeader
-              icon={<Sparkles size={19} />}
-              title="Prompt Profiles"
-              description="P0 ships with fixed profile templates before App-aware routing."
+            <ProfilesPage
+              activeProfileId={config.activeProfileId}
+              appRules={appRules}
+              foregroundContext={foregroundContext}
+              onDeleteProfile={(profile) => void deleteProfile(profile)}
+              onDeleteRule={(rule) => void deleteAppRule(rule)}
+              onDirtyChange={setProfileDirty}
+              onSaveProfile={(profile) => void saveProfile(profile)}
+              onSaveRule={(rule) => void saveAppRule(rule)}
+              onSetActive={(profileId) => void changeActiveProfile(profileId)}
+              profiles={profiles}
             />
-            <div className="compact-form">
-              <label>
-                Active profile
-                <select
-                  value={config.activeProfileId}
-                  onChange={(event) => void changeActiveProfile(event.target.value)}
-                >
-                  {profiles
-                    .filter((profile) => profile.enabled)
-                    .map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Profile name
-                <input
-                  value={profileDraft.name}
-                  onChange={(event) =>
-                    setProfileDraft((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Profile mode
-                <select
-                  value={profileDraft.mode}
-                  onChange={(event) =>
-                    setProfileDraft((current) => ({
-                      ...current,
-                      mode: event.target.value as PromptProfile["mode"],
-                    }))
-                  }
-                >
-                  <option value="normal">normal</option>
-                  <option value="email">email</option>
-                  <option value="prompt">prompt</option>
-                  <option value="translate">translate</option>
-                </select>
-              </label>
-              <label className="wide-field">
-                Profile system prompt
-                <textarea
-                  value={profileDraft.systemPrompt}
-                  onChange={(event) =>
-                    setProfileDraft((current) => ({
-                      ...current,
-                      systemPrompt: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <button type="button" onClick={saveProfile}>
-                Save profile
-              </button>
-            </div>
-            <div className="profile-list">
-              {profiles.map((profile) => (
-                <article className="profile-item" key={profile.id}>
-                  <strong>{profile.name}</strong>
-                  <span>{profile.mode}</span>
-                  <p>{profile.systemPrompt}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-          ) : null}
-
-          {activeSection === "app-rules" ? (
-          <section className="panel module-panel" id="app-rules">
-            <PanelHeader
-              icon={<Route size={19} />}
-              title="App Rules"
-              description="Resolve the dictation profile from the foreground app before each request."
-            />
-            <section className="app-context-preview" aria-label="Current app preview">
-              <Metric
-                label="Detected app"
-                value={foregroundContext?.appId || "Unavailable"}
-              />
-              <Metric
-                label="Window title"
-                value={foregroundContext?.windowTitle || "Unavailable"}
-              />
-            </section>
-            <div className="compact-form app-rule-form">
-              <label>
-                App id
-                <input
-                  value={appRuleDraft.appId}
-                  onChange={(event) =>
-                    setAppRuleDraft((current) => ({
-                      ...current,
-                      appId: event.target.value,
-                    }))
-                  }
-                  placeholder="chrome.exe"
-                />
-              </label>
-              <label>
-                Title contains
-                <input
-                  value={appRuleDraft.windowTitlePattern}
-                  onChange={(event) =>
-                    setAppRuleDraft((current) => ({
-                      ...current,
-                      windowTitlePattern: event.target.value,
-                    }))
-                  }
-                  placeholder="ChatGPT"
-                />
-              </label>
-              <label>
-                Rule profile
-                <select
-                  value={appRuleDraft.profileId}
-                  onChange={(event) =>
-                    setAppRuleDraft((current) => ({
-                      ...current,
-                      profileId: event.target.value,
-                    }))
-                  }
-                >
-                  {profiles
-                    .filter((profile) => profile.enabled)
-                    .map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Priority
-                <input
-                  type="number"
-                  value={appRuleDraft.priority}
-                  onChange={(event) =>
-                    setAppRuleDraft((current) => ({
-                      ...current,
-                      priority: Number(event.target.value),
-                    }))
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                onClick={saveAppRule}
-                disabled={!appRuleDraft.appId.trim()}
-              >
-                Save app rule
-              </button>
-            </div>
-            <div className="rule-list">
-              {appRules.length > 0 ? (
-                appRules.map((rule) => (
-                  <article className="rule-item" key={rule.id}>
-                    <strong>{rule.profileId}</strong>
-                    <span>{rule.appId}</span>
-                    <span>{rule.windowTitlePattern || "Any title"}</span>
-                    <span>{rule.enabled ? "Enabled" : "Disabled"}</span>
-                    <small>Priority {rule.priority}</small>
-                  </article>
-                ))
-              ) : (
-                <p className="empty-note">No App Rules saved yet.</p>
-              )}
-            </div>
-          </section>
           ) : null}
 
           {activeSection === "dictionary" ? (

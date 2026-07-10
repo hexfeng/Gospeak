@@ -179,7 +179,7 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
   });
 
-  it("renders the temporary five-item navigation without deferred sync scope", async () => {
+  it("renders the final four-item navigation without standalone App Rules", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -187,7 +187,7 @@ describe("Gospeak Alpha app shell", () => {
       within(screen.getByRole("navigation"))
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["General", "Profiles", "App Rules", "Dictionary", "Settings"]);
+    ).toEqual(["General", "Profiles", "Dictionary", "Settings"]);
     await openSettingsTab(user, "Dictation");
     expect(screen.getByLabelText(/Speak to Edit/i)).toBeInTheDocument();
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
@@ -387,7 +387,7 @@ describe("Gospeak Alpha app shell", () => {
     );
   });
 
-  it("renders App Rules navigation with a rule form and detected app preview", async () => {
+  it("renders App Rules inside the selected Profile with the detected app preview", async () => {
     const user = userEvent.setup();
     vi.mocked(getForegroundAppContext).mockResolvedValueOnce({
       appId: "chrome.exe",
@@ -395,11 +395,9 @@ describe("Gospeak Alpha app shell", () => {
     });
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
 
-    expect(
-      screen.getByRole("heading", { name: /App Rules/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "App Rules" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Enable app-aware routing/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/App id/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Title contains/i)).toBeInTheDocument();
@@ -407,14 +405,13 @@ describe("Gospeak Alpha app shell", () => {
     expect(screen.getByText(/ChatGPT - Chrome/i)).toBeInTheDocument();
   });
 
-  it("saves App Rules through the storage command", async () => {
+  it("saves App Rules through the selected Profile", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
     await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
     await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
     await user.clear(screen.getByLabelText(/Priority/i));
     await user.type(screen.getByLabelText(/Priority/i), "10");
     await user.click(screen.getByRole("button", { name: /Save app rule/i }));
@@ -423,7 +420,7 @@ describe("Gospeak Alpha app shell", () => {
       record: expect.objectContaining({
         appId: "chrome.exe",
         windowTitlePattern: "ChatGPT",
-        profileId: "prompt",
+        profileId: "normal",
         priority: 10,
         enabled: true,
         deletedAt: null,
@@ -432,37 +429,59 @@ describe("Gospeak Alpha app shell", () => {
     expect(await screen.findByText(/App rule saved/i)).toBeInTheDocument();
   });
 
-  it("keeps multiple rules for the same app with different title patterns", async () => {
+  it("keeps Profiles active when dirty navigation is cancelled", async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "normal");
-    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Normal");
+    await user.click(screen.getByRole("button", { name: "General" }));
 
-    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
-    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
-    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
-
-    expect(upsertAppProfileRule).toHaveBeenCalledTimes(2);
-    const ids = vi
-      .mocked(upsertAppProfileRule)
-      .mock.calls.map(([input]) => input.record.id);
-    expect(new Set(ids).size).toBe(2);
-    expect(await screen.findByText("ChatGPT")).toBeInTheDocument();
-    expect(screen.getAllByText("chrome.exe").length).toBeGreaterThanOrEqual(2);
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("heading", { name: "Changed Normal" })).toBeInTheDocument();
+    confirm.mockRestore();
   });
 
-  it("rejects title-only App Rules before saving", async () => {
+  it("soft-deletes an active Profile, its App Rules, and falls back to Normal", async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
+      {
+        id: "rule_outlook_email",
+        appId: "outlook.exe",
+        windowTitlePattern: null,
+        profileId: "email",
+        priority: 0,
+        enabled: true,
+        updatedAt: "2026-07-10T00:00:00.000Z",
+        deletedAt: null,
+      },
+    ]);
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    await user.click(screen.getByRole("button", { name: "Delete Email" }));
 
-    expect(screen.getByRole("button", { name: /Save app rule/i })).toBeDisabled();
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "normal" }),
+      ),
+    );
+    expect(upsertProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "email", enabled: false, deleted_at: expect.any(String) }),
+    );
+    expect(upsertAppProfileRule).toHaveBeenCalledWith({
+      record: expect.objectContaining({
+        id: "rule_outlook_email",
+        enabled: false,
+        deletedAt: expect.any(String),
+      }),
+    });
+    confirm.mockRestore();
   });
 
   it("hydrates backend-style records and routes from camelCase foreground context", async () => {
@@ -487,7 +506,7 @@ describe("Gospeak Alpha app shell", () => {
 
     await openSettingsTab(user, "Advanced");
     await user.click(screen.getByLabelText(/Enable app-aware routing/i));
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
     await screen.findAllByText(/chrome\.exe/i);
     await user.click(screen.getByRole("button", { name: "General" }));
     await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
@@ -516,38 +535,17 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Profiles" }));
-    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
     await user.click(screen.getByRole("button", { name: "General" }));
     await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
     await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
 
-    expect(getForegroundAppContext).not.toHaveBeenCalled();
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ profile_id: "email" }),
     );
   });
 
-  it("displays App Rules enabled state in the rule list", async () => {
-    const user = userEvent.setup();
-    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
-      {
-        id: "rule_chrome_prompt",
-        appId: "chrome.exe",
-        windowTitlePattern: "ChatGPT",
-        profileId: "prompt",
-        priority: 10,
-        enabled: false,
-        updatedAt: "2026-06-30T10:00:00.000Z",
-        deletedAt: null,
-      },
-    ]);
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-
-    const status = await screen.findByText("Disabled");
-    expect(status.closest(".rule-item")).toHaveTextContent(/chrome\.exe/i);
-  });
 
   it("renders cumulative provider cost totals", async () => {
     vi.useFakeTimers({ now: new Date("2026-07-10T12:00:00Z") });
@@ -675,7 +673,9 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
     await user.type(screen.getByLabelText(/Profile name/i), "Meeting Notes");
+    await user.clear(screen.getByLabelText(/Profile system prompt/i));
     await user.type(screen.getByLabelText(/Profile system prompt/i), "Summarize spoken notes.");
     await user.click(screen.getByRole("button", { name: /Save profile/i }));
 
@@ -810,7 +810,8 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Profiles" }));
-    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
     expect(upsertPreference).toHaveBeenCalledWith(
       expect.objectContaining({
         key: "active_profile_id",
@@ -880,15 +881,7 @@ describe("Gospeak Alpha app shell", () => {
       expect(screen.queryByText("Saved")).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Profiles" }));
-      fireEvent.click(screen.getByRole("button", { name: /Save profile/i }));
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Profile name and system prompt are required.",
-      );
-
-      act(() => vi.advanceTimersByTime(4000));
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Profile name and system prompt are required.",
-      );
+      expect(screen.getByRole("button", { name: "Save Profile" })).toBeEnabled();
     } finally {
       vi.useRealTimers();
     }
