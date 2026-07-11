@@ -2,7 +2,6 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
   Gauge,
-  Play,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -94,22 +93,6 @@ const navItems = [
 
 type AppNotice = { text: string; tone: "info" | "error" } | null;
 
-type DictationDiagnostics = {
-  recordingStartMs: number;
-  recordingStopMs: number;
-  pipelineMs: number;
-  sttMs: number;
-  rewriteMs: number | null;
-  pasteMs: number;
-  audioSeconds: number | null;
-  audioBytes: number | null;
-  fastPathUsed: boolean;
-  firstSttDeltaMs: number | null;
-  firstRewriteDeltaMs: number | null;
-  firstInsertMs: number | null;
-  streamingUsed: boolean;
-};
-
 const STREAMING_STT_MODEL = "gpt-realtime-whisper";
 
 function App() {
@@ -136,10 +119,7 @@ function App() {
     dictationReducer,
     DICTATION_INITIAL_STATE,
   );
-  const [isDictationBusy, setIsDictationBusy] = useState(false);
   const [notice, setNotice] = useState<AppNotice>(null);
-  const [lastDiagnostics, setLastDiagnostics] =
-    useState<DictationDiagnostics | null>(null);
 
   useEffect(() => {
     if (notice?.tone !== "info") return;
@@ -328,7 +308,6 @@ function App() {
   }
 
   async function handleDictationToggle() {
-    setIsDictationBusy(true);
     let completedAudioPath: string | null = null;
     let ownsStartingFlag = false;
     try {
@@ -347,13 +326,9 @@ function App() {
             tone: "info",
           });
         }
-        const recordingStartStarted = performance.now();
         const path = await (config.performance.streamingMode
           ? startStreamingRecording
           : startRecording)();
-        recordingStartLatencyRef.current = elapsedPerformanceMs(
-          recordingStartStarted,
-        );
         dictationStatusRef.current = "recording";
         dispatchDictation({ type: "recording-started", audioPath: path });
         setNotice({
@@ -372,9 +347,7 @@ function App() {
         return;
       }
 
-      const recordingStopStarted = performance.now();
       const audioPath = await stopRecording();
-      const recordingStopMs = elapsedPerformanceMs(recordingStopStarted);
       completedAudioPath = audioPath;
       dictationStatusRef.current = "transcribing";
       dispatchDictation({ type: "recording-stopped" });
@@ -413,7 +386,6 @@ function App() {
         skip_rewrite:
           config.performance.fastMode && selectedTextForEditRef.current == null,
       };
-      const pipelineStarted = performance.now();
       let insertedStreaming = false;
       let result: Awaited<ReturnType<typeof runAudioFileDictation>> &
         Partial<Awaited<ReturnType<typeof runStreamingDictation>>>;
@@ -435,7 +407,6 @@ function App() {
       } else {
         result = await runAudioFileDictation(request);
       }
-      const pipelineMs = elapsedPerformanceMs(pipelineStarted);
       if (result.no_speech) {
         dictationStatusRef.current = "idle";
         dispatchDictation({ type: "reset" });
@@ -461,28 +432,9 @@ function App() {
         status: "pasting",
         message: "Pasting…",
       });
-      const pasteStarted = performance.now();
       const completionMessage = insertedStreaming
         ? "Streaming dictation inserted text into the active app."
         : (await copyTextForPaste(result.text)).message;
-      const pasteMs = insertedStreaming
-        ? 0
-        : elapsedPerformanceMs(pasteStarted);
-      setLastDiagnostics({
-        recordingStartMs: recordingStartLatencyRef.current,
-        recordingStopMs,
-        pipelineMs,
-        sttMs: result.stt_latency_ms,
-        rewriteMs: result.rewrite_latency_ms ?? null,
-        pasteMs,
-        audioSeconds: result.audio_seconds ?? null,
-        audioBytes: result.audio_file_bytes ?? null,
-        fastPathUsed: result.fast_path_used === true,
-        firstSttDeltaMs: result.first_stt_delta_ms ?? null,
-        firstRewriteDeltaMs: result.first_rewrite_delta_ms ?? null,
-        firstInsertMs: result.first_insert_ms ?? null,
-        streamingUsed: result.streaming_used === true,
-      });
       dictationStatusRef.current = "done";
       dispatchDictation({
         type: "completed",
@@ -513,7 +465,6 @@ function App() {
           }
         }
       }
-      setIsDictationBusy(false);
     }
   }
 
@@ -525,7 +476,6 @@ function App() {
   const dictationStatusRef = useRef(dictation.status);
   const isStartingRecordingRef = useRef(false);
   const stopAfterStartRef = useRef(false);
-  const recordingStartLatencyRef = useRef(0);
   const selectedTextForEditRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -817,16 +767,6 @@ function App() {
           </p>
         ) : null}
 
-        <button
-          className="primary-action"
-          disabled={isDictationBusy}
-          onClick={() => void handleDictationToggle()}
-          type="button"
-        >
-          <Play size={16} />
-          {dictationButtonLabel(config, dictation.status)}
-        </button>
-
         <div className="module-stage">
           {activeSection === "general" ? (
             <GeneralPage
@@ -897,49 +837,8 @@ function App() {
           ) : null}
 
         </div>
-        {lastDiagnostics ? <LatencyDiagnostics diagnostics={lastDiagnostics} /> : null}
       </section>
     </main>
-  );
-}
-
-function LatencyDiagnostics({
-  diagnostics,
-}: {
-  diagnostics: DictationDiagnostics;
-}) {
-  const rewriteValue = diagnostics.fastPathUsed
-    ? "Skipped"
-    : formatMs(diagnostics.rewriteMs);
-  return (
-    <section className="latency-panel" aria-label="Last dictation diagnostics">
-      <h3>Last dictation diagnostics</h3>
-      <div className="latency-grid">
-        <Metric label="Start" value={formatMs(diagnostics.recordingStartMs)} />
-        <Metric label="Stop" value={formatMs(diagnostics.recordingStopMs)} />
-        <Metric label="STT" value={formatMs(diagnostics.sttMs)} />
-        <Metric label="Rewrite" value={rewriteValue} />
-        <Metric label="First STT" value={formatMs(diagnostics.firstSttDeltaMs)} />
-        <Metric
-          label="First rewrite"
-          value={formatMs(diagnostics.firstRewriteDeltaMs)}
-        />
-        <Metric label="First insert" value={formatMs(diagnostics.firstInsertMs)} />
-        <Metric label="Pipeline" value={formatMs(diagnostics.pipelineMs)} />
-        <Metric label="Paste" value={formatMs(diagnostics.pasteMs)} />
-        <Metric label="Audio" value={formatSeconds(diagnostics.audioSeconds)} />
-        <Metric label="File" value={formatBytes(diagnostics.audioBytes)} />
-      </div>
-    </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="metric-chip">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
   );
 }
 
@@ -1021,39 +920,6 @@ function applyStoredPreferences(
     activeProfileId:
       preferences.active_profile_id ?? config.activeProfileId,
   };
-}
-
-function elapsedPerformanceMs(started: number) {
-  return Math.max(0, Math.round(performance.now() - started));
-}
-
-function formatMs(value: number | null | undefined) {
-  return value == null ? "N/A" : `${Math.round(value)} ms`;
-}
-
-function formatSeconds(value: number | null | undefined) {
-  return value == null ? "N/A" : `${Number(value.toFixed(1))} s`;
-}
-
-function formatBytes(value: number | null | undefined) {
-  if (value == null) {
-    return "N/A";
-  }
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  return `${(value / 1024).toFixed(1)} KB`;
-}
-
-function dictationButtonLabel(config: AppConfig, status: string): string {
-  if (status === "recording") {
-    return config.performance.speakToEdit
-      ? "Stop Speak to Edit"
-      : "Stop Dictation";
-  }
-  return config.performance.speakToEdit
-    ? "Start Speak to Edit"
-    : "Start Dictation";
 }
 
 export default App;
