@@ -297,32 +297,50 @@ button:disabled {
 
 .general-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #ffffff;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .general-metric {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
   min-width: 0;
-  padding: 22px;
+  min-height: 102px;
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgb(17 24 39 / 5%);
 }
 
-.general-metric + .general-metric {
-  border-left: 1px solid var(--border);
+.general-metric-icon,
+.general-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  background: #f1f1ef;
 }
 
-.general-metric span,
+.general-metric-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+}
+
+.general-metric-copy,
 .general-metric strong {
   display: block;
   overflow-wrap: anywhere;
 }
 
-.general-metric span,
-.general-status-card span {
+.general-metric-copy > span,
+.general-status-description {
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.35;
 }
 
 .general-metric strong {
@@ -335,19 +353,35 @@ button:disabled {
 .general-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 14px;
+  margin-top: 18px;
 }
 
 .general-status-card {
+  position: relative;
   min-width: 0;
-  min-height: 112px;
-  padding: 18px;
+  min-height: 156px;
+  padding: 20px;
   border: 1px solid;
   border-radius: 12px;
   background: #ffffff;
   text-align: left;
   transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.general-status-icon {
+  width: 42px;
+  height: 42px;
+  margin-bottom: 16px;
+  border-radius: 9px;
+}
+
+.general-status-chart {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  color: #9ca3af;
 }
 
 .general-status-card.is-ready {
@@ -358,13 +392,30 @@ button:disabled {
   border-color: #a85c55;
 }
 
-.general-status-card strong {
+.general-status-title,
+.general-status-value {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.general-status-title {
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.general-status-description {
   display: block;
   margin-top: 8px;
+  padding-right: 8px;
+}
+
+.general-status-value {
+  margin-top: 18px;
   color: var(--text-strong);
   font-size: 15px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .general-status-card:hover:not(:disabled) {
@@ -1088,15 +1139,6 @@ pre {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .general-metric:nth-child(3) {
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-
-  .general-metric:nth-child(4) {
-    border-top: 1px solid var(--border);
-  }
-
   .general-status-grid {
     grid-template-columns: 1fr;
   }
@@ -1136,11 +1178,6 @@ pre {
 
   .general-metrics {
     grid-template-columns: 1fr;
-  }
-
-  .general-metric + .general-metric {
-    border-top: 1px solid var(--border);
-    border-left: 0;
   }
 }
 

@@ -1,4 +1,15 @@
 import {
+  Activity,
+  Cloud,
+  Clock3,
+  DollarSign,
+  FileText,
+  Mic,
+  UserRound,
+  WandSparkles,
+  type LucideIcon,
+} from "lucide-react";
+import {
   getProviderReadiness,
   type ApiKeyPresence,
   type AppConfig,
@@ -47,26 +58,36 @@ export function GeneralPage({
       </header>
 
       <section className="general-metrics" aria-label="All-time usage">
-        <Metric label="Total dictation time" value={formatDuration(usage.totalAudioSeconds)} />
-        <Metric label="Total characters" value={usage.totalCharacterCount.toLocaleString()} />
-        <Metric label="Usage mode" value={readiness.stt.ready ? "Cloud" : "Not Set"} />
-        <Metric label="Total cost" value={formatCost(usage.totalCost)} />
+        <Metric
+          icon={Clock3}
+          label="Total dictation time"
+          value={formatDuration(usage.totalAudioSeconds)}
+        />
+        <Metric icon={FileText} label="Total characters" value={usage.totalCharacterCount.toLocaleString()} />
+        <Metric icon={Cloud} label="Usage mode" value={readiness.stt.ready ? "Cloud" : "Not Set"} />
+        <Metric icon={DollarSign} label="Total cost" value={formatCost(usage.totalCost)} />
       </section>
 
       <section className="general-status-grid" aria-label="Configuration status">
         <StatusCard
-          label="ASR"
+          description="Speech recognition provider used before rewrite."
+          icon={Mic}
+          label="Speech-to-text model - ASR"
           value={readiness.stt.ready ? config.providers.stt.model : "Not Set"}
           ready={readiness.stt.ready}
           onClick={() => onOpenSettings("providers")}
         />
         <StatusCard
-          label="Rewrite"
+          description="Writing model that cleans up the recognized text."
+          icon={WandSparkles}
+          label="Rewrite model"
           value={readiness.rewrite.ready ? config.providers.rewrite.model : "Not Set"}
           ready={readiness.rewrite.ready}
           onClick={() => onOpenSettings("providers")}
         />
         <StatusCard
+          description="Current writing behavior used for new dictation."
+          icon={UserRound}
           label="Active Profile"
           value={activeProfileReady ? activeProfile.name : "Not Set"}
           ready={activeProfileReady}
@@ -77,21 +98,30 @@ export function GeneralPage({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <article className="general-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <span className="general-metric-icon" aria-hidden="true">
+        <Icon size={22} strokeWidth={1.9} />
+      </span>
+      <span className="general-metric-copy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </span>
     </article>
   );
 }
 
 function StatusCard({
+  description,
+  icon: Icon,
   label,
   value,
   ready,
   onClick,
 }: {
+  description: string;
+  icon: LucideIcon;
   label: string;
   value: string;
   ready: boolean;
@@ -99,12 +129,20 @@ function StatusCard({
 }) {
   return (
     <button
+      aria-label={`${label}: ${value}`}
       className={`general-status-card ${ready ? "is-ready" : "is-not-ready"}`}
       onClick={onClick}
       type="button"
     >
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <span className="general-status-chart" aria-hidden="true">
+        <Activity size={18} strokeWidth={1.8} />
+      </span>
+      <span className="general-status-icon" aria-hidden="true">
+        <Icon size={22} strokeWidth={1.9} />
+      </span>
+      <strong className="general-status-title">{label}</strong>
+      <span className="general-status-description">{description}</span>
+      <span className="general-status-value">{value}</span>
     </button>
   );
 }

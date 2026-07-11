@@ -31,11 +31,17 @@ describe("GeneralPage", () => {
     expect(screen.getByText("Usage mode")).toBeInTheDocument();
     expect(screen.getByText("Total cost")).toBeInTheDocument();
     expect(screen.getByText("Cloud")).toBeInTheDocument();
+    expect(screen.getByText("Speech-to-text model - ASR")).toBeInTheDocument();
+    expect(screen.getByText("Speech recognition provider used before rewrite.")).toBeInTheDocument();
+    expect(screen.getByText("Rewrite model")).toBeInTheDocument();
+    expect(screen.getByText("Writing model that cleans up the recognized text.")).toBeInTheDocument();
+    expect(screen.getByText("Active Profile")).toBeInTheDocument();
+    expect(screen.getByText("Current writing behavior used for new dictation.")).toBeInTheDocument();
     expect(screen.queryByText("Recent activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /ASR/i }));
-    await user.click(screen.getByRole("button", { name: /Rewrite/i }));
+    await user.click(screen.getByRole("button", { name: /Speech-to-text model - ASR/i }));
+    await user.click(screen.getByRole("button", { name: /Rewrite model/i }));
     await user.click(screen.getByRole("button", { name: /Active Profile/i }));
 
     expect(onOpenSettings).toHaveBeenNthCalledWith(1, "providers");
@@ -57,10 +63,10 @@ describe("GeneralPage", () => {
 
     expect(container.querySelectorAll(".general-status-card.is-not-ready")).toHaveLength(3);
     expect(
-      Array.from(container.querySelectorAll(".general-status-card strong")),
+      Array.from(container.querySelectorAll(".general-status-value")),
     ).toHaveLength(3);
     expect(
-      Array.from(container.querySelectorAll(".general-status-card strong")).map(
+      Array.from(container.querySelectorAll(".general-status-value")).map(
         (element) => element.textContent,
       ),
     ).toEqual(["Not Set", "Not Set", "Not Set"]);

@@ -2,54 +2,49 @@
 
 ## Evidence
 
-- Source visual truth: `C:\Users\PC\AppData\Local\Temp\codex-clipboard-caa71441-1dee-4dcc-852d-2c3a23b55084.png`.
-- Implementation capture: `artifacts/gospeak-home.png` (recaptured after review fixes).
-- Full-view comparison: `C:\Users\PC\AppData\Local\Temp\gospeak-general-design-comparison.png`, reviewed at normalized 720px height after review fixes.
-- Focused region comparison: not needed; the header, metric surface, and setup cards are readable in the full-view comparison.
+- Source visual truth: `C:\Users\PC\AppData\Local\Temp\codex-clipboard-19837cfc-a404-49f2-8bb8-785ab86ca1eb.png`.
+- Implementation screenshot: `artifacts/gospeak-home-refined.png`.
+- Full-view comparison: `artifacts/general-design-qa-comparison.png`.
+- Viewport: `1154x770`.
+- State: General page, ASR Not Set, Rewrite Not Set, Active Profile Normal.
+- Focused region comparison: not needed; the header, 2x2 metric grid, and three setup cards are readable in the full-view comparison.
 
-## Viewport And Interaction Checks
+## Browser Checks
 
-- `1280x720`, browser-preview ready/missing setup state: ASR and Rewrite render the darker muted-red border; Active Profile renders the darker green border. The General page is transparent with no radius or shadow. No horizontal overflow and no console errors.
-- `900x720`: metrics render in two columns with no horizontal overflow.
-- `390x844`: metrics render in one column, setup cards remain single-column, and no horizontal overflow occurs.
-- ASR and Rewrite navigate to Settings with the Providers tab selected. Active Profile navigates to Profiles.
-- Focus: the in-app Browser confirmed the status-card focus rule as `rgb(37, 99, 235) solid 3px`; hover background, transform, and reduced-motion rules are covered by `src/App.css.test.ts`.
+- Local URL: `http://127.0.0.1:5174/`.
+- In-app browser DOM check: heading `Gospeak`, 4 `.general-metric` cards, 3 `.general-status-card` buttons.
+- Playwright screenshot check: no horizontal overflow at `1154x770`.
+- Primary interactions covered by tests: ASR and Rewrite status cards route to Providers, Active Profile routes to Profiles.
+- Console errors: no runtime error surfaced during page load or DOM inspection.
 
 ## Comparison History
 
-**Findings**
-- [P0] Stale preview server omitted the new General dashboard styles.
-  Evidence: the initial `127.0.0.1:5174` capture showed unstyled metrics and status buttons.
-  Fix: replaced the stale Vite preview process with the worktree Vite dev server, then re-captured the ready/missing state.
-  Post-fix evidence: `artifacts/gospeak-home.png` shows the four-part metric surface, semantic setup borders, and three dashboard cards.
+**Current Iteration**
+- Changed the metric surface from one combined four-cell card to four separate cards in a fixed 2x2 desktop grid.
+- Added existing `lucide-react` icons to each metric card and status card.
+- Increased the three setup/status cards to `156px` minimum height, added bold main titles, descriptions, visible values, and a small top-right activity icon.
+- Added explicit accessible labels to status-card buttons so ASR and Rewrite are uniquely targetable.
 
-**Resolved Differences**
-- P1: none.
-- P2: none.
-- The SayIt visual's content, icons, and two-by-two metric card arrangement are intentionally adapted to the approved Gospeak sidebar, tokens, four-metric separator surface, and no-custom-SVG constraint.
+**Resolved Prior Findings**
+- State borders remain accessible: ready `#3f7f5c`, missing `#a85c55`.
+- Focus outline remains opaque `#2563eb` at `3px`.
+- General page remains a flat transparent page surface, with cards only for actual repeated items.
+- Status-card hover keeps the white surface, slight lift, and shadow.
 
-**Review Fixes**
-- [P1] State borders were too light against white.
-  Fix: changed the ready border to `#3f7f5c` and the missing border to `#a85c55`; each is approximately `4.8:1` against white.
-  Post-fix evidence: browser computed `rgb(63, 127, 92)` and `rgb(168, 92, 85)` border colors.
-- [P1] Status-card focus outline was low-alpha.
-  Fix: changed the status-card outline to opaque `#2563eb` at `3px`.
-  Post-fix evidence: browser CSSOM reports `rgb(37, 99, 235) solid 3px`.
-- [P1] General page added an unnecessary floating-card layer.
-  Fix: limited the existing card rule to Dictionary and made General transparent with `border-radius: 0` and `box-shadow: none`.
-  Post-fix evidence: browser computed `rgba(0, 0, 0, 0)`, `0px`, and `none`.
-- [P1] Global button hover could override the status-card surface.
-  Fix: added `.general-status-card:hover:not(:disabled)` with an explicit white background, transform, and shadow.
-  Post-fix evidence: CSS contract coverage in `src/App.css.test.ts`.
+## Required Fidelity Surfaces
 
-**Required Fidelity Surfaces**
-- Typography: existing Inter/system Gospeak stack, compact hierarchy, and wrapping remain intact.
-- Spacing and layout rhythm: 28px page/header spacing, 12px status gaps, and responsive grid tracks are stable.
-- Colors and tokens: existing neutral Gospeak tokens are retained; `#3f7f5c` and `#a85c55` provide accessible semantic setup borders, and `#2563eb` provides the opaque focus outline.
-- Image quality and assets: existing Gospeak brand asset is unchanged; no replacement imagery or generated asset is introduced.
-- Copy and content: existing Gospeak dashboard labels and navigation remain intact.
+- Typography: current Gospeak system font, compact hierarchy, bold status titles, and readable smaller descriptions match the requested minimal style.
+- Spacing and layout rhythm: metric cards use the reference-like 2x2 rhythm; status cards are taller and evenly spaced.
+- Colors and tokens: neutral white/gray card language matches the source direction while preserving Gospeak semantic green/red status borders.
+- Image quality and assets: no raster assets were needed; icons use the already-installed icon library.
+- Copy and content: General page content stays unchanged in meaning: total time, characters, usage mode, total cost, ASR, Rewrite, and Active Profile.
 
-**Follow-up Polish**
+## Findings
+
+- No actionable P0/P1/P2 findings.
+
+## Follow-up Polish
+
 - P3: none.
 
 final result: passed

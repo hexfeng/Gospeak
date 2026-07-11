@@ -57,7 +57,13 @@ describe("Settings CSS contract", () => {
 describe("General dashboard CSS contract", () => {
   it("uses the approved responsive metric and setup-status layout", () => {
     expect(css).toMatch(
-      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    expect(css).toMatch(
+      /\.general-metric\s*\{[^}]*grid-template-columns:\s*48px minmax\(0, 1fr\)/s,
+    );
+    expect(css).toMatch(
+      /\.general-status-card\s*\{[^}]*min-height:\s*156px/s,
     );
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
@@ -69,6 +75,9 @@ describe("General dashboard CSS contract", () => {
     );
     expect(css).toMatch(
       /@media \(max-width: 980px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 560px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
   });
 
