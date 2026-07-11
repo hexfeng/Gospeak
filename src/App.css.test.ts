@@ -53,3 +53,22 @@ describe("Settings CSS contract", () => {
     expect(css).toMatch(/\.profiles-page details > summary\s*\{[^}]*min-height:\s*40px/s);
   });
 });
+
+describe("General dashboard CSS contract", () => {
+  it("uses the approved responsive metric and setup-status layout", () => {
+    expect(css).toMatch(
+      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+    );
+    expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
+    expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
+    expect(css).toMatch(
+      /\.general-status-card:hover[^{]*\{[^}]*transform:\s*translateY\(-2px\)/s,
+    );
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.general-status-card/s,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 980px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+    );
+  });
+});
