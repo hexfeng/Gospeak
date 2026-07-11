@@ -55,6 +55,12 @@ describe("Settings CSS contract", () => {
 });
 
 describe("General dashboard CSS contract", () => {
+  it("renders shortcut keys as separate framed keys with an unframed separator", () => {
+    expect(css).toMatch(/\.hotkey-combo,\s*\.hotkey-part\s*\{[^}]*display:\s*inline-flex/s);
+    expect(css).toMatch(/\.hotkey-separator\s*\{[^}]*color:\s*var\(--text-muted\)/s);
+    expect(css).toMatch(/\.general-header kbd\s*\{[^}]*border:\s*1px solid var\(--border\)/s);
+  });
+
   it("uses the approved responsive metric and setup-status layout", () => {
     expect(css).toMatch(
       /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,

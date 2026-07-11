@@ -49,7 +49,7 @@ export function GeneralPage({
         <p>
           {hotkeyReady ? (
             <>
-              Press <kbd>{config.hotkey.binding}</kbd> to start dictating.
+              Press <Hotkey binding={config.hotkey.binding} /> to start dictating.
             </>
           ) : (
             "Set a shortcut to start dictating."
@@ -95,6 +95,20 @@ export function GeneralPage({
         />
       </section>
     </section>
+  );
+}
+
+function Hotkey({ binding }: { binding: string }) {
+  const parts = binding.split("+").map((part) => part.trim()).filter(Boolean);
+  return (
+    <span className="hotkey-combo" aria-label={binding}>
+      {parts.map((part, index) => (
+        <span className="hotkey-part" key={`${part}-${index}`}>
+          {index > 0 ? <span className="hotkey-separator" aria-hidden="true">+</span> : null}
+          <kbd className="hotkey-key">{part}</kbd>
+        </span>
+      ))}
+    </span>
   );
 }
 

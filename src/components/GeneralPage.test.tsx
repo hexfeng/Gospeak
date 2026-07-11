@@ -9,7 +9,7 @@ describe("GeneralPage", () => {
     const user = userEvent.setup();
     const onOpenProfiles = vi.fn();
     const onOpenSettings = vi.fn();
-    render(
+    const { container } = render(
       <GeneralPage
         config={DEFAULT_APP_CONFIG}
         keyPresence={{ groq: true, openai: true }}
@@ -26,6 +26,10 @@ describe("GeneralPage", () => {
         (_, element) => element?.textContent === "Press Alt+Space to start dictating.",
       ),
     ).toBeInTheDocument();
+    expect(
+      Array.from(container.querySelectorAll(".hotkey-key")).map((element) => element.textContent),
+    ).toEqual(["Alt", "Space"]);
+    expect(container.querySelector(".hotkey-separator")?.textContent).toBe("+");
     expect(screen.getByText("Total dictation time")).toBeInTheDocument();
     expect(screen.getByText("Total characters")).toBeInTheDocument();
     expect(screen.getByText("Usage mode")).toBeInTheDocument();
