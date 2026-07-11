@@ -49,7 +49,7 @@ git diff --check
 
 ## Commit
 
-Pending implementation commit.
+`ae0d805a0b05acf98597fbc05a95e070ff723aa` (`feat: aggregate all-time General usage`)
 
 ## Concerns
 
