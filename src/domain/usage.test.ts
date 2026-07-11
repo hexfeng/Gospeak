@@ -85,6 +85,35 @@ describe("summarizeUsage", () => {
     });
   });
 
+  it("treats omitted and null legacy usage fields as zero", () => {
+    const omittedOutputCount = event("legacy-omitted", "2026-07-10T09:00:00.000Z", {
+      audio_seconds: null,
+      stt_estimated_cost: null,
+      rewrite_estimated_cost: null,
+    });
+    delete omittedOutputCount.output_character_count;
+    const nullFields = event("legacy-null", "2026-07-10T10:00:00.000Z", {
+      audio_seconds: null,
+      output_character_count: null,
+      stt_estimated_cost: null,
+      rewrite_estimated_cost: null,
+    });
+
+    expect(
+      summarizeUsage(
+        [omittedOutputCount, nullFields],
+        new Date(2026, 6, 10, 12),
+      ),
+    ).toMatchObject({
+      todayAudioSeconds: 0,
+      monthSttCost: 0,
+      monthTotalCost: 0,
+      totalAudioSeconds: 0,
+      totalCharacterCount: 0,
+      totalCost: 0,
+    });
+  });
+
   it("returns null average latency when today has no events", () => {
     const events = [event("old", "2026-06-30T12:00:00.000Z")];
     expect(summarizeUsage(events, new Date(2026, 6, 10))).toMatchObject({
