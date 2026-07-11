@@ -173,11 +173,13 @@ type DictionaryDialogProps = {
 
 function DictionaryDialog(props: DictionaryDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const savingRef = useRef(false);
   const [draft, setDraft] = useState<DictionaryDraft>(() => ({
     ...toDraft(props.state.mode === "edit" ? props.state.term : props.state.seed),
     spoken: props.state.mode === "new" ? props.state.spoken ?? props.state.seed?.spoken ?? "" : props.state.term.spoken,
   }));
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -201,6 +203,7 @@ function DictionaryDialog(props: DictionaryDialogProps) {
 
   async function saveTerm(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savingRef.current) return;
     if (!draft.spoken.trim() || !draft.written.trim()) {
       setError("Spoken and written phrases are required.");
       return;
@@ -218,6 +221,8 @@ function DictionaryDialog(props: DictionaryDialogProps) {
       return;
     }
 
+    savingRef.current = true;
+    setIsSaving(true);
     try {
       await props.onSave({
         id: currentId ?? `dict_${crypto.randomUUID()}`,
@@ -232,6 +237,9 @@ function DictionaryDialog(props: DictionaryDialogProps) {
       closeDialog();
     } catch {
       setError("Couldn't save this Dictionary term. Try again.");
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
     }
   }
 
@@ -270,7 +278,7 @@ function DictionaryDialog(props: DictionaryDialogProps) {
         </label>
         {error ? <p role="alert">{error}</p> : null}
         <div className="button-row">
-          <button type="submit">Save term</button>
+          <button disabled={isSaving} type="submit">Save term</button>
           <button onClick={closeDialog} type="button">Cancel</button>
         </div>
       </form>

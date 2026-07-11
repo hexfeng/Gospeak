@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DictionaryPage } from "./DictionaryPage";
@@ -103,9 +103,10 @@ describe("DictionaryPage", () => {
 
   it("keeps the dialog open with retryable input after persistence rejects", async () => {
     const user = userEvent.setup();
-    const onSaveTerm = vi.fn(async () => {
-      throw new Error("database unavailable");
-    });
+    const onSaveTerm = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockResolvedValueOnce(undefined);
     render(
       <DictionaryPage
         terms={terms}
@@ -126,6 +127,43 @@ describe("DictionaryPage", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText("Spoken phrase")).toHaveValue("gospeak");
     expect(onSaveTerm).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole("button", { name: "Save term" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(onSaveTerm).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks same-tick duplicate saves while persistence is pending", async () => {
+    const user = userEvent.setup();
+    let resolveSave: () => void;
+    const pendingSave = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    const onSaveTerm = vi.fn(() => pendingSave);
+    render(
+      <DictionaryPage
+        terms={terms}
+        onDeleteTerm={vi.fn()}
+        onSaveTerm={onSaveTerm}
+        onToggleTerm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
+    await user.type(screen.getByLabelText("Spoken phrase"), "gospeak");
+    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
+
+    const saveButton = screen.getByRole("button", { name: "Save term" });
+    const form = saveButton.closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+    fireEvent.submit(form!);
+
+    expect(onSaveTerm).toHaveBeenCalledOnce();
+    expect(saveButton).toBeDisabled();
+
+    resolveSave!();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("explains empty and no-match results with a contextual add action", async () => {
