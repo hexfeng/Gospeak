@@ -8,6 +8,9 @@ export type UsageSummary = {
   monthSttCost: number;
   monthRewriteCost: number;
   monthTotalCost: number;
+  totalAudioSeconds: number;
+  totalCharacterCount: number;
+  totalCost: number;
 };
 
 export function summarizeUsage(
@@ -26,9 +29,16 @@ export function summarizeUsage(
   let todayFallbackCount = 0;
   let monthSttCost = 0;
   let monthRewriteCost = 0;
+  let totalAudioSeconds = 0;
+  let totalCharacterCount = 0;
+  let totalCost = 0;
 
   for (const event of events) {
     const createdAt = new Date(event.created_at).getTime();
+    totalAudioSeconds += event.audio_seconds ?? 0;
+    totalCharacterCount += event.output_character_count ?? 0;
+    totalCost +=
+      (event.stt_estimated_cost ?? 0) + (event.rewrite_estimated_cost ?? 0);
     if (createdAt >= monthStart && createdAt <= now.getTime()) {
       monthSttCost += event.stt_estimated_cost ?? 0;
       monthRewriteCost += event.rewrite_estimated_cost ?? 0;
@@ -50,6 +60,9 @@ export function summarizeUsage(
     monthSttCost,
     monthRewriteCost,
     monthTotalCost: monthSttCost + monthRewriteCost,
+    totalAudioSeconds,
+    totalCharacterCount,
+    totalCost,
   };
 }
 

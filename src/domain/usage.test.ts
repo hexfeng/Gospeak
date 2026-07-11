@@ -21,6 +21,7 @@ function event(
     stt_estimated_cost: 0.001,
     rewrite_estimated_cost: 0.002,
     estimated_cost: 0.003,
+    output_character_count: 20,
     created_at: createdAt,
     ...overrides,
   };
@@ -47,6 +48,40 @@ describe("summarizeUsage", () => {
       monthSttCost: 0.005,
       monthRewriteCost: 0.007,
       monthTotalCost: 0.012,
+      totalAudioSeconds: 150,
+      totalCharacterCount: 60,
+      totalCost: 0.015,
+    });
+  });
+
+  it("aggregates all-time General metrics", () => {
+    const events = [
+      event("current", "2026-07-10T09:00:00.000Z", {
+        audio_seconds: 30,
+        output_character_count: 20,
+        stt_estimated_cost: 0.001,
+        rewrite_estimated_cost: 0.002,
+      }),
+      event("old", "2025-01-10T09:00:00.000Z", {
+        audio_seconds: 90,
+        output_character_count: 80,
+        stt_estimated_cost: 0.004,
+        rewrite_estimated_cost: null,
+      }),
+    ];
+
+    expect(summarizeUsage(events, new Date(2026, 6, 10, 12))).toMatchObject({
+      totalAudioSeconds: 120,
+      totalCharacterCount: 100,
+      totalCost: 0.007,
+    });
+  });
+
+  it("returns zero all-time metrics for empty input", () => {
+    expect(summarizeUsage([])).toMatchObject({
+      totalAudioSeconds: 0,
+      totalCharacterCount: 0,
+      totalCost: 0,
     });
   });
 

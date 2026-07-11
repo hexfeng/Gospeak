@@ -118,6 +118,7 @@ export type UsageEventRecord = {
   rewrite_fallback_used: boolean;
   stt_estimated_cost?: number | null;
   rewrite_estimated_cost?: number | null;
+  output_character_count?: number | null;
   estimated_cost?: number | null;
   created_at: string;
 };
