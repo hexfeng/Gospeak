@@ -59,12 +59,16 @@ describe("General dashboard CSS contract", () => {
     expect(css).toMatch(
       /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
     );
+    expect(css).toMatch(/\.general-metrics\s*\{[^}]*padding:\s*16px/s);
+    expect(css).toMatch(/\.general-metrics\s*\{[^}]*border-radius:\s*20px/s);
+    expect(css).toMatch(/\.general-metrics\s*\{[^}]*background:\s*#f7f4ec;/s);
     expect(css).toMatch(
       /\.general-metric\s*\{[^}]*grid-template-columns:\s*48px minmax\(0, 1fr\)/s,
     );
     expect(css).toMatch(
       /\.general-status-card\s*\{[^}]*min-height:\s*156px/s,
     );
+    expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*2px solid/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(
@@ -94,8 +98,7 @@ describe("General dashboard CSS contract", () => {
     expect(css).toMatch(/\.general-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.general-page\s*\{[^}]*border-radius:\s*0;/s);
     expect(css).toMatch(/\.general-page\s*\{[^}]*box-shadow:\s*none;/s);
-    expect(css).toMatch(
-      /\.general-status-card:hover:not\(:disabled\)\s*\{[^}]*background:\s*#ffffff;/s,
-    );
+    expect(css).toMatch(/\.general-status-card\.is-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#f2fbf5;/s);
+    expect(css).toMatch(/\.general-status-card\.is-not-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#fff5f3;/s);
   });
 });

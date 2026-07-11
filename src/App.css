@@ -298,7 +298,12 @@ button:disabled {
 .general-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #e7e0d1;
+  border-radius: 20px;
+  background: #f7f4ec;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 72%);
 }
 
 .general-metric {
@@ -310,9 +315,9 @@ button:disabled {
   min-height: 102px;
   padding: 22px 24px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: #ffffff;
-  box-shadow: 0 8px 22px rgb(17 24 39 / 5%);
+  box-shadow: 0 10px 24px rgb(17 24 39 / 6%);
 }
 
 .general-metric-icon,
@@ -362,11 +367,11 @@ button:disabled {
   min-width: 0;
   min-height: 156px;
   padding: 20px;
-  border: 1px solid;
-  border-radius: 12px;
+  border: 2px solid;
+  border-radius: 14px;
   background: #ffffff;
   text-align: left;
-  transition: box-shadow 160ms ease, transform 160ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .general-status-icon {
@@ -388,8 +393,26 @@ button:disabled {
   border-color: #3f7f5c;
 }
 
+.general-status-card.is-ready .general-status-icon {
+  color: #326a4a;
+  background: #eef8f1;
+}
+
+.general-status-card.is-ready .general-status-chart {
+  color: #6fa982;
+}
+
 .general-status-card.is-not-ready {
   border-color: #a85c55;
+}
+
+.general-status-card.is-not-ready .general-status-icon {
+  color: #955047;
+  background: #fff1ef;
+}
+
+.general-status-card.is-not-ready .general-status-chart {
+  color: #c58078;
 }
 
 .general-status-title,
@@ -419,9 +442,20 @@ button:disabled {
 }
 
 .general-status-card:hover:not(:disabled) {
-  background: #ffffff;
   transform: translateY(-2px);
   box-shadow: 0 10px 22px rgb(17 24 39 / 8%);
+}
+
+.general-status-card.is-ready:hover:not(:disabled) {
+  background: #f2fbf5;
+  border-color: #2f714f;
+  box-shadow: 0 14px 28px rgb(63 127 92 / 16%);
+}
+
+.general-status-card.is-not-ready:hover:not(:disabled) {
+  background: #fff5f3;
+  border-color: #974d46;
+  box-shadow: 0 14px 28px rgb(168 92 85 / 16%);
 }
 
 .general-status-card:focus-visible {
