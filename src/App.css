@@ -254,7 +254,6 @@ button:disabled {
   min-height: min(510px, calc(100vh - 194px));
 }
 
-.general-page,
 .dictionary-page {
   padding: 20px;
   border-radius: 14px;
@@ -264,6 +263,9 @@ button:disabled {
 
 .general-page {
   padding: 28px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .general-header {
@@ -349,11 +351,11 @@ button:disabled {
 }
 
 .general-status-card.is-ready {
-  border-color: #8fc9aa;
+  border-color: #3f7f5c;
 }
 
 .general-status-card.is-not-ready {
-  border-color: #e3aaa5;
+  border-color: #a85c55;
 }
 
 .general-status-card strong {
@@ -365,13 +367,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.general-status-card:hover {
+.general-status-card:hover:not(:disabled) {
+  background: #ffffff;
   transform: translateY(-2px);
   box-shadow: 0 10px 22px rgb(17 24 39 / 8%);
 }
 
 .general-status-card:focus-visible {
-  outline: 3px solid rgb(59 130 246 / 18%);
+  outline: 3px solid #2563eb;
   outline-offset: 2px;
 }
 
@@ -1146,7 +1149,7 @@ pre {
     transition: none;
   }
 
-  .general-status-card:hover {
+  .general-status-card:hover:not(:disabled) {
     transform: none;
   }
 }

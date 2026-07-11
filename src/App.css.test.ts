@@ -71,4 +71,22 @@ describe("General dashboard CSS contract", () => {
       /@media \(max-width: 980px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
     );
   });
+
+  it("uses accessible status, focus, and page-surface treatments", () => {
+    expect(css).toMatch(
+      /\.general-status-card\.is-ready\s*\{[^}]*border-color:\s*#3f7f5c;/s,
+    );
+    expect(css).toMatch(
+      /\.general-status-card\.is-not-ready\s*\{[^}]*border-color:\s*#a85c55;/s,
+    );
+    expect(css).toMatch(
+      /\.general-status-card:focus-visible\s*\{[^}]*outline:\s*3px solid #2563eb;/s,
+    );
+    expect(css).toMatch(/\.general-page\s*\{[^}]*background:\s*transparent;/s);
+    expect(css).toMatch(/\.general-page\s*\{[^}]*border-radius:\s*0;/s);
+    expect(css).toMatch(/\.general-page\s*\{[^}]*box-shadow:\s*none;/s);
+    expect(css).toMatch(
+      /\.general-status-card:hover:not\(:disabled\)\s*\{[^}]*background:\s*#ffffff;/s,
+    );
+  });
 });
