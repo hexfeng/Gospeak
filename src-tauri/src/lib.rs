@@ -21,6 +21,15 @@ struct RecordingState {
     streaming_chunks: std::sync::Arc<Mutex<Vec<Vec<i16>>>>,
 }
 
+fn output_character_count(text: &str) -> u64 {
+    u64::try_from(
+        text.chars()
+            .filter(|character| !character.is_whitespace())
+            .count(),
+    )
+    .unwrap_or(u64::MAX)
+}
+
 #[tauri::command]
 fn check_provider_keys() -> provider::ProviderKeyStatus {
     provider_key_status()
@@ -81,6 +90,7 @@ fn run_audio_file_dictation(
         (None, Some(rewrite)) => Some(rewrite),
         (None, None) => None,
     };
+    let output_character_count = output_character_count(&result.text);
     storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {
@@ -97,6 +107,7 @@ fn run_audio_file_dictation(
             stt_estimated_cost,
             rewrite_estimated_cost,
             estimated_cost,
+            output_character_count,
             created_at: chrono::Utc::now().to_rfc3339(),
         },
     )?;
@@ -141,6 +152,7 @@ fn run_streaming_dictation(
     if result.no_speech {
         return Ok(result);
     }
+    let output_character_count = output_character_count(&result.text);
     match storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {
@@ -157,6 +169,7 @@ fn run_streaming_dictation(
             stt_estimated_cost: None,
             rewrite_estimated_cost: None,
             estimated_cost: None,
+            output_character_count,
             created_at: chrono::Utc::now().to_rfc3339(),
         },
     ) {
@@ -507,4 +520,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_non_whitespace_unicode_characters() {
+        assert_eq!(output_character_count("Hello 世界\n"), 7);
+    }
 }
