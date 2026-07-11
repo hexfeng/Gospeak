@@ -748,13 +748,6 @@ function App() {
           ))}
         </nav>
 
-        <section className="recorder-card" aria-label="Floating recorder preview">
-          <div className="recorder-dot" />
-          <div>
-            <strong>Alt+Space</strong>
-            <span>Ready for push-to-talk</span>
-          </div>
-        </section>
       </aside>
 
       <section className="workspace">

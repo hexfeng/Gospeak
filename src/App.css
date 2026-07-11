@@ -24,7 +24,6 @@
 
 .brand,
 .nav-item,
-.recorder-card,
 .panel-header,
 .provider-row,
 .key-row,
@@ -92,38 +91,6 @@
   background: #ffffff;
   color: var(--text-strong);
   box-shadow: 0 5px 14px rgb(17 24 39 / 5%);
-}
-
-.recorder-card {
-  margin-top: auto;
-  gap: 9px;
-  padding: 10px;
-  border: 0;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 8px 20px rgb(17 24 39 / 7%);
-}
-
-.recorder-card strong,
-.recorder-card span {
-  display: block;
-  font-size: 12px;
-}
-
-.recorder-card strong {
-  color: var(--text-strong);
-}
-
-.recorder-card span {
-  color: var(--text-muted);
-}
-
-.recorder-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 999px;
-  background: #3ac0a0;
-  box-shadow: 0 0 0 5px rgb(58 192 160 / 16%);
 }
 
 .workspace {

@@ -245,6 +245,7 @@ describe("Gospeak Alpha app shell", () => {
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["General", "Profiles", "Dictionary", "Settings"]);
+    expect(screen.queryByText("Ready for push-to-talk")).not.toBeInTheDocument();
     await openSettingsTab(user, "Dictation");
     expect(screen.getByLabelText(/Speak to Edit/i)).toBeInTheDocument();
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
