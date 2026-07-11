@@ -1242,6 +1242,13 @@ mod tests {
                   estimated_cost REAL,
                   created_at TEXT NOT NULL
                 );
+
+                INSERT INTO usage_events
+                  (id, stt_provider, stt_model, llm_provider, llm_model,
+                   audio_seconds, estimated_cost, created_at)
+                VALUES
+                  ('legacy_usage', 'groq', 'whisper-large-v3-turbo', 'openai', 'gpt-5-nano',
+                   1.25, 0.003, '2026-07-10T00:00:00Z');
                 "#,
             )
             .unwrap();
@@ -1255,6 +1262,26 @@ mod tests {
         assert!(columns.contains(&"stt_estimated_cost".to_string()));
         assert!(columns.contains(&"rewrite_estimated_cost".to_string()));
         assert!(columns.contains(&"output_character_count".to_string()));
+        assert_eq!(
+            list_usage_events(&connection).unwrap(),
+            vec![UsageEventRecord {
+                id: "legacy_usage".to_string(),
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                llm_provider: "openai".to_string(),
+                llm_model: "gpt-5-nano".to_string(),
+                profile_id: "normal".to_string(),
+                audio_seconds: Some(1.25),
+                stt_latency_ms: 0,
+                rewrite_latency_ms: None,
+                rewrite_fallback_used: false,
+                stt_estimated_cost: None,
+                rewrite_estimated_cost: None,
+                estimated_cost: Some(0.003),
+                output_character_count: 0,
+                created_at: "2026-07-10T00:00:00Z".to_string(),
+            }]
+        );
     }
 
     fn table_columns(connection: &Connection, table: &str) -> Vec<String> {
