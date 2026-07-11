@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
   Gauge,
+  Play,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -816,6 +817,16 @@ function App() {
           </p>
         ) : null}
 
+        <button
+          className="primary-action"
+          disabled={isDictationBusy}
+          onClick={() => void handleDictationToggle()}
+          type="button"
+        >
+          <Play size={16} />
+          {dictationButtonLabel(config, dictation.status)}
+        </button>
+
         <div className="module-stage">
           {activeSection === "general" ? (
             <GeneralPage
@@ -823,14 +834,6 @@ function App() {
               keyPresence={keyPresence}
               profiles={profiles}
               usageEvents={usageEvents}
-              isDictationBusy={isDictationBusy}
-              dictationLabel={dictationButtonLabel(config, dictation.status)}
-              diagnostics={
-                lastDiagnostics ? (
-                  <LatencyDiagnostics diagnostics={lastDiagnostics} />
-                ) : null
-              }
-              onStartDictation={() => void handleDictationToggle()}
               onOpenProfiles={() => navigate("profiles")}
               onOpenSettings={(tab) => {
                 setSettingsTab(tab);
@@ -894,6 +897,7 @@ function App() {
           ) : null}
 
         </div>
+        {lastDiagnostics ? <LatencyDiagnostics diagnostics={lastDiagnostics} /> : null}
       </section>
     </main>
   );

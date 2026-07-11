@@ -117,14 +117,20 @@ describe("Gospeak Alpha app shell", () => {
     expect(
       screen.queryByRole("heading", { name: /Gospeak Alpha/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /General/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Gospeak" })).toBeInTheDocument();
+    const generalPage = document.querySelector<HTMLElement>(".general-page");
+    expect(generalPage).not.toBeNull();
+    expect(
+      within(generalPage!).queryByRole("button", { name: /Start Dictation/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start Dictation/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/STT model/i)).not.toBeInTheDocument();
 
     await openSettingsTab(user, "Providers");
 
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: /General/i }),
+      screen.queryByRole("heading", { name: "Gospeak" }),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText(/STT model/i)).toHaveValue(
       "whisper-large-v3-turbo",
@@ -587,7 +593,7 @@ describe("Gospeak Alpha app shell", () => {
   });
 
 
-  it("renders cumulative provider cost totals", async () => {
+  it("renders all-time usage totals", async () => {
     vi.useFakeTimers({ now: new Date("2026-07-10T12:00:00Z") });
     vi.mocked(listUsageEvents).mockResolvedValueOnce([
       {
@@ -629,12 +635,10 @@ describe("Gospeak Alpha app shell", () => {
         await vi.runAllTimersAsync();
       });
 
-      const costs = screen.getByText("This month's cost").closest("section");
-      expect(costs).not.toBeNull();
-      expect(within(costs!).getByText("STT")).toBeInTheDocument();
-      expect(within(costs!).getByText("$0.0016")).toBeInTheDocument();
-      expect(within(costs!).getByText("Rewrite")).toBeInTheDocument();
-      expect(within(costs!).getByText("$0.0027")).toBeInTheDocument();
+      const usage = screen.getByLabelText("All-time usage");
+      expect(within(usage).getByText("1m 30s")).toBeInTheDocument();
+      expect(within(usage).getByText("0")).toBeInTheDocument();
+      expect(within(usage).getByText("$0.0043")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -896,7 +900,7 @@ describe("Gospeak Alpha app shell", () => {
     ]);
     render(<App />);
 
-    await screen.findAllByText("Ready");
+    await screen.findByText("Cloud");
     await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
     await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
 

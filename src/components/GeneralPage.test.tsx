@@ -5,71 +5,82 @@ import { DEFAULT_APP_CONFIG } from "../domain/config";
 import { GeneralPage } from "./GeneralPage";
 
 describe("GeneralPage", () => {
-  it("shows readiness, usage, cost, and profile navigation", async () => {
-    const user = userEvent.setup();
-    const onOpenProfiles = vi.fn();
-    render(
-      <GeneralPage
-        config={{
-          ...DEFAULT_APP_CONFIG,
-          performance: {
-            ...DEFAULT_APP_CONFIG.performance,
-            speakToEdit: true,
-          },
-        }}
-        keyPresence={{ groq: true, openai: true }}
-        profiles={DEFAULT_APP_CONFIG.promptProfiles}
-        usageEvents={[]}
-        isDictationBusy={false}
-        dictationLabel="Start Dictation"
-        diagnostics={null}
-        onStartDictation={vi.fn()}
-        onOpenProfiles={onOpenProfiles}
-        onOpenSettings={vi.fn()}
-      />,
-    );
-
-    expect(screen.getAllByText("Ready")).toHaveLength(3);
-    expect(screen.getByText("Speak to Edit")).toBeInTheDocument();
-    expect(screen.getByText("On")).toBeInTheDocument();
-    expect(screen.getByText("Today's usage")).toBeInTheDocument();
-    expect(screen.getByText("This month's cost")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", {
-        name: "Open Profiles for active profile: Normal",
-      }),
-    );
-    expect(onOpenProfiles).toHaveBeenCalledOnce();
-  });
-
-  it("marks invalid hotkey and inactive Profile as setup work with direct repairs", async () => {
+  it("shows all-time usage and routes ready status cards", async () => {
     const user = userEvent.setup();
     const onOpenProfiles = vi.fn();
     const onOpenSettings = vi.fn();
     render(
       <GeneralPage
-        config={{
-          ...DEFAULT_APP_CONFIG,
-          activeProfileId: "missing",
-          hotkey: { ...DEFAULT_APP_CONFIG.hotkey, binding: "   " },
-        }}
+        config={DEFAULT_APP_CONFIG}
         keyPresence={{ groq: true, openai: true }}
         profiles={DEFAULT_APP_CONFIG.promptProfiles}
         usageEvents={[]}
-        isDictationBusy={false}
-        dictationLabel="Start Dictation"
-        diagnostics={null}
-        onStartDictation={vi.fn()}
         onOpenProfiles={onOpenProfiles}
         onOpenSettings={onOpenSettings}
       />,
     );
 
-    expect(screen.getByText("Needs setup")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Fix Hotkey" }));
-    await user.click(screen.getByRole("button", { name: "Fix Active Profile" }));
+    expect(screen.getByRole("heading", { name: "Gospeak" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, element) => element?.textContent === "Press Alt+Space to start dictating.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Total dictation time")).toBeInTheDocument();
+    expect(screen.getByText("Total characters")).toBeInTheDocument();
+    expect(screen.getByText("Usage mode")).toBeInTheDocument();
+    expect(screen.getByText("Total cost")).toBeInTheDocument();
+    expect(screen.getByText("Cloud")).toBeInTheDocument();
+    expect(screen.queryByText("Recent activity")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
 
-    expect(onOpenSettings).toHaveBeenCalledWith("dictation");
+    await user.click(screen.getByRole("button", { name: /ASR/i }));
+    await user.click(screen.getByRole("button", { name: /Rewrite/i }));
+    await user.click(screen.getByRole("button", { name: /Active Profile/i }));
+
+    expect(onOpenSettings).toHaveBeenNthCalledWith(1, "providers");
+    expect(onOpenSettings).toHaveBeenNthCalledWith(2, "providers");
     expect(onOpenProfiles).toHaveBeenCalledOnce();
+  });
+
+  it("marks missing provider keys and active Profile as not set", () => {
+    const { container } = render(
+      <GeneralPage
+        config={{ ...DEFAULT_APP_CONFIG, activeProfileId: "missing" }}
+        keyPresence={{}}
+        profiles={DEFAULT_APP_CONFIG.promptProfiles}
+        usageEvents={[]}
+        onOpenProfiles={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelectorAll(".general-status-card.is-not-ready")).toHaveLength(3);
+    expect(
+      Array.from(container.querySelectorAll(".general-status-card strong")),
+    ).toHaveLength(3);
+    expect(
+      Array.from(container.querySelectorAll(".general-status-card strong")).map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(["Not Set", "Not Set", "Not Set"]);
+  });
+
+  it("prompts for a shortcut when the hotkey is missing", () => {
+    render(
+      <GeneralPage
+        config={{
+          ...DEFAULT_APP_CONFIG,
+          hotkey: { ...DEFAULT_APP_CONFIG.hotkey, binding: "   " },
+        }}
+        keyPresence={{ groq: true, openai: true }}
+        profiles={DEFAULT_APP_CONFIG.promptProfiles}
+        usageEvents={[]}
+        onOpenProfiles={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Set a shortcut to start dictating.")).toBeInTheDocument();
   });
 });
