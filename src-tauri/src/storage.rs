@@ -62,6 +62,7 @@ pub struct UsageEventRecord {
     pub stt_estimated_cost: Option<f64>,
     pub rewrite_estimated_cost: Option<f64>,
     pub estimated_cost: Option<f64>,
+    pub output_character_count: u64,
     pub created_at: String,
 }
 
@@ -162,6 +163,7 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         stt_estimated_cost REAL,
         rewrite_estimated_cost REAL,
         estimated_cost REAL,
+        output_character_count INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       );
 
@@ -212,6 +214,12 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
     )?;
     ensure_column(connection, "usage_events", "stt_estimated_cost", "REAL")?;
     ensure_column(connection, "usage_events", "rewrite_estimated_cost", "REAL")?;
+    ensure_column(
+        connection,
+        "usage_events",
+        "output_character_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     Ok(())
 }
 
@@ -505,8 +513,8 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
               (id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                audio_seconds, stt_latency_ms, rewrite_latency_ms,
                rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
-               estimated_cost, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+               estimated_cost, output_character_count, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
             params![
                 event.id,
@@ -524,6 +532,7 @@ pub fn insert_usage_event(connection: &Connection, event: &UsageEventRecord) -> 
                 event.stt_estimated_cost,
                 event.rewrite_estimated_cost,
                 event.estimated_cost,
+                i64::try_from(event.output_character_count).unwrap_or(i64::MAX),
                 event.created_at,
             ],
         )
@@ -538,7 +547,7 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
             SELECT id, stt_provider, stt_model, llm_provider, llm_model, profile_id,
                    audio_seconds, stt_latency_ms, rewrite_latency_ms,
                    rewrite_fallback_used, stt_estimated_cost, rewrite_estimated_cost,
-                   estimated_cost, created_at
+                   estimated_cost, output_character_count, created_at
             FROM usage_events
             ORDER BY created_at DESC
             "#,
@@ -562,7 +571,8 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
                 stt_estimated_cost: row.get(10)?,
                 rewrite_estimated_cost: row.get(11)?,
                 estimated_cost: row.get(12)?,
-                created_at: row.get(13)?,
+                output_character_count: u64::try_from(row.get::<_, i64>(13)?).unwrap_or_default(),
+                created_at: row.get(14)?,
             })
         })
         .map_err(|error| format!("Cannot query usage events: {error}"))?;
@@ -1137,6 +1147,7 @@ mod tests {
             stt_estimated_cost: Some(0.000014),
             rewrite_estimated_cost: Some(0.000032),
             estimated_cost: None,
+            output_character_count: 23,
             created_at: "2026-06-23T00:00:00Z".to_string(),
         };
 
@@ -1147,6 +1158,37 @@ mod tests {
         let columns = table_columns(&connection, "usage_events");
         assert!(!columns.iter().any(|column| column.contains("transcript")));
         assert!(!columns.iter().any(|column| column.contains("text")));
+    }
+
+    #[test]
+    fn usage_events_round_trip_output_character_count() {
+        let connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let columns = table_columns(&connection, "usage_events");
+        assert!(columns.contains(&"output_character_count".to_string()));
+
+        let event = UsageEventRecord {
+            id: "usage_count".to_string(),
+            stt_provider: "groq".to_string(),
+            stt_model: "whisper-large-v3-turbo".to_string(),
+            llm_provider: "openai".to_string(),
+            llm_model: "gpt-5-nano".to_string(),
+            profile_id: "normal".to_string(),
+            audio_seconds: Some(1.0),
+            stt_latency_ms: 10,
+            rewrite_latency_ms: Some(5),
+            rewrite_fallback_used: false,
+            stt_estimated_cost: Some(0.001),
+            rewrite_estimated_cost: Some(0.002),
+            estimated_cost: Some(0.003),
+            output_character_count: 23,
+            created_at: "2026-07-10T00:00:00Z".to_string(),
+        };
+        insert_usage_event(&connection, &event).unwrap();
+        assert_eq!(
+            list_usage_events(&connection).unwrap()[0].output_character_count,
+            23
+        );
     }
 
     #[test]
@@ -1200,6 +1242,13 @@ mod tests {
                   estimated_cost REAL,
                   created_at TEXT NOT NULL
                 );
+
+                INSERT INTO usage_events
+                  (id, stt_provider, stt_model, llm_provider, llm_model,
+                   audio_seconds, estimated_cost, created_at)
+                VALUES
+                  ('legacy_usage', 'groq', 'whisper-large-v3-turbo', 'openai', 'gpt-5-nano',
+                   1.25, 0.003, '2026-07-10T00:00:00Z');
                 "#,
             )
             .unwrap();
@@ -1212,6 +1261,27 @@ mod tests {
         assert!(columns.contains(&"rewrite_fallback_used".to_string()));
         assert!(columns.contains(&"stt_estimated_cost".to_string()));
         assert!(columns.contains(&"rewrite_estimated_cost".to_string()));
+        assert!(columns.contains(&"output_character_count".to_string()));
+        assert_eq!(
+            list_usage_events(&connection).unwrap(),
+            vec![UsageEventRecord {
+                id: "legacy_usage".to_string(),
+                stt_provider: "groq".to_string(),
+                stt_model: "whisper-large-v3-turbo".to_string(),
+                llm_provider: "openai".to_string(),
+                llm_model: "gpt-5-nano".to_string(),
+                profile_id: "normal".to_string(),
+                audio_seconds: Some(1.25),
+                stt_latency_ms: 0,
+                rewrite_latency_ms: None,
+                rewrite_fallback_used: false,
+                stt_estimated_cost: None,
+                rewrite_estimated_cost: None,
+                estimated_cost: Some(0.003),
+                output_character_count: 0,
+                created_at: "2026-07-10T00:00:00Z".to_string(),
+            }]
+        );
     }
 
     fn table_columns(connection: &Connection, table: &str) -> Vec<String> {

@@ -1,4 +1,11 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -10,6 +17,7 @@ import {
   importConfigFromFile,
   getForegroundAppContext,
   listAppProfileRules,
+  listDictionaryTerms,
   listPreferences,
   listUsageEvents,
   runAudioFileDictation,
@@ -27,6 +35,10 @@ import {
   selectExportPath,
   selectImportPath,
 } from "./lib/tauri";
+
+type GlobalShortcutState = "pressed" | "released";
+
+let globalShortcutHandler: ((state: GlobalShortcutState) => void) | undefined;
 
 vi.mock("./lib/tauri", () => ({
   checkProviderKeys: vi.fn(async () => ({ groq: false, openai: false })),
@@ -92,31 +104,87 @@ vi.mock("./lib/tauri", () => ({
 describe("Gospeak Alpha app shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    globalShortcutHandler = undefined;
+    vi.mocked(listenForGlobalShortcut).mockImplementation(async (handler) => {
+      globalShortcutHandler = handler;
+      return () => undefined;
+    });
   });
+
+  async function triggerGlobalShortcut(state: GlobalShortcutState) {
+    await waitFor(() => expect(globalShortcutHandler).toBeDefined());
+    act(() => globalShortcutHandler?.(state));
+  }
+
+  async function startDictationWithGlobalShortcut() {
+    await triggerGlobalShortcut("pressed");
+    await waitFor(() =>
+      expect(
+        vi.mocked(startRecording).mock.calls.length +
+          vi.mocked(startStreamingRecording).mock.calls.length,
+      ).toBeGreaterThan(0),
+    );
+  }
+
+  async function dictateWithGlobalShortcut() {
+    await startDictationWithGlobalShortcut();
+    await stopDictationWithGlobalShortcut();
+  }
+
+  async function stopDictationWithGlobalShortcut() {
+    await triggerGlobalShortcut("released");
+    await waitFor(() =>
+      expect(
+        vi.mocked(runAudioFileDictation).mock.calls.length +
+          vi.mocked(runStreamingDictation).mock.calls.length,
+      ).toBeGreaterThan(0),
+    );
+  }
+
+  async function openSettingsTab(
+    user: ReturnType<typeof userEvent.setup>,
+    tab: "Dictation" | "Providers" | "Privacy & Data" | "Advanced",
+  ) {
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: tab }));
+  }
 
   it("renders one module at a time from sidebar navigation", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /Gospeak Alpha/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /General/i })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: /Provider Configuration/i }),
+      screen.queryByRole("heading", { name: /Gospeak Alpha/i }),
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /Providers/i }));
-
+    expect(screen.getByRole("heading", { name: "Gospeak" })).toBeInTheDocument();
+    const generalPage = document.querySelector<HTMLElement>(".general-page");
+    expect(generalPage).not.toBeNull();
     expect(
-      screen.getByRole("heading", { name: /Provider Configuration/i }),
-    ).toBeInTheDocument();
+      within(generalPage!).queryByRole("button", { name: /Start Dictation/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/STT model/i)).not.toBeInTheDocument();
+
+    await openSettingsTab(user, "Providers");
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: /General/i }),
+      screen.queryByRole("heading", { name: "Gospeak" }),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText(/STT model/i)).toHaveValue(
       "whisper-large-v3-turbo",
     );
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Dictionary" }));
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
   });
 
   it("loads persisted provider key status on startup", async () => {
@@ -128,6 +196,7 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await waitFor(() => expect(checkProviderKeys).toHaveBeenCalledTimes(1));
+    await openSettingsTab(userEvent.setup(), "Providers");
     expect(await screen.findAllByText("Key ready")).toHaveLength(2);
   });
 
@@ -167,23 +236,26 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
   });
 
-  it("renders P0 Alpha navigation without deferred sync scope", () => {
+  it("renders the final four-item navigation without standalone App Rules", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByRole("button", { name: /Profiles/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /App Rules/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Dictionary/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Privacy/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Import\/Export/i }),
-    ).toBeInTheDocument();
+      within(screen.getByRole("navigation"))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["General", "Profiles", "Dictionary", "Settings"]);
+    expect(screen.queryByText("Ready for push-to-talk")).not.toBeInTheDocument();
+    await openSettingsTab(user, "Dictation");
     expect(screen.getByLabelText(/Speak to Edit/i)).toBeInTheDocument();
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
   });
 
   it("renders experimental streaming dictation toggle", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
+    await openSettingsTab(user, "Advanced");
     expect(
       await screen.findByRole("checkbox", {
         name: /experimental streaming dictation/i,
@@ -198,16 +270,16 @@ describe("Gospeak Alpha app shell", () => {
     );
     render(<App />);
 
+    await openSettingsTab(user, "Advanced");
     await user.click(
       await screen.findByRole("checkbox", {
         name: /experimental streaming dictation/i,
       }),
     );
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await startDictationWithGlobalShortcut();
     expect(startStreamingRecording).toHaveBeenCalledTimes(1);
-    await user.click(
-      await screen.findByRole("button", { name: /Stop Dictation/i }),
-    );
+    await stopDictationWithGlobalShortcut();
 
     await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
     expect(runStreamingDictation).toHaveBeenCalledWith(
@@ -218,42 +290,32 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
   });
 
-  it("shows streaming first-token diagnostics after streaming output completes", async () => {
+  it("runs streaming dictation from the global shortcut", async () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await openSettingsTab(user, "Advanced");
     await user.click(
       await screen.findByRole("checkbox", {
         name: /experimental streaming dictation/i,
       }),
     );
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await dictateWithGlobalShortcut();
 
-    const diagnostics = await screen.findByLabelText(
-      /Last dictation diagnostics/i,
-    );
-    expect(within(diagnostics).getByText("First STT")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("35 ms")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("First rewrite")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("55 ms")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("First insert")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("75 ms")).toBeInTheDocument();
+    await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
+    expect(copyTextForPaste).not.toHaveBeenCalled();
   });
 
-  it("drives the manual dictation flow from the primary button", async () => {
-    const user = userEvent.setup();
+  it("drives the manual dictation flow from the global shortcut", async () => {
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await startDictationWithGlobalShortcut();
 
     expect(startRecording).toHaveBeenCalledTimes(1);
-    expect(
-      screen.getByRole("button", { name: /Stop Dictation/i }),
-    ).toBeInTheDocument();
     expect(screen.getByText(/Recording to temporary WAV/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await stopDictationWithGlobalShortcut();
 
     expect(stopRecording).toHaveBeenCalledTimes(1);
     expect(runAudioFileDictation).toHaveBeenCalledWith({
@@ -273,13 +335,15 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await openSettingsTab(user, "Dictation");
     await user.click(screen.getByLabelText(/Speak to Edit/i));
-    await user.click(screen.getByRole("button", { name: /Start Speak to Edit/i }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await startDictationWithGlobalShortcut();
 
     expect(readSelectedTextForEdit).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/Editing selected text/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Editing selected text/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Stop Speak to Edit/i }));
+    await stopDictationWithGlobalShortcut();
 
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -290,28 +354,13 @@ describe("Gospeak Alpha app shell", () => {
     expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
   });
 
-  it("shows last dictation latency diagnostics after output completes", async () => {
-    const user = userEvent.setup();
+  it("does not render diagnostics after shortcut dictation", async () => {
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await dictateWithGlobalShortcut();
 
-    const diagnostics = await screen.findByLabelText(
-      /Last dictation diagnostics/i,
-    );
-    expect(
-      within(diagnostics).getByRole("heading", {
-        name: /Last dictation diagnostics/i,
-      }),
-    ).toBeInTheDocument();
-    expect(within(diagnostics).getByText("STT")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("120 ms")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("Rewrite")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("80 ms")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("Audio")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("1.5 s")).toBeInTheDocument();
-    expect(within(diagnostics).getByText("31.3 KB")).toBeInTheDocument();
+    await screen.findByText(/Text copied to clipboard/i);
+    expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
   });
 
   it("sends fast dictation requests that skip rewrite", async () => {
@@ -328,19 +377,18 @@ describe("Gospeak Alpha app shell", () => {
     });
     render(<App />);
 
+    await openSettingsTab(user, "Dictation");
     await user.click(screen.getByLabelText(/Fast dictation/i));
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await dictateWithGlobalShortcut();
 
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ skip_rewrite: true }),
     );
     expect(copyTextForPaste).toHaveBeenCalledWith("Raw fast transcript");
-    expect(await screen.findByText("Skipped")).toBeInTheDocument();
   });
 
   it("silently cancels dictation when no speech is detected", async () => {
-    const user = userEvent.setup();
     vi.mocked(runAudioFileDictation).mockResolvedValueOnce({
       text: "",
       profile_id: "normal",
@@ -354,18 +402,17 @@ describe("Gospeak Alpha app shell", () => {
     });
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await dictateWithGlobalShortcut();
 
     await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
     expect(copyTextForPaste).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /Start Dictation/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
     expect(publishRecorderState).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "error" }),
     );
   });
 
-  it("renders App Rules navigation with a rule form and detected app preview", async () => {
+  it("renders App Rules inside the selected Profile with the detected app preview", async () => {
     const user = userEvent.setup();
     vi.mocked(getForegroundAppContext).mockResolvedValueOnce({
       appId: "chrome.exe",
@@ -373,26 +420,23 @@ describe("Gospeak Alpha app shell", () => {
     });
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
 
-    expect(
-      screen.getByRole("heading", { name: /App Rules/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/Enable app-aware routing/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "App Rules" })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Enable app-aware routing/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/App id/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Title contains/i)).toBeInTheDocument();
     expect(screen.getByText(/chrome\.exe/i)).toBeInTheDocument();
     expect(screen.getByText(/ChatGPT - Chrome/i)).toBeInTheDocument();
   });
 
-  it("saves App Rules through the storage command", async () => {
+  it("saves App Rules through the selected Profile", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
     await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
     await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
     await user.clear(screen.getByLabelText(/Priority/i));
     await user.type(screen.getByLabelText(/Priority/i), "10");
     await user.click(screen.getByRole("button", { name: /Save app rule/i }));
@@ -401,7 +445,7 @@ describe("Gospeak Alpha app shell", () => {
       record: expect.objectContaining({
         appId: "chrome.exe",
         windowTitlePattern: "ChatGPT",
-        profileId: "prompt",
+        profileId: "normal",
         priority: 10,
         enabled: true,
         deletedAt: null,
@@ -410,37 +454,98 @@ describe("Gospeak Alpha app shell", () => {
     expect(await screen.findByText(/App rule saved/i)).toBeInTheDocument();
   });
 
-  it("keeps multiple rules for the same app with different title patterns", async () => {
+  it("keeps Profiles active when dirty navigation is cancelled", async () => {
     const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "normal");
-    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Normal");
+    await user.click(screen.getByRole("button", { name: "General" }));
 
-    await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
-    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
-    await user.selectOptions(screen.getByLabelText(/Rule profile/i), "prompt");
-    await user.click(screen.getByRole("button", { name: /Save app rule/i }));
-
-    expect(upsertAppProfileRule).toHaveBeenCalledTimes(2);
-    const ids = vi
-      .mocked(upsertAppProfileRule)
-      .mock.calls.map(([input]) => input.record.id);
-    expect(new Set(ids).size).toBe(2);
-    expect(await screen.findByText("ChatGPT")).toBeInTheDocument();
-    expect(screen.getAllByText("chrome.exe").length).toBeGreaterThanOrEqual(2);
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("heading", { name: "Changed Normal" })).toBeInTheDocument();
+    confirm.mockRestore();
   });
 
-  it("rejects title-only App Rules before saving", async () => {
+  it("keeps a new Profile draft open when primary navigation discard is cancelled", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("heading", { name: "New Profile" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("falls back to Normal before saving an active disabled Profile", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-    await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "email" }),
+      ),
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Enabled" }));
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
 
-    expect(screen.getByRole("button", { name: /Save app rule/i })).toBeDisabled();
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "normal" }),
+      ),
+    );
+    expect(upsertProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "email", enabled: false }),
+    );
+  });
+
+  it("soft-deletes an active Profile, its App Rules, and falls back to Normal", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
+      {
+        id: "rule_outlook_email",
+        appId: "outlook.exe",
+        windowTitlePattern: null,
+        profileId: "email",
+        priority: 0,
+        enabled: true,
+        updatedAt: "2026-07-10T00:00:00.000Z",
+        deletedAt: null,
+      },
+    ]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    await user.click(screen.getByRole("button", { name: "Delete Email" }));
+
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "active_profile_id", value: "normal" }),
+      ),
+    );
+    expect(upsertProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "email", enabled: false, deleted_at: expect.any(String) }),
+    );
+    expect(upsertAppProfileRule).toHaveBeenCalledWith({
+      record: expect.objectContaining({
+        id: "rule_outlook_email",
+        enabled: false,
+        deletedAt: expect.any(String),
+      }),
+    });
+    confirm.mockRestore();
   });
 
   it("hydrates backend-style records and routes from camelCase foreground context", async () => {
@@ -463,10 +568,12 @@ describe("Gospeak Alpha app shell", () => {
     });
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
+    await openSettingsTab(user, "Advanced");
     await user.click(screen.getByLabelText(/Enable app-aware routing/i));
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await screen.findAllByText(/chrome\.exe/i);
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await dictateWithGlobalShortcut();
 
     expect(getForegroundAppContext).toHaveBeenCalled();
     expect(runAudioFileDictation).toHaveBeenCalledWith(
@@ -490,40 +597,20 @@ describe("Gospeak Alpha app shell", () => {
     ]);
     render(<App />);
 
-    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await dictateWithGlobalShortcut();
 
-    expect(getForegroundAppContext).not.toHaveBeenCalled();
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ profile_id: "email" }),
     );
   });
 
-  it("displays App Rules enabled state in the rule list", async () => {
-    const user = userEvent.setup();
-    vi.mocked(listAppProfileRules).mockResolvedValueOnce([
-      {
-        id: "rule_chrome_prompt",
-        appId: "chrome.exe",
-        windowTitlePattern: "ChatGPT",
-        profileId: "prompt",
-        priority: 10,
-        enabled: false,
-        updatedAt: "2026-06-30T10:00:00.000Z",
-        deletedAt: null,
-      },
-    ]);
-    render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /App Rules/i }));
-
-    const status = await screen.findByText("Disabled");
-    expect(status.closest(".rule-item")).toHaveTextContent(/chrome\.exe/i);
-  });
-
-  it("renders cumulative provider cost totals", async () => {
-    const user = userEvent.setup();
+  it("renders all-time usage totals", async () => {
+    vi.useFakeTimers({ now: new Date("2026-07-10T12:00:00Z") });
     vi.mocked(listUsageEvents).mockResolvedValueOnce([
       {
         id: "usage_1",
@@ -539,7 +626,7 @@ describe("Gospeak Alpha app shell", () => {
         stt_estimated_cost: 0.000667,
         rewrite_estimated_cost: 0.00045,
         estimated_cost: 0.001117,
-        created_at: "2026-07-01T00:00:00Z",
+        created_at: "2026-07-01T12:00:00Z",
       },
       {
         id: "usage_2",
@@ -555,26 +642,28 @@ describe("Gospeak Alpha app shell", () => {
         stt_estimated_cost: 0.000925,
         rewrite_estimated_cost: 0.00225,
         estimated_cost: 0.003175,
-        created_at: "2026-07-01T00:01:00Z",
+        created_at: "2026-07-01T12:01:00Z",
       },
     ]);
-    render(<App />);
+    try {
+      render(<App />);
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
 
-    await user.click(screen.getByRole("button", { name: /Providers/i }));
-
-    const costs = await screen.findByLabelText(/Usage cost totals/i);
-    expect(within(costs).getByText("STT cost")).toBeInTheDocument();
-    expect(within(costs).getByText("$0.0016")).toBeInTheDocument();
-    expect(within(costs).getByText("Rewrite cost")).toBeInTheDocument();
-    expect(within(costs).getByText("$0.0027")).toBeInTheDocument();
+      const usage = screen.getByLabelText("All-time usage");
+      expect(within(usage).getByText("1m 30s")).toBeInTheDocument();
+      expect(within(usage).getByText("0")).toBeInTheDocument();
+      expect(within(usage).getByText("$0.0043")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("publishes visible recorder progress while processing dictation", async () => {
-    const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await dictateWithGlobalShortcut();
 
     await waitFor(() =>
       expect(publishRecorderState).toHaveBeenCalledWith(
@@ -598,14 +687,13 @@ describe("Gospeak Alpha app shell", () => {
   });
 
   it("surfaces recording start errors in the main app and recorder overlay", async () => {
-    const user = userEvent.setup();
     vi.mocked(startRecording).mockRejectedValueOnce(
       new Error("No input microphone is available"),
     );
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
+    await triggerGlobalShortcut("pressed");
 
     expect(
       await screen.findByText("No input microphone is available"),
@@ -620,7 +708,6 @@ describe("Gospeak Alpha app shell", () => {
   });
 
   it("keeps dictation output running when recorder overlay publishing fails", async () => {
-    const user = userEvent.setup();
     vi.mocked(publishRecorderState).mockRejectedValue(
       new Error(
         "window.show not allowed. Permissions associated with this command: core:window:allow-show",
@@ -629,8 +716,7 @@ describe("Gospeak Alpha app shell", () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await dictateWithGlobalShortcut();
 
     expect(runAudioFileDictation).toHaveBeenCalledTimes(1);
     expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
@@ -641,8 +727,10 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Profiles/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
     await user.type(screen.getByLabelText(/Profile name/i), "Meeting Notes");
+    await user.clear(screen.getByLabelText(/Profile system prompt/i));
     await user.type(screen.getByLabelText(/Profile system prompt/i), "Summarize spoken notes.");
     await user.click(screen.getByRole("button", { name: /Save profile/i }));
 
@@ -654,7 +742,7 @@ describe("Gospeak Alpha app shell", () => {
       }),
     );
     await waitFor(() =>
-      expect(screen.getByText("Meeting Notes")).toBeInTheDocument(),
+      expect(screen.getAllByText("Meeting Notes").length).toBeGreaterThan(0),
     );
   });
 
@@ -663,10 +751,11 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: /Dictionary/i }));
-    await user.type(screen.getByLabelText(/Spoken phrase/i), "gawspeak");
-    await user.type(screen.getByLabelText(/Written phrase/i), "Gospeak");
-    await user.type(screen.getByLabelText(/Dictionary aliases/i), "go speak");
-    await user.click(screen.getByRole("button", { name: /Save dictionary term/i }));
+    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
+    await user.type(screen.getByLabelText("Spoken phrase"), "gawspeak");
+    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
+    await user.type(screen.getByLabelText("Aliases"), "go speak");
+    await user.click(screen.getByRole("button", { name: "Save term" }));
 
     expect(upsertDictionaryTerm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -679,6 +768,18 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() =>
       expect(screen.getAllByText("Gospeak").length).toBeGreaterThan(1),
     );
+  });
+
+  it("uses an empty stored Dictionary after loading", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDictionaryTerms).mockResolvedValueOnce([]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Dictionary" }));
+    await waitFor(() => expect(screen.getByText("0 terms")).toBeInTheDocument());
+
+    expect(screen.queryByText("AI Agent Security")).not.toBeInTheDocument();
+    expect(screen.queryByText("runtime monitoring")).not.toBeInTheDocument();
   });
 
   it("exports and imports configuration through file commands", async () => {
@@ -727,34 +828,58 @@ describe("Gospeak Alpha app shell", () => {
       },
     });
 
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Import\/Export/i }));
-    await user.click(screen.getByRole("button", { name: /Export configuration/i }));
-    expect(selectExportPath).toHaveBeenCalled();
-    expect(exportConfigToFile).toHaveBeenCalledWith(
-      "C:\\Temp\\gospeak-export.json",
-      expect.objectContaining({ schemaVersion: 1 }),
-    );
+    try {
+      await openSettingsTab(user, "Privacy & Data");
+      await user.click(screen.getByRole("button", { name: /Export configuration/i }));
+      expect(selectExportPath).toHaveBeenCalled();
+      expect(exportConfigToFile).toHaveBeenCalledWith(
+        "C:\\Temp\\gospeak-export.json",
+        expect.objectContaining({ schemaVersion: 1 }),
+      );
 
-    await user.click(screen.getByRole("button", { name: /Import configuration/i }));
-    expect(selectImportPath).toHaveBeenCalled();
-    expect(importConfigFromFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-import.json");
+      await user.click(screen.getByRole("button", { name: /Import configuration/i }));
+      expect(selectImportPath).toHaveBeenCalled();
+      expect(importConfigFromFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-import.json");
+    } finally {
+      confirm.mockRestore();
+    }
 
-    await user.click(screen.getByRole("button", { name: /Profiles/i }));
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
     await waitFor(() =>
-      expect(screen.getByText("Imported Profile")).toBeInTheDocument(),
+      expect(screen.getAllByText("Imported Profile").length).toBeGreaterThan(0),
     );
     await user.click(screen.getByRole("button", { name: /Dictionary/i }));
     expect(await screen.findByText("brand")).toBeInTheDocument();
 
   });
 
+  it("does not open the import picker when replacement is declined", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<App />);
+
+    try {
+      await openSettingsTab(user, "Privacy & Data");
+      await user.click(screen.getByRole("button", { name: /Import configuration/i }));
+      expect(confirm).toHaveBeenCalledWith(
+        "Importing will replace local Profiles, Dictionary terms, App Rules, and preferences. Continue?",
+      );
+      expect(selectImportPath).not.toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
   it("persists the active profile and uses it for dictation", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.selectOptions(screen.getByLabelText(/Active profile/i), "email");
+    await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
     expect(upsertPreference).toHaveBeenCalledWith(
       expect.objectContaining({
         key: "active_profile_id",
@@ -762,8 +887,8 @@ describe("Gospeak Alpha app shell", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await user.click(screen.getByRole("button", { name: "General" }));
+    await dictateWithGlobalShortcut();
 
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ profile_id: "email" }),
@@ -771,7 +896,6 @@ describe("Gospeak Alpha app shell", () => {
   });
 
   it("sanitizes a missing stored active profile before dictation", async () => {
-    const user = userEvent.setup();
     vi.mocked(checkProviderKeys).mockResolvedValueOnce({
       groq: true,
       openai: true,
@@ -785,9 +909,8 @@ describe("Gospeak Alpha app shell", () => {
     ]);
     render(<App />);
 
-    await screen.findAllByText("Key ready");
-    await user.click(screen.getByRole("button", { name: /Start Dictation/i }));
-    await user.click(screen.getByRole("button", { name: /Stop Dictation/i }));
+    await screen.findByText("Cloud");
+    await dictateWithGlobalShortcut();
 
     expect(runAudioFileDictation).toHaveBeenCalledWith(
       expect.objectContaining({ profile_id: "normal" }),
@@ -798,11 +921,34 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: /Privacy/i }));
+    await openSettingsTab(user, "Privacy & Data");
     await user.click(screen.getByLabelText(/Save raw audio/i));
 
     expect(upsertPreference).toHaveBeenCalledWith(
       expect.objectContaining({ key: "privacy" }),
     );
+  });
+
+  it("clears successful saves after four seconds but keeps errors visible", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openSettingsTab(user, "Privacy & Data");
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText(/Save raw audio/i));
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("Saved");
+
+      act(() => vi.advanceTimersByTime(4000));
+      expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Profiles" }));
+      expect(screen.getByRole("button", { name: "Save Profile" })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
