@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
-  Gauge,
+  House,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -85,7 +85,7 @@ const seedDictionaryTerms: DictionaryTerm[] = [
 ];
 
 const navItems = [
-  { id: "general", label: "General", icon: Gauge },
+  { id: "general", label: "General", icon: House },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
   { id: "settings", label: "Settings", icon: Settings },
@@ -723,6 +723,12 @@ function App() {
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Gospeak navigation">
+        <div className="window-controls" aria-hidden="true">
+          <span className="window-dot red" />
+          <span className="window-dot yellow" />
+          <span className="window-dot green" />
+        </div>
+
         <div className="brand">
           <span className="brand-mark">
             <img alt="" src="/favicon.png?v=flat-bars-2" />
@@ -748,6 +754,11 @@ function App() {
           ))}
         </nav>
 
+        <div className="sidebar-status" aria-label="Application status">
+          <span className="sidebar-status-dot" aria-hidden="true" />
+          <strong>All systems normal</strong>
+          <span>Gospeak is running locally</span>
+        </div>
       </aside>
 
       <section className="workspace">

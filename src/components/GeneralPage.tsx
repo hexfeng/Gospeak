@@ -1,5 +1,6 @@
 import {
   Activity,
+  ChevronRight,
   Cloud,
   Clock3,
   DollarSign,
@@ -41,6 +42,7 @@ export function GeneralPage({
   const activeProfile = profiles.find((profile) => profile.id === config.activeProfileId);
   const hotkeyReady = Boolean(config.hotkey.binding.trim());
   const activeProfileReady = activeProfile?.enabled === true;
+  const chartDays = buildWeeklyActivity(usageEvents);
 
   return (
     <section className="module-panel general-page" aria-labelledby="general-title">
@@ -57,6 +59,21 @@ export function GeneralPage({
         </p>
       </header>
 
+      <section className="general-hero" aria-label="Dictation readiness">
+        <span className="general-hero-icon" aria-hidden="true">
+          <Mic size={34} strokeWidth={1.9} />
+        </span>
+        <div className="general-hero-copy">
+          <h2>Ready to dictate</h2>
+          <p>Gospeak is ready when you are.</p>
+          <span className="general-hero-pill">
+            <span aria-hidden="true" />
+            All systems normal
+          </span>
+        </div>
+        <span className="general-hero-wave" aria-hidden="true" />
+      </section>
+
       <section className="general-metrics" aria-label="All-time usage">
         <Metric
           icon={Clock3}
@@ -66,6 +83,14 @@ export function GeneralPage({
         <Metric icon={FileText} label="Total characters" value={usage.totalCharacterCount.toLocaleString()} />
         <Metric icon={Cloud} label="Usage mode" value={readiness.stt.ready ? "Cloud" : "Not Set"} />
         <Metric icon={DollarSign} label="Total cost" value={formatCost(usage.totalCost)} />
+      </section>
+
+      <section className="activity-panel" aria-labelledby="activity-title">
+        <div className="activity-panel-header">
+          <h2 id="activity-title">Dictation activity (7 days)</h2>
+          <button type="button">7 Days</button>
+        </div>
+        <ActivityChart days={chartDays} />
       </section>
 
       <section className="general-status-grid" aria-label="Configuration status">
@@ -156,9 +181,75 @@ function StatusCard({
       </span>
       <strong className="general-status-title">{label}</strong>
       <span className="general-status-description">{description}</span>
+      <span className="general-status-divider" aria-hidden="true" />
       <span className="general-status-value">{value}</span>
+      <ChevronRight className="general-status-chevron" size={18} strokeWidth={1.9} aria-hidden="true" />
     </button>
   );
+}
+
+function ActivityChart({ days }: { days: ActivityDay[] }) {
+  const maxMinutes = Math.max(30, ...days.map((day) => day.minutes));
+  const points = days.map((day, index) => {
+    const x = 44 + index * 130;
+    const y = 150 - (day.minutes / maxMinutes) * 120;
+    return { ...day, x, y };
+  });
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const lastPoint = points[points.length - 1];
+  const area = `${path} L ${lastPoint?.x ?? 824} 150 L ${points[0]?.x ?? 44} 150 Z`;
+
+  return (
+    <div className="activity-chart" aria-label="Minutes dictated over the last 7 days">
+      <svg viewBox="0 0 870 190" role="img" aria-labelledby="activity-chart-title">
+        <title id="activity-chart-title">Last 7 days of dictation minutes</title>
+        {[30, 20, 10, 0].map((tick) => {
+          const y = 150 - (tick / maxMinutes) * 120;
+          return (
+            <g key={tick}>
+              <text x="0" y={y + 4}>{tick}m</text>
+              <line x1="42" x2="852" y1={y} y2={y} />
+            </g>
+          );
+        })}
+        <path className="activity-chart-area" d={area} />
+        <path className="activity-chart-line" d={path} />
+        {points.map((point) => (
+          <g key={point.label}>
+            <circle cx={point.x} cy={point.y} r="4" />
+            <text className="activity-chart-label" x={point.x - 24} y="178">{point.label}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+type ActivityDay = {
+  label: string;
+  minutes: number;
+};
+
+function buildWeeklyActivity(events: UsageEventRecord[], now = new Date()): ActivityDay[] {
+  const formatter = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    const next = new Date(date);
+    next.setDate(date.getDate() + 1);
+    const seconds = events.reduce((total, event) => {
+      const createdAt = new Date(event.created_at).getTime();
+      if (createdAt >= date.getTime() && createdAt < next.getTime()) {
+        return total + (event.audio_seconds ?? 0);
+      }
+      return total;
+    }, 0);
+    return {
+      label: formatter.format(date),
+      minutes: Math.round(seconds / 60),
+    };
+  });
 }
 
 function formatDuration(seconds: number): string {

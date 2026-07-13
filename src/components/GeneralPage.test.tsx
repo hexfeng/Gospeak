@@ -35,6 +35,10 @@ describe("GeneralPage", () => {
     expect(screen.getByText("Usage mode")).toBeInTheDocument();
     expect(screen.getByText("Total cost")).toBeInTheDocument();
     expect(screen.getByText("Cloud")).toBeInTheDocument();
+    expect(screen.getByText("Ready to dictate")).toBeInTheDocument();
+    expect(screen.getByText("Gospeak is ready when you are.")).toBeInTheDocument();
+    expect(screen.getByText("Dictation activity (7 days)")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Last 7 days of dictation minutes" })).toBeInTheDocument();
     expect(screen.getByText("Speech-to-text model - ASR")).toBeInTheDocument();
     expect(screen.getByText("Speech recognition provider used before rewrite.")).toBeInTheDocument();
     expect(screen.getByText("Rewrite model")).toBeInTheDocument();
