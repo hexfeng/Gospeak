@@ -75,7 +75,7 @@ describe("General dashboard CSS contract", () => {
       /\.activity-panel\s*\{[^}]*border-radius:\s*16px/s,
     );
     expect(css).toMatch(
-      /\.general-status-card\s*\{[^}]*min-height:\s*176px/s,
+      /\.general-status-card\s*\{[^}]*min-height:\s*196px/s,
     );
     expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*1px solid #e4e9f1/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
