@@ -1,53 +1,27 @@
 .app-shell {
-  width: calc(100% - 36px);
-  max-width: 1440px;
-  height: calc(100vh - 36px);
-  margin: 18px auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
   display: grid;
-  grid-template-columns: clamp(250px, 20vw, 300px) minmax(0, 1fr);
+  grid-template-columns: clamp(280px, 21.5vw, 318px) minmax(0, 1fr);
   overflow: hidden;
   color: var(--text);
-  background: rgb(255 255 255 / 88%);
-  border: 1px solid #dfe3ea;
-  border-radius: 22px;
-  box-shadow:
-    0 24px 60px rgb(15 23 42 / 12%),
-    inset 0 1px 0 rgb(255 255 255 / 80%);
+  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .sidebar {
   min-width: 0;
   height: 100%;
-  padding: 30px clamp(18px, 1.9vw, 28px);
+  padding: 28px clamp(18px, 1.9vw, 26px);
   background: linear-gradient(180deg, #f9fbff 0%, #f4f7fb 100%);
   border-right: 1px solid #e1e6ee;
   display: flex;
   flex-direction: column;
   gap: 34px;
-}
-
-.window-controls {
-  display: flex;
-  gap: 10px;
-}
-
-.window-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  box-shadow: inset 0 -1px 2px rgb(15 23 42 / 18%);
-}
-
-.window-dot.red {
-  background: #ff5f57;
-}
-
-.window-dot.yellow {
-  background: #ffbd2e;
-}
-
-.window-dot.green {
-  background: #28c840;
 }
 
 .brand,
@@ -87,7 +61,7 @@
 .brand strong {
   display: block;
   color: var(--text-strong);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1.05;
 }
@@ -96,25 +70,25 @@
   display: block;
   margin-top: 5px;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .nav-list {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .nav-item {
   position: relative;
-  gap: 18px;
+  gap: 16px;
   width: 100%;
-  min-height: 62px;
-  padding: 0 20px;
+  min-height: 56px;
+  padding: 0 18px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
   color: #334155;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
   text-align: left;
 }
@@ -147,7 +121,7 @@
   gap: 8px 16px;
   align-items: center;
   margin-top: auto;
-  padding: 22px 24px;
+  padding: 18px 22px;
   border: 1px solid #e5e9f1;
   border-radius: 16px;
   background: rgb(255 255 255 / 72%);
@@ -163,24 +137,28 @@
 
 .sidebar-status strong {
   color: var(--text-strong);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
 }
 
 .sidebar-status span:last-child {
   grid-column: 2;
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .workspace {
   min-width: 0;
   height: 100%;
-  padding: 64px clamp(34px, 4vw, 58px) 34px;
+  padding: clamp(24px, 2.8vh, 36px) clamp(42px, 3.8vw, 56px) 28px;
   overflow-y: auto;
   background:
-    radial-gradient(circle at 72% 12%, rgb(219 234 254 / 44%), transparent 28%),
+    radial-gradient(circle at 72% 12%, rgb(219 234 254 / 30%), transparent 28%),
     #ffffff;
+}
+
+.workspace-general {
+  overflow: hidden;
 }
 
 .topbar {
@@ -260,7 +238,11 @@ button:disabled {
 .module-stage,
 .topbar,
 .app-message {
-  max-width: 1000px;
+  max-width: none;
+}
+
+.workspace-general .module-stage {
+  height: 100%;
 }
 
 .app-message {
@@ -311,29 +293,33 @@ button:disabled {
 }
 
 .general-page {
+  height: 100%;
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: clamp(11px, 1.35vh, 16px);
 }
 
 .general-header {
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 .general-header h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 42px;
+  font-size: clamp(30px, 3.6vh, 36px);
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0;
 }
 
 .general-header p {
-  margin: 14px 0 0;
+  margin: clamp(8px, 1.2vh, 12px) 0 0;
   color: #667085;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -356,8 +342,8 @@ button:disabled {
 }
 
 .general-header kbd {
-  min-width: 48px;
-  padding: 9px 14px;
+  min-width: 42px;
+  padding: 6px 12px;
   border: 1px solid #d7dce5;
   border-radius: 8px;
   background: #ffffff;
@@ -369,12 +355,11 @@ button:disabled {
 .general-hero {
   position: relative;
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
+  grid-template-columns: 68px minmax(0, 1fr);
   align-items: center;
-  gap: 32px;
-  min-height: 168px;
-  margin-bottom: 24px;
-  padding: 32px 34px;
+  gap: 22px;
+  min-height: clamp(104px, 12.5vh, 128px);
+  padding: clamp(16px, 2vh, 22px) 28px;
   overflow: hidden;
   border: 1px solid #e0e5ee;
   border-radius: 16px;
@@ -385,14 +370,14 @@ button:disabled {
 .general-hero-icon {
   position: relative;
   z-index: 1;
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 18px;
-  color: #1473ff;
-  background: linear-gradient(135deg, #eef5ff, #edf0ff);
+  border-radius: 16px;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-hero-copy {
@@ -403,25 +388,25 @@ button:disabled {
 .general-hero-copy h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 24px;
+  font-size: clamp(19px, 2.2vh, 21px);
   line-height: 1.15;
 }
 
 .general-hero-copy p {
-  margin: 10px 0 18px;
+  margin: 6px 0 10px;
   color: #667085;
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .general-hero-pill {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 14px;
+  padding: 6px 12px;
   border-radius: 999px;
   background: #f3f6f8;
   color: #667085;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .general-hero-pill span {
@@ -443,17 +428,17 @@ button:disabled {
 .general-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
+  gap: clamp(10px, 1.3vw, 16px);
 }
 
 .general-metric {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
-  min-height: 106px;
-  padding: 22px 22px;
+  min-height: clamp(68px, 8.4vh, 82px);
+  padding: clamp(12px, 1.5vh, 16px) 14px;
   border: 1px solid #e4e9f1;
   border-radius: 16px;
   background: #ffffff;
@@ -470,26 +455,26 @@ button:disabled {
 }
 
 .general-metric-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  color: #0969ff;
-  background: #eef5ff;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-metric:nth-child(2) .general-metric-icon {
-  color: #7c3aed;
-  background: #f3edff;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-metric:nth-child(3) .general-metric-icon {
-  color: #22a447;
-  background: #edf9ef;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-metric:nth-child(4) .general-metric-icon {
-  color: #f59e0b;
-  background: #fff7e6;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-metric-copy,
@@ -501,21 +486,27 @@ button:disabled {
 .general-metric-copy > span,
 .general-status-description {
   color: #667085;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.38;
+}
+
+.general-metric-copy > span {
+  white-space: nowrap;
 }
 
 .general-metric strong {
-  margin-top: 8px;
+  margin-top: 6px;
   color: #0f172a;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1.1;
   white-space: nowrap;
 }
 
 .activity-panel {
-  margin-top: 26px;
-  padding: 20px 24px 14px;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: clamp(12px, 1.5vh, 16px) 24px 8px;
   border: 1px solid #e4e9f1;
   border-radius: 16px;
   background: #ffffff;
@@ -527,34 +518,36 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .activity-panel h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 650;
 }
 
 .activity-panel button {
-  min-height: 36px;
+  min-height: 32px;
   border: 1px solid #dfe5ee;
   border-radius: 8px;
   background: #ffffff;
   color: #344054;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .activity-chart {
   width: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
 .activity-chart svg {
   display: block;
   width: 100%;
-  height: 180px;
+  height: 100%;
+  min-height: 118px;
 }
 
 .activity-chart line {
@@ -564,7 +557,7 @@ button:disabled {
 
 .activity-chart text {
   fill: #667085;
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .activity-chart .activity-chart-label {
@@ -572,33 +565,35 @@ button:disabled {
 }
 
 .activity-chart-area {
-  fill: rgb(37 99 235 / 9%);
+  fill: rgb(17 24 39 / 6%);
 }
 
 .activity-chart-line {
   fill: none;
-  stroke: #3478ff;
+  stroke: #111827;
   stroke-width: 2;
 }
 
 .activity-chart circle {
   fill: #ffffff;
-  stroke: #3478ff;
+  stroke: #111827;
   stroke-width: 2;
 }
 
 .general-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
-  margin-top: 24px;
+  gap: clamp(12px, 1.8vw, 22px);
 }
 
 .general-status-card {
   position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: start;
   min-width: 0;
-  min-height: 196px;
-  padding: 24px 26px 20px;
+  min-height: clamp(124px, 14.5vh, 144px);
+  padding: clamp(13px, 1.55vh, 16px) 22px 13px;
   border: 1px solid #e4e9f1;
   border-radius: 16px;
   background: #ffffff;
@@ -608,18 +603,23 @@ button:disabled {
 }
 
 .general-status-icon {
-  width: 50px;
-  height: 50px;
-  margin-bottom: 12px;
-  border-radius: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: #111827;
+  background: #f3f6fa;
 }
 
-.general-status-chart {
-  position: absolute;
-  top: 26px;
-  right: 26px;
-  display: inline-flex;
-  color: #9ca3af;
+.general-status-main {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.general-status-copy {
+  min-width: 0;
 }
 
 .general-status-card.is-ready {
@@ -627,12 +627,8 @@ button:disabled {
 }
 
 .general-status-card.is-ready .general-status-icon {
-  color: #23a046;
-  background: #eef8f1;
-}
-
-.general-status-card.is-ready .general-status-chart {
-  color: #6fa982;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-status-card.is-not-ready {
@@ -640,12 +636,8 @@ button:disabled {
 }
 
 .general-status-card.is-not-ready .general-status-icon {
-  color: #ef4444;
-  background: #fff1ef;
-}
-
-.general-status-card.is-not-ready .general-status-chart {
-  color: #c58078;
+  color: #111827;
+  background: #f3f6fa;
 }
 
 .general-status-title,
@@ -656,26 +648,26 @@ button:disabled {
 
 .general-status-title {
   color: #0f172a;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.25;
 }
 
 .general-status-description {
   display: block;
-  margin-top: 8px;
-  padding-right: 8px;
+  margin-top: 5px;
+  padding-right: 0;
 }
 
 .general-status-divider {
   display: block;
   height: 1px;
-  margin: 12px 0 12px;
+  margin: 7px 0 9px;
   background: #e4e9f1;
 }
 
 .general-status-value {
   color: #0f172a;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.2;
 }
@@ -683,8 +675,8 @@ button:disabled {
 .general-status-chevron {
   position: absolute;
   right: 24px;
-  bottom: 24px;
-  color: #94a3b8;
+  bottom: 20px;
+  color: #111827;
 }
 
 .general-status-card:hover:not(:disabled) {
@@ -704,6 +696,193 @@ button:disabled {
 .general-status-card:focus-visible {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
+}
+
+@media (max-height: 980px) and (min-width: 981px) {
+  .sidebar {
+    padding: 22px clamp(18px, 1.9vw, 26px);
+    gap: 22px;
+  }
+
+  .brand {
+    gap: 14px;
+    padding-bottom: 6px;
+  }
+
+  .brand-mark {
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+  }
+
+  .brand strong {
+    font-size: 18px;
+  }
+
+  .brand span {
+    margin-top: 4px;
+    font-size: 13px;
+  }
+
+  .nav-list {
+    gap: 10px;
+  }
+
+  .nav-item {
+    gap: 14px;
+    min-height: 48px;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+
+  .nav-item.active::before {
+    height: 38px;
+  }
+
+  .sidebar-status {
+    padding: 16px 18px;
+  }
+
+  .workspace {
+    padding: 30px clamp(42px, 3.8vw, 56px) 28px;
+  }
+
+  .general-header h1 {
+    font-size: 34px;
+  }
+
+  .general-header p {
+    margin-top: 9px;
+    font-size: 14px;
+  }
+
+  .general-header kbd {
+    min-width: 40px;
+    padding: 5px 11px;
+  }
+
+  .general-hero {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 20px;
+    min-height: 118px;
+    padding: 18px 28px;
+  }
+
+  .general-hero-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+  }
+
+  .general-hero-copy h2 {
+    font-size: 20px;
+  }
+
+  .general-hero-copy p {
+    margin: 5px 0 9px;
+    font-size: 14px;
+  }
+
+  .general-hero-pill {
+    padding: 5px 12px;
+    font-size: 13px;
+  }
+
+  .general-metrics {
+    gap: 14px;
+  }
+
+  .general-metric {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+    min-height: 76px;
+    padding: 12px 14px;
+  }
+
+  .general-metric-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .general-metric-copy > span {
+    font-size: 11px;
+  }
+
+  .general-metric strong {
+    margin-top: 5px;
+    font-size: 18px;
+  }
+
+  .activity-panel {
+    padding: 12px 22px 8px;
+  }
+
+  .activity-panel-header {
+    margin-bottom: 2px;
+  }
+
+  .activity-panel h2 {
+    font-size: 15px;
+  }
+
+  .activity-panel button {
+    min-height: 34px;
+    font-size: 13px;
+  }
+
+  .activity-chart svg {
+    min-height: 132px;
+  }
+
+  .activity-chart text {
+    font-size: 12px;
+  }
+
+  .activity-chart .activity-chart-label {
+    font-size: 11px;
+  }
+
+  .general-status-grid {
+    gap: 16px;
+  }
+
+  .general-status-card {
+    min-height: 136px;
+    padding: 13px 20px 12px;
+  }
+
+  .general-status-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .general-status-main {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .general-status-title {
+    font-size: 14px;
+  }
+
+  .general-status-description {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .general-status-divider {
+    margin: 6px 0 7px;
+  }
+
+  .general-status-value {
+    font-size: 14px;
+  }
+
+  .general-status-chevron {
+    right: 20px;
+    bottom: 16px;
+  }
 }
 
 .page-heading,
@@ -1403,6 +1582,12 @@ pre {
     height: auto;
     padding: 36px 20px 22px;
     overflow: visible;
+  }
+
+  html,
+  body,
+  #root {
+    overflow: auto;
   }
 
   .status-grid,

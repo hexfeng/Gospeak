@@ -1,5 +1,4 @@
 import {
-  Activity,
   ChevronRight,
   Cloud,
   Clock3,
@@ -97,7 +96,7 @@ export function GeneralPage({
         <StatusCard
           description="Speech recognition provider used before rewrite."
           icon={Mic}
-          label="Speech-to-text model - ASR"
+          label="ASR model"
           value={readiness.stt.ready ? config.providers.stt.model : "Not Set"}
           ready={readiness.stt.ready}
           onClick={() => onOpenSettings("providers")}
@@ -173,14 +172,15 @@ function StatusCard({
       onClick={onClick}
       type="button"
     >
-      <span className="general-status-chart" aria-hidden="true">
-        <Activity size={18} strokeWidth={1.8} />
+      <span className="general-status-main">
+        <span className="general-status-icon" aria-hidden="true">
+          <Icon size={22} strokeWidth={1.9} />
+        </span>
+        <span className="general-status-copy">
+          <strong className="general-status-title">{label}</strong>
+          <span className="general-status-description">{description}</span>
+        </span>
       </span>
-      <span className="general-status-icon" aria-hidden="true">
-        <Icon size={22} strokeWidth={1.9} />
-      </span>
-      <strong className="general-status-title">{label}</strong>
-      <span className="general-status-description">{description}</span>
       <span className="general-status-divider" aria-hidden="true" />
       <span className="general-status-value">{value}</span>
       <ChevronRight className="general-status-chevron" size={18} strokeWidth={1.9} aria-hidden="true" />

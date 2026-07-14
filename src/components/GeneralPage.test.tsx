@@ -39,7 +39,7 @@ describe("GeneralPage", () => {
     expect(screen.getByText("Gospeak is ready when you are.")).toBeInTheDocument();
     expect(screen.getByText("Dictation activity (7 days)")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Last 7 days of dictation minutes" })).toBeInTheDocument();
-    expect(screen.getByText("Speech-to-text model - ASR")).toBeInTheDocument();
+    expect(screen.getByText("ASR model")).toBeInTheDocument();
     expect(screen.getByText("Speech recognition provider used before rewrite.")).toBeInTheDocument();
     expect(screen.getByText("Rewrite model")).toBeInTheDocument();
     expect(screen.getByText("Writing model that cleans up the recognized text.")).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe("GeneralPage", () => {
     expect(screen.queryByText("Recent activity")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Speech-to-text model - ASR/i }));
+    await user.click(screen.getByRole("button", { name: /ASR model/i }));
     await user.click(screen.getByRole("button", { name: /Rewrite model/i }));
     await user.click(screen.getByRole("button", { name: /Active Profile/i }));
 

@@ -723,12 +723,6 @@ function App() {
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Gospeak navigation">
-        <div className="window-controls" aria-hidden="true">
-          <span className="window-dot red" />
-          <span className="window-dot yellow" />
-          <span className="window-dot green" />
-        </div>
-
         <div className="brand">
           <span className="brand-mark">
             <img alt="" src="/favicon.png?v=flat-bars-2" />
@@ -761,7 +755,7 @@ function App() {
         </div>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace workspace-${activeSection}`}>
         {notice ? (
           <p
             className="app-message"
