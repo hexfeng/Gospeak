@@ -286,10 +286,10 @@ button:disabled {
 }
 
 .dictionary-page {
-  padding: 20px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 12px 34px rgb(17 24 39 / 6%);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .general-page {
@@ -908,8 +908,11 @@ button:disabled {
 }
 
 .page-heading h1 {
-  font-size: 23px;
-  line-height: 1.12;
+  color: #0f172a;
+  font-size: clamp(30px, 3.6vh, 36px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .page-heading h2 {
@@ -917,10 +920,24 @@ button:disabled {
 }
 
 .page-heading p {
-  margin: 6px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
+  margin: clamp(8px, 1.2vh, 12px) 0 0;
+  color: #667085;
+  font-size: 14px;
   line-height: 1.45;
+}
+
+.profiles-page,
+.settings-page {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.profiles-page > .page-heading,
+.dictionary-page > .page-heading,
+.settings-page > .page-heading {
+  margin-bottom: clamp(14px, 1.8vh, 20px);
 }
 
 .summary-grid {
@@ -965,14 +982,40 @@ button:disabled {
 }
 
 .profile-split {
-  grid-template-columns: minmax(210px, 0.34fr) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(230px, 0.34fr) minmax(0, 1fr);
+  gap: clamp(14px, 1.8vw, 22px);
 }
 
 .profile-split > aside {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 12px;
+  padding: clamp(14px, 1.6vh, 18px);
+  border: 1px solid #e4e9f1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 5%);
+}
+
+.profile-split > section {
+  min-width: 0;
+  padding: clamp(16px, 2vh, 22px);
+  border: 1px solid #e4e9f1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 5%);
+}
+
+.profile-split > section > .page-heading {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e4e9f1;
+}
+
+.profile-split > section > .page-heading h2 {
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.15;
 }
 
 .profile-item {
@@ -984,32 +1027,43 @@ button:disabled {
 
 .settings-tabs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 16px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgb(17 24 39 / 8%);
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px;
+  border: 1px solid #e4e9f1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 5%);
 }
 
 .settings-tabs button {
   min-width: 0;
+  min-height: 38px;
+  border-radius: 10px;
   overflow-wrap: anywhere;
   background: transparent;
-  color: var(--text-muted);
+  color: #667085;
+  font-size: 13px;
 }
 
 .settings-tabs button[aria-selected="true"] {
-  background: #191919;
+  background: #111827;
   color: #ffffff;
 }
 
 .settings-content {
   min-height: 320px;
+  padding: clamp(16px, 2vh, 22px);
+  border: 1px solid #e4e9f1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 5%);
 }
 
 .dictionary-rows {
   display: grid;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .dictionary-row,
@@ -1018,9 +1072,11 @@ button:disabled {
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 12px;
-  border-radius: 13px;
-  background: #f7f7f5;
+  padding: 12px 14px;
+  border: 1px solid #e4e9f1;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .dictionary-row > button {
@@ -1039,14 +1095,23 @@ button:disabled {
 .dictionary-row > button span,
 .dictionary-row > span,
 .activity-row span {
-  color: var(--text-muted);
+  color: #667085;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .dictionary-row > button strong,
 .activity-row strong {
-  color: var(--text-strong);
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.dictionary-page > input[role="searchbox"] {
+  height: 44px;
+  border: 1px solid #e4e9f1;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .row-menu {
@@ -1189,9 +1254,10 @@ dialog [role="alert"] {
   justify-content: space-between;
   gap: 18px;
   padding: 14px;
-  border: 0;
-  border-radius: 13px;
-  background: #f7f7f5;
+  border: 1px solid #e4e9f1;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .provider-row + .provider-row {
@@ -1311,9 +1377,10 @@ input[type="checkbox"]:checked::after {
   align-items: end;
   margin-bottom: 14px;
   padding: 14px;
-  border: 0;
+  border: 1px solid #e4e9f1;
   border-radius: 14px;
-  background: #f7f7f5;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .compact-form .wide-field {
@@ -1405,9 +1472,11 @@ input[type="checkbox"]:checked::after {
   margin-top: 14px;
   padding: 12px;
   border-radius: 13px;
-  background: #f7f7f5;
-  color: var(--text-muted);
+  border: 1px solid #e4e9f1;
+  background: #ffffff;
+  color: #667085;
   font-size: 12px;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .profile-list,
@@ -1423,9 +1492,10 @@ input[type="checkbox"]:checked::after {
 .dict-item,
 .empty-note {
   padding: 12px;
-  border: 0;
-  border-radius: 13px;
-  background: #f7f7f5;
+  border: 1px solid #e4e9f1;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .profile-item strong,
@@ -1442,7 +1512,7 @@ input[type="checkbox"]:checked::after {
 .profile-item strong,
 .rule-item strong,
 .dict-item strong {
-  color: var(--text-strong);
+  color: #0f172a;
 }
 
 .profile-item span,
@@ -1450,7 +1520,7 @@ input[type="checkbox"]:checked::after {
 .rule-item small,
 .dict-item small,
 .empty-note {
-  color: var(--text-muted);
+  color: #667085;
   font-size: 12px;
 }
 
@@ -1473,6 +1543,17 @@ input[type="checkbox"]:checked::after {
 
 .app-context-preview {
   margin-bottom: 12px;
+}
+
+.app-context-preview span {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e4e9f1;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .app-rule-form {
@@ -1520,10 +1601,11 @@ input[type="checkbox"]:checked::after {
   justify-content: space-between;
   gap: 12px;
   min-height: 40px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 13px;
-  background: #f7f7f5;
+  padding: 8px 12px;
+  border: 1px solid #e4e9f1;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 4%);
 }
 
 .privacy-line strong {
