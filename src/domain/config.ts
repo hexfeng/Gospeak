@@ -362,7 +362,8 @@ export function updateSttBaseUrl(config: AppConfig, baseUrl: string): AppConfig 
 export function validateSttBaseUrl(config: AppConfig): string | null {
   const provider = config.providers.stt.providerId;
   if (provider !== "qwen-local" && provider !== "qwen-api") return null;
-  const rawUrl = config.providers.stt.baseUrl?.trim();
+  const baseUrl = config.providers.stt.baseUrl;
+  const rawUrl = typeof baseUrl === "string" ? baseUrl.trim() : "";
   if (!rawUrl) return `${provider === "qwen-local" ? "Qwen Local" : "Qwen API"} base URL is required.`;
   try {
     const url = new URL(rawUrl);
@@ -400,13 +401,11 @@ export function applyStoredPreferences(
   const appRouting = parsePreference<Partial<AppConfig["appRouting"]>>(
     preferences.app_routing,
   );
+  const normalizedProviders = normalizeStoredProviders(base, providers);
 
   const next: AppConfig = {
     ...base,
-    providers: {
-      stt: { ...base.providers.stt, ...providers?.stt },
-      rewrite: { ...base.providers.rewrite, ...providers?.rewrite },
-    },
+    providers: normalizedProviders,
     hotkey: { ...base.hotkey, ...hotkey },
     privacy: {
       ...base.privacy,
@@ -426,6 +425,52 @@ export function applyStoredPreferences(
   return performance?.streamingMode
     ? updateSttProvider(next, "openai-realtime")
     : next;
+}
+
+function normalizeStoredProviders(
+  base: AppConfig,
+  providers: Partial<AppConfig["providers"]> | undefined,
+): AppConfig["providers"] {
+  const sttOption = STT_PROVIDER_OPTIONS.find(
+    (option) => option.id === providers?.stt?.providerId,
+  );
+  const storedStt = providers?.stt;
+  let stt = base.providers.stt;
+  if (sttOption && storedStt && sttOption.models.includes(storedStt.model)) {
+    stt = { providerId: sttOption.id, model: storedStt.model };
+    if (sttOption.id === "qwen-local" || sttOption.id === "qwen-api") {
+      const candidate = {
+        ...stt,
+        baseUrl:
+          typeof storedStt.baseUrl === "string" ? storedStt.baseUrl : "",
+      };
+      const candidateConfig: AppConfig = {
+        ...base,
+        providers: { ...base.providers, stt: candidate },
+      };
+      stt = validateSttBaseUrl(candidateConfig)
+        ? {
+            ...stt,
+            baseUrl: sttOption.id === "qwen-local"
+              ? sttOption.defaultBaseUrl
+              : "",
+          }
+        : candidate;
+    }
+  }
+
+  const rewriteOption = REWRITE_PROVIDER_OPTIONS.find(
+    (option) => option.id === providers?.rewrite?.providerId,
+  );
+  const storedRewrite = providers?.rewrite;
+  const rewrite =
+    rewriteOption &&
+    storedRewrite &&
+    rewriteOption.models.includes(storedRewrite.model)
+      ? { providerId: rewriteOption.id, model: storedRewrite.model }
+      : base.providers.rewrite;
+
+  return { stt, rewrite };
 }
 
 export function buildExportPayload(input: {

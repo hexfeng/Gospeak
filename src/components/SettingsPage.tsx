@@ -251,7 +251,13 @@ function ProviderSettings(props: SettingsPageProps) {
             >
               Save {label} key
             </button>
-            <span>{props.keyPresence[provider] ? "Key ready" : "Key missing"}</span>
+            <span>
+              {props.keyPresence[provider]
+                ? "Key ready"
+                : provider === "qwen-api"
+                  ? "Optional key not set"
+                  : "Key missing"}
+            </span>
           </div>
         );
       })}

@@ -113,6 +113,43 @@ describe("Gospeak provider configuration", () => {
     });
   });
 
+  it("falls back safely from unknown or mismatched stored providers", () => {
+    const unknown = applyStoredPreferences(DEFAULT_APP_CONFIG, {
+      providers: JSON.stringify({
+        stt: { providerId: "unknown", model: "anything" },
+        rewrite: { providerId: "unknown", model: "anything" },
+      }),
+    });
+    const mismatched = applyStoredPreferences(DEFAULT_APP_CONFIG, {
+      providers: JSON.stringify({
+        stt: {
+          providerId: "qwen-local",
+          model: "Qwen/Qwen3-ASR-1.7B",
+          baseUrl: "https://example.com/v1",
+        },
+        rewrite: { providerId: "deepseek", model: "gpt-5-nano" },
+      }),
+    });
+    const nonStringUrl = applyStoredPreferences(DEFAULT_APP_CONFIG, {
+      providers: JSON.stringify({
+        stt: {
+          providerId: "qwen-local",
+          model: "Qwen/Qwen3-ASR-0.6B",
+          baseUrl: { unsafe: true },
+        },
+        rewrite: { providerId: "openai", model: "gpt-5-nano" },
+      }),
+    });
+
+    expect(unknown.providers).toEqual(DEFAULT_APP_CONFIG.providers);
+    expect(mismatched.providers).toEqual(DEFAULT_APP_CONFIG.providers);
+    expect(nonStringUrl.providers.stt).toEqual({
+      providerId: "qwen-local",
+      model: "Qwen/Qwen3-ASR-0.6B",
+      baseUrl: "http://127.0.0.1:8000/v1",
+    });
+  });
+
   it("exports local config without API keys or transcript history", () => {
     const appRules = [
       {

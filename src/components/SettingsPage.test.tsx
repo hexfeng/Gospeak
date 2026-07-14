@@ -116,6 +116,15 @@ describe("SettingsPage", () => {
       <SettingsPage
         {...settingsProps}
         activeTab="providers"
+        config={updateSttProvider(DEFAULT_APP_CONFIG, "qwen-api")}
+      />,
+    );
+    expect(screen.getByText("Optional key not set")).toBeInTheDocument();
+
+    rerender(
+      <SettingsPage
+        {...settingsProps}
+        activeTab="providers"
         config={updateSttProvider(DEFAULT_APP_CONFIG, "openai-realtime")}
       />,
     );

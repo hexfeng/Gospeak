@@ -560,7 +560,7 @@ impl QwenSttProvider {
         Ok(Self {
             api_key,
             base_url: base_url.trim_end_matches('/').to_string(),
-            client: shared_http_client(),
+            client: qwen_http_client(),
         })
     }
 }
@@ -749,6 +749,7 @@ impl StreamingRewriteProvider for DeepSeekRewriteProvider {
         }
         let mut text = String::new();
         let mut usage = None;
+        let mut completed = false;
         for line in std::io::BufReader::new(response).lines() {
             match parse_deepseek_streaming_event(&line.map_err(|error| {
                 ProviderError::Http(format!("DeepSeek rewrite response read failed: {error}"))
@@ -758,9 +759,17 @@ impl StreamingRewriteProvider for DeepSeekRewriteProvider {
                     on_delta(&delta)?;
                 }
                 DeepSeekStreamingEvent::Usage(value) => usage = Some(value),
-                DeepSeekStreamingEvent::Done => break,
+                DeepSeekStreamingEvent::Done => {
+                    completed = true;
+                    break;
+                }
                 DeepSeekStreamingEvent::Ignored => {}
             }
+        }
+        if !completed {
+            return Err(ProviderError::ProviderResponse(
+                "DeepSeek streaming rewrite ended before [DONE]".to_string(),
+            ));
         }
         if text.trim().is_empty() {
             return Err(ProviderError::ProviderResponse(
@@ -1028,6 +1037,15 @@ fn shared_http_client() -> reqwest::blocking::Client {
                 .expect("valid shared HTTP client")
         })
         .clone()
+}
+
+fn qwen_http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .expect("valid Qwen HTTP client")
 }
 
 pub(crate) fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
@@ -2244,7 +2262,7 @@ mod tests {
         let provider = QwenSttProvider {
             api_key: Some("qwen-secret".to_string()),
             base_url,
-            client: shared_http_client(),
+            client: qwen_http_client(),
         };
         let text = provider
             .transcribe(&SttInput {
@@ -2261,6 +2279,30 @@ mod tests {
             .to_ascii_lowercase()
             .contains("authorization: bearer qwen-secret"));
         assert!(request.contains("Qwen/Qwen3-ASR-1.7B"));
+    }
+
+    #[test]
+    fn qwen_adapter_does_not_follow_audio_redirects() {
+        let (base_url, request) = serve_once(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:9/stolen\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"fake wav").unwrap();
+        let provider = QwenSttProvider {
+            api_key: None,
+            base_url,
+            client: qwen_http_client(),
+        };
+        let error = provider
+            .transcribe(&SttInput {
+                audio_path: file.path().to_string_lossy().to_string(),
+                model: "Qwen/Qwen3-ASR-0.6B".to_string(),
+                language: None,
+                prompt: None,
+            })
+            .unwrap_err();
+        let _ = request.join().unwrap();
+        assert!(matches!(error, ProviderError::Http(message) if message.contains("HTTP 307")));
     }
 
     #[test]
@@ -2324,6 +2366,42 @@ mod tests {
             .to_ascii_lowercase()
             .contains("authorization: bearer deepseek-secret"));
         assert!(request.contains("\"thinking\":{\"type\":\"disabled\"}"));
+    }
+
+    #[test]
+    fn deepseek_streaming_rejects_eof_before_done() {
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(), body
+        );
+        let leaked: &'static str = Box::leak(response.into_boxed_str());
+        let (base_url, request) = serve_once(leaked);
+        let provider = DeepSeekRewriteProvider {
+            api_key: "deepseek-secret".to_string(),
+            base_url,
+            client: shared_http_client(),
+        };
+        let input = RewriteInput {
+            transcript: "raw".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            profile_name: "Normal".to_string(),
+            system_prompt: "Clean".to_string(),
+            dictionary_terms: Vec::new(),
+            rendered_prompt: "raw".to_string(),
+        };
+        let mut streamed = String::new();
+        let error = provider
+            .rewrite_streaming(&input, &mut |delta| {
+                streamed.push_str(delta);
+                Ok(())
+            })
+            .unwrap_err();
+        let _ = request.join().unwrap();
+        assert_eq!(streamed, "partial");
+        assert!(
+            matches!(error, ProviderError::ProviderResponse(message) if message.contains("before [DONE]"))
+        );
     }
 }
 

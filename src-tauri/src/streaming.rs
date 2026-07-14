@@ -9,6 +9,7 @@ use tungstenite::{http::Request, stream::MaybeTlsStream, Message};
 use crate::{clipboard, provider};
 
 const OPENAI_REALTIME_URL: &str = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2";
+const OPENAI_TRANSCRIPTION_MODEL: &str = "gpt-4o-mini-transcribe";
 const OPENAI_TRANSCRIPT_TIMEOUT: Duration = Duration::from_secs(30);
 const PARTIAL_STREAMING_INSERT_WARNING: &str =
     "Streaming insertion stopped after partial text was inserted. Final text was copied to clipboard.";
@@ -258,10 +259,9 @@ pub fn run_streaming_pipeline(
 
     let openai_key = provider::provider_key("openai")?;
     let stt_started = Instant::now();
-    let (transcript, first_stt_delta_ms) =
-        OpenAiRealtimeTranscription::new(openai_key.clone(), request.stt_model.clone())
-            .transcribe_chunks(pcm_chunks)
-            .map_err(realtime_error)?;
+    let (transcript, first_stt_delta_ms) = OpenAiRealtimeTranscription::new(openai_key.clone())
+        .transcribe_chunks(pcm_chunks)
+        .map_err(realtime_error)?;
     let stt_latency_ms = elapsed_ms(stt_started);
 
     let model_reason = match local_light_rewrite_result(
@@ -448,15 +448,11 @@ fn realtime_error(message: String) -> provider::ProviderError {
 
 struct OpenAiRealtimeTranscription {
     api_key: String,
-    transcription_model: String,
 }
 
 impl OpenAiRealtimeTranscription {
-    fn new(api_key: String, transcription_model: String) -> Self {
-        Self {
-            api_key,
-            transcription_model,
-        }
+    fn new(api_key: String) -> Self {
+        Self { api_key }
     }
 
     fn transcribe_chunks<I>(&self, chunks: I) -> Result<(String, Option<u64>), String>
@@ -470,9 +466,7 @@ impl OpenAiRealtimeTranscription {
         set_read_timeout(socket.get_mut())?;
 
         socket
-            .send(Message::Text(realtime_session_update(
-                &self.transcription_model,
-            )))
+            .send(Message::Text(realtime_session_update()))
             .map_err(|_| "OpenAI realtime websocket send failed".to_string())?;
 
         for chunk in chunks {
@@ -555,7 +549,7 @@ fn openai_realtime_request(api_key: &str) -> Result<Request<()>, String> {
         .map_err(|_| "Cannot build OpenAI realtime request".to_string())
 }
 
-fn realtime_session_update(transcription_model: &str) -> String {
+fn realtime_session_update() -> String {
     serde_json::json!({
         "type": "session.update",
         "session": {
@@ -567,7 +561,7 @@ fn realtime_session_update(transcription_model: &str) -> String {
                         "rate": 24000,
                     },
                     "transcription": {
-                        "model": transcription_model,
+                        "model": OPENAI_TRANSCRIPTION_MODEL,
                     },
                     "turn_detection": null,
                 },
@@ -672,14 +666,14 @@ mod tests {
     #[test]
     fn builds_realtime_transcription_session_update() {
         let value: serde_json::Value =
-            serde_json::from_str(&super::realtime_session_update("gpt-realtime-2")).unwrap();
+            serde_json::from_str(&super::realtime_session_update()).unwrap();
 
         assert_eq!(value["type"], "session.update");
         assert_eq!(value["session"]["type"], "transcription");
         assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24000);
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
-            "gpt-realtime-2"
+            "gpt-4o-mini-transcribe"
         );
         assert!(value["session"].get("turn_detection").is_none());
         assert!(value["session"]["audio"]["input"]["turn_detection"].is_null());

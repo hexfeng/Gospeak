@@ -59,6 +59,9 @@ registry or a universal compatibility adapter.
 - `doubao` uses the Flash recording-file API with a single `X-Api-Key`, fixed
   `volc.bigasr.auc_turbo` resource, and `bigmodel` model.
 - `openai-realtime` selects the existing streaming pipeline.
+  `gpt-realtime-2` remains the selected and recorded Realtime model, while the
+  session's separate input-transcription field uses
+  `gpt-4o-mini-transcribe` as required by the Realtime API contract.
 
 Provider selection is authoritative. A failed local transcription must never
 fall back to a cloud provider automatically, because doing so would transmit

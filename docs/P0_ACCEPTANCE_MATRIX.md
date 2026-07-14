@@ -1,6 +1,6 @@
 # Gospeak P0 Alpha Acceptance Matrix
 
-Last updated: 2026-07-13
+Last updated: 2026-07-14
 
 Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
@@ -18,12 +18,12 @@ and are not treated as manually accepted.
 | --- | --- |
 | Commit | `f626d25` implementation on `codex/multi-provider-asr-rewrite`, plus final documentation/migration follow-up |
 | App version | `0.1.0` debug bundle |
-| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-13 23:57:08`, 5,675,241 bytes) |
-| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-13 23:57:18`, 10,178,560 bytes) |
+| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-14 00:10:06`, 5,672,587 bytes) |
+| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-14 00:10:16`, 10,178,560 bytes) |
 | OS | Recorded P0 manual environment: Windows 10 Home, version 2009, build 26200, 64-bit |
 | Microphone | Recorded P0 manual environment: `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
 | Target apps detected | Recorded P0 manual environment: Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
-| Automated verification | `npm test` (107 tests), `npm run lint`, `npm run build`, `cargo test` (110 tests; native paste smoke ignored), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-13 |
+| Automated verification | `npm test` (108 tests), `npm run lint`, `npm run build`, `cargo test` (112 tests; native paste smoke ignored), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-14 |
 | Manual acceptance | User-reported pass for the original P0 trigger/input, profile/target-app, failure/privacy, and clean-install checks on 2026-06-30; App-aware routing and Speak to Edit accepted on 2026-07-01 |
 | Current-head install acceptance | Pending for the multi-provider debug installers listed above |
 
