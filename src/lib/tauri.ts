@@ -12,20 +12,25 @@ import type {
   ApiKeyPresence,
   AppProfileRule,
   ConfigExportPayload,
+  ConfigImportPayload,
+  CredentialProviderId,
   ForegroundAppContext,
 } from "../domain/config";
 
 export type ProviderRuntimeConfig = {
-  stt_provider: "groq";
+  stt_provider: import("../domain/config").SttProviderId;
   stt_model: string;
-  rewrite_provider: "openai";
+  rewrite_provider: import("../domain/config").RewriteProviderId;
   rewrite_model: string;
 };
 
 export type AudioFilePipelineRequest = {
   audio_path: string;
   profile_id: string;
+  stt_provider: import("../domain/config").SttProviderId;
+  stt_base_url: string | null;
   stt_model: string;
+  rewrite_provider: import("../domain/config").RewriteProviderId;
   rewrite_model: string;
   selected_text: string | null;
   skip_rewrite: boolean;
@@ -43,6 +48,8 @@ export type PipelineResult = {
   no_speech?: boolean;
   rewrite_input_tokens?: number | null;
   rewrite_output_tokens?: number | null;
+  rewrite_cache_hit_tokens?: number | null;
+  rewrite_cache_miss_tokens?: number | null;
 };
 
 export type StreamingPipelineRequest = AudioFilePipelineRequest & {
@@ -141,14 +148,11 @@ export async function checkProviderKeys(): Promise<ApiKeyPresence> {
 }
 
 export async function saveProviderApiKey(
-  provider: "groq" | "openai",
+  provider: CredentialProviderId,
   apiKey: string,
 ): Promise<ApiKeyPresence> {
   if (!hasTauriRuntime()) {
-    return {
-      groq: provider === "groq",
-      openai: provider === "openai",
-    };
+    return { [provider]: true };
   }
 
   return invoke<ApiKeyPresence>("save_provider_api_key", {
@@ -428,12 +432,12 @@ export async function exportConfigToFile(
 
 export async function importConfigFromFile(
   path: string,
-): Promise<ConfigExportPayload> {
+): Promise<ConfigImportPayload> {
   if (!hasTauriRuntime()) {
     throw new Error("Import is only available in the Tauri runtime.");
   }
 
-  return invoke<ConfigExportPayload>("import_config_from_file", { path });
+  return invoke<ConfigImportPayload>("import_config_from_file", { path });
 }
 
 export async function selectExportPath(): Promise<string | null> {

@@ -15,13 +15,21 @@ import {
   type ApiKeyPresence,
   type AppConfig,
   type AppProfileRule,
+  type CredentialProviderId,
   type DictionaryTerm,
   type ForegroundAppContext,
   type PromptProfile,
+  type RewriteProviderId,
+  type SttProviderId,
+  applyStoredPreferences,
   buildExportPayload,
   resolveActiveProfileId,
   resolveProfileForContext,
   updateProviderModel,
+  updateRewriteProvider,
+  updateSttBaseUrl,
+  updateSttProvider,
+  validateSttBaseUrl,
 } from "./domain/config";
 import {
   DICTATION_INITIAL_STATE,
@@ -93,8 +101,6 @@ const navItems = [
 
 type AppNotice = { text: string; tone: "info" | "error" } | null;
 
-const STREAMING_STT_MODEL = "gpt-realtime-whisper";
-
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("dictation");
@@ -103,8 +109,9 @@ function App() {
     groq: false,
     openai: false,
   });
-  const [groqKey, setGroqKey] = useState("");
-  const [openAiKey, setOpenAiKey] = useState("");
+  const [keyDrafts, setKeyDrafts] = useState<
+    Partial<Record<CredentialProviderId, string>>
+  >({});
   const [profiles, setProfiles] = useState<PromptProfile[]>(
     DEFAULT_APP_CONFIG.promptProfiles,
   );
@@ -136,11 +143,10 @@ function App() {
     });
   }
 
-  async function saveKey(provider: "groq" | "openai", apiKey: string) {
+  async function saveKey(provider: CredentialProviderId, apiKey: string) {
     const status = await saveProviderApiKey(provider, apiKey);
     setKeyPresence(status);
-    setGroqKey("");
-    setOpenAiKey("");
+    setKeyDrafts((current) => ({ ...current, [provider]: "" }));
     setNotice({
       text: `${provider.toUpperCase()} key saved to the OS credential store.`,
       tone: "info",
@@ -289,7 +295,16 @@ function App() {
       return;
     }
     const payload = await importConfigFromFile(path);
-    setConfig({ ...DEFAULT_APP_CONFIG, ...payload.data });
+    setConfig(
+      applyStoredPreferences(DEFAULT_APP_CONFIG, {
+        providers: JSON.stringify(payload.data.providers),
+        hotkey: JSON.stringify(payload.data.hotkey),
+        privacy: JSON.stringify(payload.data.privacy),
+        performance: JSON.stringify(payload.data.performance),
+        app_routing: JSON.stringify(payload.data.appRouting),
+        active_profile_id: payload.data.activeProfileId,
+      }),
+    );
     setProfiles(payload.data.promptProfiles);
     setDictionaryTerms(payload.data.dictionaryTerms);
     setAppRules(payload.data.appRules ?? []);
@@ -319,14 +334,24 @@ function App() {
         isStartingRecordingRef.current = true;
         ownsStartingFlag = true;
         selectedTextForEditRef.current = null;
+        const sttBaseUrlError = validateSttBaseUrl(config);
+        if (sttBaseUrlError) throw new Error(sttBaseUrlError);
         if (config.performance.speakToEdit) {
           selectedTextForEditRef.current = await readSelectedTextForEdit();
+          if (
+            config.providers.stt.providerId === "openai-realtime" &&
+            selectedTextForEditRef.current
+          ) {
+            throw new Error(
+              "OpenAI Realtime is not compatible with Speak to Edit. Choose a batch ASR provider.",
+            );
+          }
           setNotice({
             text: "Editing selected text. Record the edit instruction.",
             tone: "info",
           });
         }
-        const path = await (config.performance.streamingMode
+        const path = await (config.providers.stt.providerId === "openai-realtime"
           ? startStreamingRecording
           : startRecording)();
         dictationStatusRef.current = "recording";
@@ -353,7 +378,7 @@ function App() {
       dispatchDictation({ type: "recording-stopped" });
       await publishRecorderStateSafely({
         status: "transcribing",
-        message: "Transcribing with Groq…",
+        message: `Transcribing with ${config.providers.stt.providerId}…`,
       });
       setNotice({
         text: "Recording stopped. Running STT and rewrite pipeline.",
@@ -380,7 +405,10 @@ function App() {
       const request: AudioFilePipelineRequest = {
         audio_path: audioPath,
         profile_id: profileId,
+        stt_provider: config.providers.stt.providerId,
+        stt_base_url: config.providers.stt.baseUrl ?? null,
         stt_model: config.providers.stt.model,
+        rewrite_provider: config.providers.rewrite.providerId,
         rewrite_model: config.providers.rewrite.model,
         selected_text: selectedTextForEditRef.current,
         skip_rewrite:
@@ -390,20 +418,15 @@ function App() {
       let result: Awaited<ReturnType<typeof runAudioFileDictation>> &
         Partial<Awaited<ReturnType<typeof runStreamingDictation>>>;
       if (
-        config.performance.streamingMode &&
+        config.providers.stt.providerId === "openai-realtime" &&
         selectedTextForEditRef.current == null
       ) {
-        try {
-          const streamingResult = await runStreamingDictation({
-            ...request,
-            stt_model: STREAMING_STT_MODEL,
-            streaming_insert: true,
-          });
-          result = streamingResult;
-          insertedStreaming = streamingResult.inserted_streaming;
-        } catch {
-          result = await runAudioFileDictation(request);
-        }
+        const streamingResult = await runStreamingDictation({
+          ...request,
+          streaming_insert: true,
+        });
+        result = streamingResult;
+        insertedStreaming = streamingResult.inserted_streaming;
       } else {
         result = await runAudioFileDictation(request);
       }
@@ -423,7 +446,7 @@ function App() {
         dispatchDictation({ type: "rewriting" });
         await publishRecorderStateSafely({
           status: "rewriting",
-          message: "Rewriting with OpenAI…",
+          message: `Rewriting with ${config.providers.rewrite.providerId}…`,
         });
       }
       dictationStatusRef.current = "pasting";
@@ -676,6 +699,27 @@ function App() {
     setNotice({ text: "Saved", tone: "info" });
   }
 
+  async function changeSttProvider(provider: SttProviderId) {
+    const next = updateSttProvider(config, provider);
+    setConfig(next);
+    await persistPreference("providers", next.providers);
+    setNotice({ text: "Saved", tone: "info" });
+  }
+
+  async function changeRewriteProvider(provider: RewriteProviderId) {
+    const next = updateRewriteProvider(config, provider);
+    setConfig(next);
+    await persistPreference("providers", next.providers);
+    setNotice({ text: "Saved", tone: "info" });
+  }
+
+  async function changeSttBaseUrl(baseUrl: string) {
+    const next = updateSttBaseUrl(config, baseUrl);
+    setConfig(next);
+    await persistPreference("providers", next.providers);
+    setNotice({ text: "Saved", tone: "info" });
+  }
+
   async function changePrivacy(
     key: keyof AppConfig["privacy"],
     enabled: boolean,
@@ -695,13 +739,6 @@ function App() {
 
   async function changeSpeakToEdit(enabled: boolean) {
     const performanceConfig = { ...config.performance, speakToEdit: enabled };
-    setConfig((current) => ({ ...current, performance: performanceConfig }));
-    await persistPreference("performance", performanceConfig);
-    setNotice({ text: "Saved", tone: "info" });
-  }
-
-  async function changeStreamingMode(enabled: boolean) {
-    const performanceConfig = { ...config.performance, streamingMode: enabled };
     setConfig((current) => ({ ...current, performance: performanceConfig }));
     await persistPreference("performance", performanceConfig);
     setNotice({ text: "Saved", tone: "info" });
@@ -785,25 +822,31 @@ function App() {
               activeTab={settingsTab}
               config={config}
               keyPresence={keyPresence}
-              groqKey={groqKey}
-              openAiKey={openAiKey}
+              keyDrafts={keyDrafts}
               onTabChange={setSettingsTab}
-              onGroqKeyChange={setGroqKey}
-              onOpenAiKeyChange={setOpenAiKey}
+              onKeyDraftChange={(provider, value) =>
+                setKeyDrafts((current) => ({ ...current, [provider]: value }))
+              }
               onSaveKey={(provider, key) => void saveKey(provider, key)}
               onRefreshKeys={() => void refreshKeys()}
               onChangeHotkey={(next) => void changeHotkey(next)}
               onChangeProviderModel={(kind, model) =>
                 void changeProviderModel(kind, model)
               }
+              onChangeSttProvider={(provider) =>
+                void changeSttProvider(provider)
+              }
+              onChangeRewriteProvider={(provider) =>
+                void changeRewriteProvider(provider)
+              }
+              onChangeSttBaseUrl={(baseUrl) =>
+                void changeSttBaseUrl(baseUrl)
+              }
               onChangePrivacy={(key, enabled) =>
                 void changePrivacy(key, enabled)
               }
               onChangeFastMode={(enabled) => void changeFastMode(enabled)}
               onChangeSpeakToEdit={(enabled) => void changeSpeakToEdit(enabled)}
-              onChangeStreamingMode={(enabled) =>
-                void changeStreamingMode(enabled)
-              }
               onChangeAppRouting={(enabled) => void changeAppRouting(enabled)}
               onExport={() => void exportConfiguration()}
               onImport={() => void importConfiguration()}
@@ -888,36 +931,6 @@ function parseJsonList(value: string) {
   } catch {
     return [];
   }
-}
-
-function applyStoredPreferences(
-  config: AppConfig,
-  preferences: Record<string, string>,
-): AppConfig {
-  const parse = <T,>(key: string, fallback: T): T => {
-    const value = preferences[key];
-    if (!value) {
-      return fallback;
-    }
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return fallback;
-    }
-  };
-  return {
-    ...config,
-    providers: parse("providers", config.providers),
-    hotkey: parse("hotkey", config.hotkey),
-    privacy: parse("privacy", config.privacy),
-    performance: {
-      ...config.performance,
-      ...parse("performance", config.performance),
-    },
-    appRouting: parse("app_routing", config.appRouting),
-    activeProfileId:
-      preferences.active_profile_id ?? config.activeProfileId,
-  };
 }
 
 export default App;

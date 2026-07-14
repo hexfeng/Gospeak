@@ -19,7 +19,11 @@ const PARTIAL_STREAMING_INSERT_COPY_FAILED_WARNING: &str =
 pub struct StreamingPipelineRequest {
     pub audio_path: String,
     pub profile_id: String,
+    pub stt_provider: String,
+    #[serde(default)]
+    pub stt_base_url: Option<String>,
     pub stt_model: String,
+    pub rewrite_provider: String,
     pub rewrite_model: String,
     #[serde(default)]
     pub selected_text: Option<String>,
@@ -42,6 +46,8 @@ pub struct StreamingPipelineResult {
     pub no_speech: bool,
     pub rewrite_input_tokens: Option<u64>,
     pub rewrite_output_tokens: Option<u64>,
+    pub rewrite_cache_hit_tokens: Option<u64>,
+    pub rewrite_cache_miss_tokens: Option<u64>,
     pub streaming_used: bool,
     pub inserted_streaming: bool,
     pub first_stt_delta_ms: Option<u64>,
@@ -51,7 +57,7 @@ pub struct StreamingPipelineResult {
 }
 
 pub fn streaming_eligible(request: &StreamingPipelineRequest) -> bool {
-    request.selected_text.is_none()
+    request.stt_provider == "openai-realtime" && request.selected_text.is_none()
 }
 
 fn local_light_rewrite_result(
@@ -90,6 +96,8 @@ fn local_light_rewrite_result(
                 no_speech: false,
                 rewrite_input_tokens: None,
                 rewrite_output_tokens: None,
+                rewrite_cache_hit_tokens: None,
+                rewrite_cache_miss_tokens: None,
                 streaming_used: true,
                 inserted_streaming: false,
                 first_stt_delta_ms,
@@ -131,6 +139,8 @@ fn no_speech_streaming_result(
         no_speech: true,
         rewrite_input_tokens: None,
         rewrite_output_tokens: None,
+        rewrite_cache_hit_tokens: None,
+        rewrite_cache_miss_tokens: None,
         streaming_used: true,
         inserted_streaming: false,
         first_stt_delta_ms,
@@ -222,6 +232,17 @@ pub fn run_streaming_pipeline(
     context: provider::PipelineContext,
     pcm_chunks: Vec<Vec<i16>>,
 ) -> Result<StreamingPipelineResult, provider::ProviderError> {
+    if request.stt_provider != "openai-realtime" {
+        return Err(provider::ProviderError::InvalidInput(
+            "Streaming requires the OpenAI Realtime ASR provider".to_string(),
+        ));
+    }
+    provider::validate_provider_models(
+        &request.stt_provider,
+        &request.stt_model,
+        &request.rewrite_provider,
+        &request.rewrite_model,
+    )?;
     let audio_path = std::path::Path::new(&request.audio_path);
     let audio_seconds = provider::wav_duration_seconds(audio_path);
     let audio_file_bytes = provider::audio_file_bytes(audio_path);
@@ -272,14 +293,25 @@ pub fn run_streaming_pipeline(
         rendered_prompt,
     };
 
-    let rewrite_provider = provider::OpenAiRewriteProvider::new(openai_key);
+    let rewrite_provider: Box<dyn provider::StreamingRewriteProvider> =
+        match request.rewrite_provider.as_str() {
+            "openai" => Box::new(provider::OpenAiRewriteProvider::new(openai_key)),
+            "deepseek" => Box::new(provider::DeepSeekRewriteProvider::new(
+                provider::provider_key("deepseek")?,
+            )),
+            other => {
+                return Err(provider::ProviderError::UnsupportedProvider(
+                    other.to_string(),
+                ))
+            }
+        };
     let rewrite_started = Instant::now();
     let mut first_rewrite_delta_ms = None;
     let inserted_streaming = std::cell::Cell::new(false);
     let first_insert_ms = std::cell::Cell::new(None);
     let mut streamed_text = String::new();
     let mut pending_insert_text = String::new();
-    match rewrite_provider.rewrite_streaming(&rewrite_input, |delta| {
+    let mut handle_delta = |delta: &str| {
         if delta.is_empty() {
             return Ok(());
         }
@@ -311,7 +343,8 @@ pub fn run_streaming_pipeline(
             }
         }
         Ok(())
-    }) {
+    };
+    match rewrite_provider.rewrite_streaming(&rewrite_input, &mut handle_delta) {
         Ok(output) => Ok(StreamingPipelineResult {
             text: output.text,
             profile_id: context.profile_id,
@@ -322,8 +355,12 @@ pub fn run_streaming_pipeline(
             audio_file_bytes,
             fast_path_used: false,
             no_speech: false,
-            rewrite_input_tokens: None,
-            rewrite_output_tokens: None,
+            rewrite_input_tokens: output.usage.map(|usage| usage.input_tokens),
+            rewrite_output_tokens: output.usage.map(|usage| usage.output_tokens),
+            rewrite_cache_hit_tokens: output.usage.and_then(|usage| usage.prompt_cache_hit_tokens),
+            rewrite_cache_miss_tokens: output
+                .usage
+                .and_then(|usage| usage.prompt_cache_miss_tokens),
             streaming_used: true,
             inserted_streaming: inserted_streaming.get(),
             first_stt_delta_ms,
@@ -351,6 +388,8 @@ pub fn run_streaming_pipeline(
                     no_speech: false,
                     rewrite_input_tokens: None,
                     rewrite_output_tokens: None,
+                    rewrite_cache_hit_tokens: None,
+                    rewrite_cache_miss_tokens: None,
                     streaming_used: true,
                     inserted_streaming: true,
                     first_stt_delta_ms,
@@ -378,6 +417,8 @@ pub fn run_streaming_pipeline(
                 no_speech: false,
                 rewrite_input_tokens: None,
                 rewrite_output_tokens: None,
+                rewrite_cache_hit_tokens: None,
+                rewrite_cache_miss_tokens: None,
                 streaming_used: true,
                 inserted_streaming: false,
                 first_stt_delta_ms,
@@ -631,14 +672,14 @@ mod tests {
     #[test]
     fn builds_realtime_transcription_session_update() {
         let value: serde_json::Value =
-            serde_json::from_str(&super::realtime_session_update("gpt-realtime-whisper")).unwrap();
+            serde_json::from_str(&super::realtime_session_update("gpt-realtime-2")).unwrap();
 
         assert_eq!(value["type"], "session.update");
         assert_eq!(value["session"]["type"], "transcription");
         assert_eq!(value["session"]["audio"]["input"]["format"]["rate"], 24000);
         assert_eq!(
             value["session"]["audio"]["input"]["transcription"]["model"],
-            "gpt-realtime-whisper"
+            "gpt-realtime-2"
         );
         assert!(value["session"].get("turn_detection").is_none());
         assert!(value["session"]["audio"]["input"]["turn_detection"].is_null());
@@ -649,7 +690,10 @@ mod tests {
         let request = StreamingPipelineRequest {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
-            stt_model: "gpt-realtime-whisper".to_string(),
+            stt_provider: "openai-realtime".to_string(),
+            stt_base_url: None,
+            stt_model: "gpt-realtime-2".to_string(),
+            rewrite_provider: "openai".to_string(),
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: Some("edit me".to_string()),
             skip_rewrite: false,
@@ -741,7 +785,10 @@ mod tests {
         let request = StreamingPipelineRequest {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
-            stt_model: "gpt-realtime-whisper".to_string(),
+            stt_provider: "openai-realtime".to_string(),
+            stt_base_url: None,
+            stt_model: "gpt-realtime-2".to_string(),
+            rewrite_provider: "openai".to_string(),
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: None,
             skip_rewrite: false,
@@ -774,7 +821,10 @@ mod tests {
         let request = StreamingPipelineRequest {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
-            stt_model: "gpt-realtime-whisper".to_string(),
+            stt_provider: "openai-realtime".to_string(),
+            stt_base_url: None,
+            stt_model: "gpt-realtime-2".to_string(),
+            rewrite_provider: "openai".to_string(),
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: None,
             skip_rewrite: false,

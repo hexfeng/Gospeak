@@ -6,7 +6,11 @@ import {
   buildExportPayload,
   resolveProfileForContext,
   getProviderReadiness,
+  applyStoredPreferences,
+  updateRewriteProvider,
   updateProviderModel,
+  updateSttProvider,
+  validateSttBaseUrl,
 } from "./config";
 
 describe("Gospeak provider configuration", () => {
@@ -18,8 +22,8 @@ describe("Gospeak provider configuration", () => {
     expect(DEFAULT_APP_CONFIG.performance.speakToEdit).toBe(false);
   });
 
-  it("defaults experimental streaming dictation off", () => {
-    expect(DEFAULT_APP_CONFIG.performance.streamingMode).toBe(false);
+  it("does not persist a duplicate streaming mode flag", () => {
+    expect(DEFAULT_APP_CONFIG.performance).not.toHaveProperty("streamingMode");
   });
 
   it("updates provider models without mutating the existing config", () => {
@@ -31,6 +35,82 @@ describe("Gospeak provider configuration", () => {
 
     expect(next.providers.stt.model).toBe("whisper-large-v3");
     expect(DEFAULT_APP_CONFIG.providers.stt.model).toBe("whisper-large-v3-turbo");
+  });
+
+  it("switches providers to their default model and endpoint", () => {
+    const local = updateSttProvider(DEFAULT_APP_CONFIG, "qwen-local");
+    const deepseek = updateRewriteProvider(local, "deepseek");
+
+    expect(local.providers.stt).toEqual({
+      providerId: "qwen-local",
+      model: "Qwen/Qwen3-ASR-0.6B",
+      baseUrl: "http://127.0.0.1:8000/v1",
+    });
+    expect(deepseek.providers.rewrite).toEqual({
+      providerId: "deepseek",
+      model: "deepseek-v4-flash",
+    });
+  });
+
+  it("validates local loopback and remote HTTPS ASR endpoints", () => {
+    expect(
+      validateSttBaseUrl(updateSttProvider(DEFAULT_APP_CONFIG, "qwen-local")),
+    ).toBeNull();
+    expect(
+      validateSttBaseUrl({
+        ...updateSttProvider(DEFAULT_APP_CONFIG, "qwen-local"),
+        providers: {
+          ...DEFAULT_APP_CONFIG.providers,
+          stt: {
+            providerId: "qwen-local",
+            model: "Qwen/Qwen3-ASR-0.6B",
+            baseUrl: "https://example.com/v1",
+          },
+        },
+      }),
+    ).toMatch(/loopback/i);
+    expect(
+      validateSttBaseUrl({
+        ...updateSttProvider(DEFAULT_APP_CONFIG, "qwen-api"),
+        providers: {
+          ...DEFAULT_APP_CONFIG.providers,
+          stt: {
+            providerId: "qwen-api",
+            model: "Qwen/Qwen3-ASR-1.7B",
+            baseUrl: "http://example.com/v1",
+          },
+        },
+      }),
+    ).toMatch(/HTTPS/i);
+  });
+
+  it("migrates the legacy streaming flag to the realtime provider", () => {
+    const migrated = applyStoredPreferences(DEFAULT_APP_CONFIG, {
+      providers: JSON.stringify(DEFAULT_APP_CONFIG.providers),
+      performance: JSON.stringify({
+        fastMode: false,
+        speakToEdit: false,
+        streamingMode: true,
+      }),
+      privacy: JSON.stringify({
+        saveRawAudio: true,
+        saveTranscriptHistory: true,
+        syncTranscriptHistory: true,
+        crashReportIncludesTranscript: true,
+      }),
+    });
+
+    expect(migrated.providers.stt).toEqual({
+      providerId: "openai-realtime",
+      model: "gpt-realtime-2",
+    });
+    expect(migrated.performance).toEqual({ fastMode: false, speakToEdit: false });
+    expect(migrated.privacy).toEqual({
+      saveRawAudio: true,
+      saveTranscriptHistory: false,
+      syncTranscriptHistory: false,
+      crashReportIncludesTranscript: false,
+    });
   });
 
   it("exports local config without API keys or transcript history", () => {

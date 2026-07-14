@@ -7,11 +7,19 @@ const KEYRING_SERVICE: &str = "com.gospeak.alpha";
 pub struct ProviderKeyStatus {
     pub groq: bool,
     pub openai: bool,
+    #[serde(rename = "qwen-api")]
+    pub qwen_api: bool,
+    pub doubao: bool,
+    pub deepseek: bool,
 }
 
 impl ProviderKeyStatus {
     pub fn from_presence(groq: bool, openai: bool) -> Self {
-        Self { groq, openai }
+        Self {
+            groq,
+            openai,
+            ..Self::default()
+        }
     }
 }
 
@@ -27,7 +35,11 @@ pub struct ProviderRuntimeConfig {
 pub struct AudioFilePipelineRequest {
     pub audio_path: String,
     pub profile_id: String,
+    pub stt_provider: String,
+    #[serde(default)]
+    pub stt_base_url: Option<String>,
     pub stt_model: String,
+    pub rewrite_provider: String,
     pub rewrite_model: String,
     #[serde(default)]
     pub selected_text: Option<String>,
@@ -60,6 +72,8 @@ pub struct PipelineResult {
     pub no_speech: bool,
     pub rewrite_input_tokens: Option<u64>,
     pub rewrite_output_tokens: Option<u64>,
+    pub rewrite_cache_hit_tokens: Option<u64>,
+    pub rewrite_cache_miss_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -91,7 +105,11 @@ pub fn validate_pipeline_readiness_for_options(
 ) -> Result<(), ProviderError> {
     match config.stt_provider.as_str() {
         "groq" if !status.groq => Err(ProviderError::MissingKey("groq".to_string())),
-        "groq" => Ok(()),
+        "qwen-api" | "qwen-local" | "groq" => Ok(()),
+        "doubao" if !status.doubao => Err(ProviderError::MissingKey("doubao".to_string())),
+        "doubao" => Ok(()),
+        "openai-realtime" if !status.openai => Err(ProviderError::MissingKey("openai".to_string())),
+        "openai-realtime" => Ok(()),
         other => Err(ProviderError::UnsupportedProvider(other.to_string())),
     }?;
 
@@ -102,6 +120,8 @@ pub fn validate_pipeline_readiness_for_options(
     match config.rewrite_provider.as_str() {
         "openai" if !status.openai => Err(ProviderError::MissingKey("openai".to_string())),
         "openai" => Ok(()),
+        "deepseek" if !status.deepseek => Err(ProviderError::MissingKey("deepseek".to_string())),
+        "deepseek" => Ok(()),
         other => Err(ProviderError::UnsupportedProvider(other.to_string())),
     }
 }
@@ -115,11 +135,20 @@ fn validate_audio_file_pipeline_readiness(
 }
 
 pub fn provider_key_status() -> ProviderKeyStatus {
-    ProviderKeyStatus::from_presence(has_provider_key("groq"), has_provider_key("openai"))
+    ProviderKeyStatus {
+        groq: has_provider_key("groq"),
+        openai: has_provider_key("openai"),
+        qwen_api: has_provider_key("qwen-api"),
+        doubao: has_provider_key("doubao"),
+        deepseek: has_provider_key("deepseek"),
+    }
 }
 
 pub fn save_provider_key(provider: &str, api_key: &str) -> Result<ProviderKeyStatus, String> {
-    if !matches!(provider, "groq" | "openai") {
+    if !matches!(
+        provider,
+        "groq" | "openai" | "qwen-api" | "doubao" | "deepseek"
+    ) {
         return Err(format!("Unsupported provider: {provider}"));
     }
 
@@ -144,31 +173,56 @@ pub fn run_audio_file_pipeline(
     context: PipelineContext,
 ) -> Result<PipelineResult, ProviderError> {
     let config = ProviderRuntimeConfig {
-        stt_provider: "groq".to_string(),
+        stt_provider: request.stt_provider.clone(),
         stt_model: request.stt_model.clone(),
-        rewrite_provider: "openai".to_string(),
+        rewrite_provider: request.rewrite_provider.clone(),
         rewrite_model: request.rewrite_model.clone(),
     };
     let options = PipelineOptions {
         skip_rewrite: request.skip_rewrite && request.selected_text.is_none(),
     };
-    let status = if options.skip_rewrite {
-        ProviderKeyStatus::from_presence(has_provider_key("groq"), false)
-    } else {
-        provider_key_status()
-    };
+    let status = provider_key_status();
     validate_audio_file_pipeline_readiness(&config, &status, options)?;
 
-    let groq_key = provider_key("groq")?;
-    let stt_provider = GroqSttProvider::new(groq_key);
-    let rewrite_provider = DeferredOpenAiRewriteProvider;
+    validate_provider_models(
+        &request.stt_provider,
+        &request.stt_model,
+        &request.rewrite_provider,
+        &request.rewrite_model,
+    )?;
+    let stt_provider: Box<dyn SttProvider> = match request.stt_provider.as_str() {
+        "groq" => Box::new(GroqSttProvider::new(provider_key("groq")?)),
+        "qwen-local" => Box::new(QwenSttProvider::new(
+            "qwen-local",
+            request
+                .stt_base_url
+                .as_deref()
+                .unwrap_or("http://127.0.0.1:8000/v1"),
+            None,
+        )?),
+        "qwen-api" => Box::new(QwenSttProvider::new(
+            "qwen-api",
+            request.stt_base_url.as_deref().unwrap_or(""),
+            optional_provider_key("qwen-api"),
+        )?),
+        "doubao" => Box::new(DoubaoSttProvider::new(provider_key("doubao")?)),
+        "openai-realtime" => {
+            return Err(ProviderError::InvalidInput(
+                "OpenAI Realtime must use the streaming pipeline".to_string(),
+            ))
+        }
+        other => return Err(ProviderError::UnsupportedProvider(other.to_string())),
+    };
+    let rewrite_provider = DeferredRewriteProvider {
+        provider: request.rewrite_provider.clone(),
+    };
 
     run_alpha_pipeline_with_clients(
         &config,
         request.audio_path.clone(),
         context,
         options,
-        &stt_provider,
+        stt_provider.as_ref(),
         &rewrite_provider,
     )
 }
@@ -181,6 +235,9 @@ pub(crate) fn provider_key(provider: &str) -> Result<String, ProviderError> {
     let env_name = match provider {
         "groq" => "GROQ_API_KEY",
         "openai" => "OPENAI_API_KEY",
+        "qwen-api" => "QWEN_API_KEY",
+        "doubao" => "DOUBAO_API_KEY",
+        "deepseek" => "DEEPSEEK_API_KEY",
         _ => return Err(ProviderError::UnsupportedProvider(provider.to_string())),
     };
 
@@ -241,6 +298,10 @@ pub struct RewriteInput {
 pub struct RewriteUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
+    #[serde(default)]
+    pub prompt_cache_hit_tokens: Option<u64>,
+    #[serde(default)]
+    pub prompt_cache_miss_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,6 +316,14 @@ pub trait SttProvider {
 
 pub trait RewriteProvider {
     fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError>;
+}
+
+pub trait StreamingRewriteProvider: RewriteProvider {
+    fn rewrite_streaming(
+        &self,
+        input: &RewriteInput,
+        on_delta: &mut dyn FnMut(&str) -> Result<(), ProviderError>,
+    ) -> Result<RewriteOutput, ProviderError>;
 }
 
 #[derive(Debug, Clone)]
@@ -381,6 +450,7 @@ impl OpenAiRewriteProvider {
         }
 
         let mut full_text = String::new();
+        let mut usage = None;
         for line in std::io::BufReader::new(response).lines() {
             match parse_openai_streaming_event(&line.map_err(|error| {
                 ProviderError::Http(format!("OpenAI rewrite response read failed: {error}"))
@@ -389,6 +459,7 @@ impl OpenAiRewriteProvider {
                     full_text.push_str(&delta);
                     on_delta(&delta)?;
                 }
+                OpenAiStreamingEvent::Usage(value) => usage = Some(value),
                 OpenAiStreamingEvent::Done => break,
                 OpenAiStreamingEvent::Ignored => {}
             }
@@ -403,7 +474,7 @@ impl OpenAiRewriteProvider {
 
         Ok(RewriteOutput {
             text: text.to_string(),
-            usage: None,
+            usage,
         })
     }
 }
@@ -448,11 +519,255 @@ impl RewriteProvider for OpenAiRewriteProvider {
     }
 }
 
-struct DeferredOpenAiRewriteProvider;
+impl StreamingRewriteProvider for OpenAiRewriteProvider {
+    fn rewrite_streaming(
+        &self,
+        input: &RewriteInput,
+        on_delta: &mut dyn FnMut(&str) -> Result<(), ProviderError>,
+    ) -> Result<RewriteOutput, ProviderError> {
+        OpenAiRewriteProvider::rewrite_streaming(self, input, |delta| on_delta(delta))
+    }
+}
 
-impl RewriteProvider for DeferredOpenAiRewriteProvider {
+struct DeferredRewriteProvider {
+    provider: String,
+}
+
+impl RewriteProvider for DeferredRewriteProvider {
     fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
-        OpenAiRewriteProvider::new(provider_key("openai")?).rewrite(input)
+        match self.provider.as_str() {
+            "openai" => OpenAiRewriteProvider::new(provider_key("openai")?).rewrite(input),
+            "deepseek" => DeepSeekRewriteProvider::new(provider_key("deepseek")?).rewrite(input),
+            other => Err(ProviderError::UnsupportedProvider(other.to_string())),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct QwenSttProvider {
+    api_key: Option<String>,
+    base_url: String,
+    client: reqwest::blocking::Client,
+}
+
+impl QwenSttProvider {
+    pub fn new(
+        provider: &str,
+        base_url: &str,
+        api_key: Option<String>,
+    ) -> Result<Self, ProviderError> {
+        validate_qwen_base_url(provider, base_url)?;
+        Ok(Self {
+            api_key,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            client: shared_http_client(),
+        })
+    }
+}
+
+impl SttProvider for QwenSttProvider {
+    fn transcribe(&self, input: &SttInput) -> Result<String, ProviderError> {
+        let audio_path = std::path::Path::new(&input.audio_path);
+        let file_part = reqwest::blocking::multipart::Part::file(audio_path).map_err(|error| {
+            ProviderError::InvalidInput(format!("Cannot read audio file: {error}"))
+        })?;
+        let form = reqwest::blocking::multipart::Form::new()
+            .part("file", file_part)
+            .text("model", input.model.clone());
+        let mut request = self
+            .client
+            .post(format!("{}/audio/transcriptions", self.base_url))
+            .multipart(form);
+        if let Some(key) = &self.api_key {
+            request = request.bearer_auth(key);
+        }
+        let response = request
+            .send()
+            .map_err(|error| ProviderError::Http(format!("Qwen ASR request failed: {error}")))?;
+        let status = response.status();
+        let body = response.text().map_err(|error| {
+            ProviderError::Http(format!("Qwen ASR response read failed: {error}"))
+        })?;
+        if !status.is_success() {
+            return Err(ProviderError::Http(format!(
+                "Qwen ASR returned HTTP {status}: {}",
+                sanitize_provider_body(&body)
+            )));
+        }
+        parse_transcription_text("Qwen ASR", &body)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DoubaoSttProvider {
+    api_key: String,
+    endpoint: String,
+    client: reqwest::blocking::Client,
+}
+
+impl DoubaoSttProvider {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            endpoint: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash"
+                .to_string(),
+            client: shared_http_client(),
+        }
+    }
+}
+
+impl SttProvider for DoubaoSttProvider {
+    fn transcribe(&self, input: &SttInput) -> Result<String, ProviderError> {
+        let bytes = std::fs::read(&input.audio_path).map_err(|error| {
+            ProviderError::InvalidInput(format!("Cannot read audio file: {error}"))
+        })?;
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let body = serde_json::json!({
+            "user": { "uid": self.api_key },
+            "audio": { "data": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes) },
+            "request": { "model_name": "bigmodel" }
+        });
+        let response = self
+            .client
+            .post(&self.endpoint)
+            .header("X-Api-Key", &self.api_key)
+            .header("X-Api-Resource-Id", "volc.bigasr.auc_turbo")
+            .header("X-Api-Request-Id", &request_id)
+            .header("X-Api-Sequence", "-1")
+            .json(&body)
+            .send()
+            .map_err(|error| ProviderError::Http(format!("Doubao ASR request failed: {error}")))?;
+        let http_status = response.status();
+        let provider_status = response
+            .headers()
+            .get("X-Api-Status-Code")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let log_id = response
+            .headers()
+            .get("X-Tt-Logid")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or(&request_id)
+            .to_string();
+        let response_body = response.text().map_err(|error| {
+            ProviderError::Http(format!("Doubao ASR response read failed: {error}"))
+        })?;
+        if !http_status.is_success() {
+            return Err(ProviderError::Http(format!(
+                "Doubao ASR returned HTTP {http_status} (log id {log_id})"
+            )));
+        }
+        parse_doubao_transcription(&provider_status, &response_body)
+            .map(|text| text.unwrap_or_default())
+            .map_err(|error| ProviderError::ProviderResponse(format!("{error} (log id {log_id})")))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DeepSeekRewriteProvider {
+    api_key: String,
+    base_url: String,
+    client: reqwest::blocking::Client,
+}
+
+impl DeepSeekRewriteProvider {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            base_url: "https://api.deepseek.com".to_string(),
+            client: shared_http_client(),
+        }
+    }
+
+    fn request_body(
+        &self,
+        input: &RewriteInput,
+        stream: bool,
+    ) -> Result<serde_json::Value, ProviderError> {
+        let mut body = serde_json::json!({
+            "model": input.model,
+            "messages": [
+                {"role": "system", "content": input.system_prompt},
+                {"role": "user", "content": input.rendered_prompt}
+            ],
+            "thinking": {"type": deepseek_thinking_type(&input.model)?},
+            "stream": stream
+        });
+        if stream {
+            body["stream_options"] = serde_json::json!({"include_usage": true});
+        }
+        Ok(body)
+    }
+}
+
+impl RewriteProvider for DeepSeekRewriteProvider {
+    fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(&self.request_body(input, false)?)
+            .send()
+            .map_err(|error| {
+                ProviderError::Http(format!("DeepSeek rewrite request failed: {error}"))
+            })?;
+        let status = response.status();
+        let body = response.text().map_err(|error| {
+            ProviderError::Http(format!("DeepSeek rewrite response read failed: {error}"))
+        })?;
+        if !status.is_success() {
+            return Err(ProviderError::Http(format!(
+                "DeepSeek rewrite returned HTTP {status}: {}",
+                sanitize_provider_body(&body)
+            )));
+        }
+        parse_deepseek_rewrite_response(&body)
+    }
+}
+
+impl StreamingRewriteProvider for DeepSeekRewriteProvider {
+    fn rewrite_streaming(
+        &self,
+        input: &RewriteInput,
+        on_delta: &mut dyn FnMut(&str) -> Result<(), ProviderError>,
+    ) -> Result<RewriteOutput, ProviderError> {
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .bearer_auth(&self.api_key)
+            .json(&self.request_body(input, true)?)
+            .send()
+            .map_err(|error| {
+                ProviderError::Http(format!("DeepSeek rewrite request failed: {error}"))
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ProviderError::Http(format!(
+                "DeepSeek rewrite returned HTTP {status}"
+            )));
+        }
+        let mut text = String::new();
+        let mut usage = None;
+        for line in std::io::BufReader::new(response).lines() {
+            match parse_deepseek_streaming_event(&line.map_err(|error| {
+                ProviderError::Http(format!("DeepSeek rewrite response read failed: {error}"))
+            })?)? {
+                DeepSeekStreamingEvent::TextDelta(delta) => {
+                    text.push_str(&delta);
+                    on_delta(&delta)?;
+                }
+                DeepSeekStreamingEvent::Usage(value) => usage = Some(value),
+                DeepSeekStreamingEvent::Done => break,
+                DeepSeekStreamingEvent::Ignored => {}
+            }
+        }
+        if text.trim().is_empty() {
+            return Err(ProviderError::ProviderResponse(
+                "DeepSeek rewrite response did not include content".to_string(),
+            ));
+        }
+        Ok(RewriteOutput { text, usage })
     }
 }
 
@@ -491,6 +806,8 @@ fn no_speech_pipeline_result(
         no_speech: true,
         rewrite_input_tokens: None,
         rewrite_output_tokens: None,
+        rewrite_cache_hit_tokens: None,
+        rewrite_cache_miss_tokens: None,
     }
 }
 
@@ -553,8 +870,8 @@ pub fn run_alpha_pipeline_with_clients<S, R>(
     rewrite_provider: &R,
 ) -> Result<PipelineResult, ProviderError>
 where
-    S: SttProvider,
-    R: RewriteProvider,
+    S: SttProvider + ?Sized,
+    R: RewriteProvider + ?Sized,
 {
     if matches!(
         wav_has_speech(std::path::Path::new(&audio_path)),
@@ -597,6 +914,8 @@ where
                 no_speech: false,
                 rewrite_input_tokens: None,
                 rewrite_output_tokens: None,
+                rewrite_cache_hit_tokens: None,
+                rewrite_cache_miss_tokens: None,
             });
         }
         crate::light_rewrite::LightRewriteDecision::NoSpeech => {
@@ -642,6 +961,8 @@ where
                 no_speech: false,
                 rewrite_input_tokens: usage.map(|value| value.input_tokens),
                 rewrite_output_tokens: usage.map(|value| value.output_tokens),
+                rewrite_cache_hit_tokens: usage.and_then(|value| value.prompt_cache_hit_tokens),
+                rewrite_cache_miss_tokens: usage.and_then(|value| value.prompt_cache_miss_tokens),
             })
         }
         Err(error) => {
@@ -667,6 +988,8 @@ where
                 no_speech: false,
                 rewrite_input_tokens: None,
                 rewrite_output_tokens: None,
+                rewrite_cache_hit_tokens: None,
+                rewrite_cache_miss_tokens: None,
             })
         }
     }
@@ -696,7 +1019,15 @@ where
 
 fn shared_http_client() -> reqwest::blocking::Client {
     static CLIENT: std::sync::OnceLock<reqwest::blocking::Client> = std::sync::OnceLock::new();
-    CLIENT.get_or_init(reqwest::blocking::Client::new).clone()
+    CLIENT
+        .get_or_init(|| {
+            reqwest::blocking::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("valid shared HTTP client")
+        })
+        .clone()
 }
 
 pub(crate) fn render_user_prompt(context: &PipelineContext, transcript: &str) -> String {
@@ -830,6 +1161,8 @@ fn parse_openai_rewrite_response(body: &str) -> Result<RewriteOutput, ProviderEr
         Some(RewriteUsage {
             input_tokens: usage.get("input_tokens")?.as_u64()?,
             output_tokens: usage.get("output_tokens")?.as_u64()?,
+            prompt_cache_hit_tokens: None,
+            prompt_cache_miss_tokens: None,
         })
     });
     Ok(RewriteOutput { text, usage })
@@ -838,6 +1171,7 @@ fn parse_openai_rewrite_response(body: &str) -> Result<RewriteOutput, ProviderEr
 #[derive(Debug, PartialEq, Eq)]
 enum OpenAiStreamingEvent {
     TextDelta(String),
+    Usage(RewriteUsage),
     Done,
     Ignored,
 }
@@ -862,18 +1196,92 @@ fn parse_openai_streaming_event(line: &str) -> Result<OpenAiStreamingEvent, Prov
             .and_then(|delta| delta.as_str())
             .map(|delta| OpenAiStreamingEvent::TextDelta(delta.to_string()))
             .unwrap_or(OpenAiStreamingEvent::Ignored))
+    } else if value.get("type").and_then(|kind| kind.as_str()) == Some("response.completed") {
+        let usage = value.pointer("/response/usage").and_then(|usage| {
+            Some(RewriteUsage {
+                input_tokens: usage.get("input_tokens")?.as_u64()?,
+                output_tokens: usage.get("output_tokens")?.as_u64()?,
+                prompt_cache_hit_tokens: None,
+                prompt_cache_miss_tokens: None,
+            })
+        });
+        Ok(usage
+            .map(OpenAiStreamingEvent::Usage)
+            .unwrap_or(OpenAiStreamingEvent::Ignored))
     } else {
         Ok(OpenAiStreamingEvent::Ignored)
     }
 }
 
 fn sanitize_provider_body(body: &str) -> String {
-    body.chars().take(500).collect()
+    let code = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .pointer("/error/code")
+                .or_else(|| value.get("code"))
+                .and_then(|code| code.as_str().map(ToOwned::to_owned))
+        })
+        .filter(|code| {
+            !code.is_empty()
+                && code
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "_-".contains(character))
+        });
+    code.map(|code| format!("provider code {code}"))
+        .unwrap_or_else(|| "response details omitted".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+
+    fn serve_once(response: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .unwrap();
+            let mut bytes = Vec::new();
+            let mut buffer = [0u8; 4096];
+            let mut expected = None;
+            loop {
+                match stream.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        bytes.extend_from_slice(&buffer[..count]);
+                        if expected.is_none() {
+                            if let Some(header_end) =
+                                bytes.windows(4).position(|part| part == b"\r\n\r\n")
+                            {
+                                let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                                let content_length = headers
+                                    .lines()
+                                    .find_map(|line| {
+                                        line.to_ascii_lowercase()
+                                            .strip_prefix("content-length:")
+                                            .and_then(|value| value.trim().parse::<usize>().ok())
+                                    })
+                                    .unwrap_or(0);
+                                expected = Some(header_end + 4 + content_length);
+                            }
+                        }
+                        if expected.is_some_and(|length| bytes.len() >= length) {
+                            break;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                    Err(error) => panic!("server read failed: {error}"),
+                }
+            }
+            stream.write_all(response.as_bytes()).unwrap();
+            String::from_utf8_lossy(&bytes).to_string()
+        });
+        (base_url, handle)
+    }
 
     #[test]
     fn provider_key_status_never_contains_secret_values() {
@@ -882,6 +1290,8 @@ mod tests {
         assert!(!status.groq);
         assert!(status.openai);
         assert!(!serde_json::to_string(&status).unwrap().contains("sk-"));
+        assert!(serde_json::to_string(&status).unwrap().contains("qwen-api"));
+        assert!(!serde_json::to_string(&status).unwrap().contains("qwen_api"));
     }
 
     #[test]
@@ -923,6 +1333,8 @@ mod tests {
             Some(RewriteUsage {
                 input_tokens: 1234,
                 output_tokens: 456,
+                prompt_cache_hit_tokens: None,
+                prompt_cache_miss_tokens: None,
             }),
         );
     }
@@ -963,6 +1375,16 @@ mod tests {
     }
 
     #[test]
+    fn provider_error_sanitizer_never_returns_payload_text() {
+        let sanitized = sanitize_provider_body(
+            r#"{"error":{"code":"rate_limit","message":"secret transcript and key sk-test"}}"#,
+        );
+        assert_eq!(sanitized, "provider code rate_limit");
+        assert!(!sanitized.contains("secret"));
+        assert!(!sanitized.contains("sk-test"));
+    }
+
+    #[test]
     fn estimates_provider_costs_from_real_usage_units() {
         assert_eq!(
             estimate_groq_stt_cost_usd("whisper-large-v3-turbo", Some(90.0)),
@@ -974,6 +1396,8 @@ mod tests {
                 Some(RewriteUsage {
                     input_tokens: 1000,
                     output_tokens: 2000,
+                    prompt_cache_hit_tokens: None,
+                    prompt_cache_miss_tokens: None,
                 }),
             ),
             Some(0.00425),
@@ -1001,6 +1425,8 @@ mod tests {
                     usage: Some(RewriteUsage {
                         input_tokens: 100,
                         output_tokens: 25,
+                        prompt_cache_hit_tokens: None,
+                        prompt_cache_miss_tokens: None,
                     }),
                 })
             }
@@ -1678,6 +2104,23 @@ mod tests {
     }
 
     #[test]
+    fn parses_openai_streaming_usage_block() {
+        let event = parse_openai_streaming_event(
+            r#"data: {"type":"response.completed","response":{"usage":{"input_tokens":12,"output_tokens":3}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            event,
+            OpenAiStreamingEvent::Usage(RewriteUsage {
+                input_tokens: 12,
+                output_tokens: 3,
+                prompt_cache_hit_tokens: None,
+                prompt_cache_miss_tokens: None,
+            })
+        );
+    }
+
+    #[test]
     fn audio_file_pipeline_readiness_requires_openai_key_when_rewrite_runs() {
         let config = ProviderRuntimeConfig {
             stt_provider: "groq".to_string(),
@@ -1694,4 +2137,385 @@ mod tests {
 
         assert!(matches!(result, Err(ProviderError::MissingKey(provider)) if provider == "openai"));
     }
+
+    #[test]
+    fn validates_qwen_local_and_remote_base_urls() {
+        assert!(validate_qwen_base_url("qwen-local", "http://127.0.0.1:8000/v1").is_ok());
+        assert!(validate_qwen_base_url("qwen-local", "http://localhost:8000/v1").is_ok());
+        assert!(validate_qwen_base_url("qwen-local", "https://example.com/v1").is_err());
+        assert!(validate_qwen_base_url("qwen-api", "https://example.com/v1").is_ok());
+        assert!(validate_qwen_base_url("qwen-api", "http://example.com/v1").is_err());
+    }
+
+    #[test]
+    fn parses_deepseek_content_usage_and_ignores_reasoning() {
+        let output = parse_deepseek_rewrite_response(
+            r#"{"choices":[{"message":{"content":" final ","reasoning_content":"hidden"}}],"usage":{"prompt_tokens":100,"completion_tokens":20,"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":20}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(output.text, "final");
+        assert_eq!(output.usage.unwrap().prompt_cache_hit_tokens, Some(80));
+        assert_eq!(
+            parse_deepseek_streaming_event(
+                r#"data: {"choices":[{"delta":{"reasoning_content":"hidden"}}]}"#,
+            )
+            .unwrap(),
+            DeepSeekStreamingEvent::Ignored
+        );
+    }
+
+    #[test]
+    fn maps_deepseek_models_to_explicit_thinking_and_cost() {
+        assert_eq!(
+            deepseek_thinking_type("deepseek-v4-flash").unwrap(),
+            "disabled"
+        );
+        assert_eq!(
+            deepseek_thinking_type("deepseek-v4-pro").unwrap(),
+            "enabled"
+        );
+        let cost = estimate_deepseek_rewrite_cost_usd(
+            "deepseek-v4-pro",
+            Some(RewriteUsage {
+                input_tokens: 100,
+                output_tokens: 20,
+                prompt_cache_hit_tokens: Some(80),
+                prompt_cache_miss_tokens: Some(20),
+            }),
+        )
+        .unwrap();
+        assert!((cost - 0.00002639).abs() < 1e-12);
+    }
+
+    #[test]
+    fn deepseek_request_body_sets_thinking_without_batch_stream_options() {
+        let provider = DeepSeekRewriteProvider::new("secret".to_string());
+        let input = RewriteInput {
+            transcript: "raw".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            profile_name: "Normal".to_string(),
+            system_prompt: "Clean it".to_string(),
+            dictionary_terms: Vec::new(),
+            rendered_prompt: "raw".to_string(),
+        };
+        let body = provider.request_body(&input, false).unwrap();
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert!(body.get("stream_options").is_none());
+    }
+
+    #[test]
+    fn rejects_models_that_do_not_belong_to_selected_provider() {
+        assert!(validate_provider_models(
+            "qwen-local",
+            "Qwen/Qwen3-ASR-1.7B",
+            "openai",
+            "gpt-5-nano"
+        )
+        .is_err());
+        assert!(validate_provider_models(
+            "qwen-api",
+            "Qwen/Qwen3-ASR-1.7B",
+            "deepseek",
+            "deepseek-v4-flash"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn parses_doubao_success_and_no_speech_statuses() {
+        assert_eq!(
+            parse_doubao_transcription("20000000", r#"{"result":{"text":" hello "}}"#).unwrap(),
+            Some("hello".to_string())
+        );
+        assert_eq!(
+            parse_doubao_transcription("20000003", r#"{"message":"no speech"}"#).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn qwen_adapter_posts_multipart_with_optional_bearer() {
+        let (base_url, request) = serve_once(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 16\r\nConnection: close\r\n\r\n{\"text\":\"hello\"}",
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"fake wav").unwrap();
+        let provider = QwenSttProvider {
+            api_key: Some("qwen-secret".to_string()),
+            base_url,
+            client: shared_http_client(),
+        };
+        let text = provider
+            .transcribe(&SttInput {
+                audio_path: file.path().to_string_lossy().to_string(),
+                model: "Qwen/Qwen3-ASR-1.7B".to_string(),
+                language: None,
+                prompt: None,
+            })
+            .unwrap();
+        let request = request.join().unwrap();
+        assert_eq!(text, "hello");
+        assert!(request.starts_with("POST /audio/transcriptions HTTP/1.1"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer qwen-secret"));
+        assert!(request.contains("Qwen/Qwen3-ASR-1.7B"));
+    }
+
+    #[test]
+    fn doubao_adapter_sends_fixed_headers_and_base64_audio() {
+        let (endpoint, request) = serve_once(
+            "HTTP/1.1 200 OK\r\nX-Api-Status-Code: 20000000\r\nX-Tt-Logid: log-1\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: close\r\n\r\n{\"result\":{\"text\":\"ok\"}}",
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"wav").unwrap();
+        let provider = DoubaoSttProvider {
+            api_key: "doubao-secret".to_string(),
+            endpoint,
+            client: shared_http_client(),
+        };
+        let text = provider
+            .transcribe(&SttInput {
+                audio_path: file.path().to_string_lossy().to_string(),
+                model: "bigmodel".to_string(),
+                language: None,
+                prompt: None,
+            })
+            .unwrap();
+        let request = request.join().unwrap();
+        assert_eq!(text, "ok");
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("x-api-key: doubao-secret"));
+        assert!(request.contains("volc.bigasr.auc_turbo"));
+        assert!(request.contains("\"data\":\"d2F2\""));
+        assert!(request.contains("\"uid\":\"doubao-secret\""));
+    }
+
+    #[test]
+    fn deepseek_adapter_posts_chat_completion_with_content_only() {
+        let body = r#"{"choices":[{"message":{"content":"final","reasoning_content":"hidden"}}],"usage":{"prompt_tokens":2,"completion_tokens":1,"prompt_cache_hit_tokens":1,"prompt_cache_miss_tokens":1}}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(), body
+        );
+        let leaked: &'static str = Box::leak(response.into_boxed_str());
+        let (base_url, request) = serve_once(leaked);
+        let provider = DeepSeekRewriteProvider {
+            api_key: "deepseek-secret".to_string(),
+            base_url,
+            client: shared_http_client(),
+        };
+        let output = provider
+            .rewrite(&RewriteInput {
+                transcript: "raw".to_string(),
+                model: "deepseek-v4-flash".to_string(),
+                profile_name: "Normal".to_string(),
+                system_prompt: "Clean".to_string(),
+                dictionary_terms: Vec::new(),
+                rendered_prompt: "raw".to_string(),
+            })
+            .unwrap();
+        let request = request.join().unwrap();
+        assert_eq!(output.text, "final");
+        assert!(request.starts_with("POST /chat/completions HTTP/1.1"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer deepseek-secret"));
+        assert!(request.contains("\"thinking\":{\"type\":\"disabled\"}"));
+    }
+}
+
+pub fn estimate_deepseek_rewrite_cost_usd(model: &str, usage: Option<RewriteUsage>) -> Option<f64> {
+    let (cache_hit, cache_miss, output) = match model {
+        "deepseek-v4-flash" => (0.0028, 0.14, 0.28),
+        "deepseek-v4-pro" => (0.003625, 0.435, 0.87),
+        _ => return None,
+    };
+    let usage = usage?;
+    Some(
+        cache_hit * usage.prompt_cache_hit_tokens? as f64 / 1_000_000.0
+            + cache_miss * usage.prompt_cache_miss_tokens? as f64 / 1_000_000.0
+            + output * usage.output_tokens as f64 / 1_000_000.0,
+    )
+}
+
+pub fn validate_qwen_base_url(provider: &str, base_url: &str) -> Result<(), ProviderError> {
+    let url = reqwest::Url::parse(base_url)
+        .map_err(|_| ProviderError::InvalidInput(format!("Invalid {provider} base URL")))?;
+    match provider {
+        "qwen-local" => {
+            let host = url.host_str().unwrap_or_default();
+            let loopback = host.eq_ignore_ascii_case("localhost")
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback());
+            if !loopback {
+                return Err(ProviderError::InvalidInput(
+                    "Qwen Local base URL must use localhost or a loopback address".to_string(),
+                ));
+            }
+        }
+        "qwen-api" if url.scheme() != "https" => {
+            return Err(ProviderError::InvalidInput(
+                "Qwen API base URL must use HTTPS".to_string(),
+            ));
+        }
+        "qwen-api" => {}
+        other => return Err(ProviderError::UnsupportedProvider(other.to_string())),
+    }
+    Ok(())
+}
+
+fn deepseek_thinking_type(model: &str) -> Result<&'static str, ProviderError> {
+    match model {
+        "deepseek-v4-flash" => Ok("disabled"),
+        "deepseek-v4-pro" => Ok("enabled"),
+        _ => Err(ProviderError::InvalidInput(format!(
+            "Unsupported DeepSeek model: {model}"
+        ))),
+    }
+}
+
+fn parse_transcription_text(provider: &str, body: &str) -> Result<String, ProviderError> {
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
+        ProviderError::ProviderResponse(format!("{provider} returned invalid JSON: {error}"))
+    })?;
+    value
+        .get("text")
+        .and_then(|text| text.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            ProviderError::ProviderResponse(format!("{provider} response did not include text"))
+        })
+}
+
+fn parse_doubao_transcription(status: &str, body: &str) -> Result<Option<String>, ProviderError> {
+    if status == "20000003" {
+        return Ok(None);
+    }
+    if status != "20000000" {
+        return Err(ProviderError::ProviderResponse(format!(
+            "Doubao ASR returned provider status {}",
+            if status.is_empty() { "unknown" } else { status }
+        )));
+    }
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
+        ProviderError::ProviderResponse(format!("Doubao ASR returned invalid JSON: {error}"))
+    })?;
+    let text = value
+        .pointer("/result/text")
+        .and_then(|text| text.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| {
+            ProviderError::ProviderResponse(
+                "Doubao ASR response did not include result.text".to_string(),
+            )
+        })?;
+    Ok(Some(text.to_string()))
+}
+
+fn parse_deepseek_rewrite_response(body: &str) -> Result<RewriteOutput, ProviderError> {
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
+        ProviderError::ProviderResponse(format!("DeepSeek rewrite returned invalid JSON: {error}"))
+    })?;
+    let text = value
+        .pointer("/choices/0/message/content")
+        .and_then(|text| text.as_str())
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| {
+            ProviderError::ProviderResponse(
+                "DeepSeek rewrite response did not include content".to_string(),
+            )
+        })?
+        .to_string();
+    let usage = value.get("usage").and_then(parse_deepseek_usage);
+    Ok(RewriteOutput { text, usage })
+}
+
+fn parse_deepseek_usage(value: &serde_json::Value) -> Option<RewriteUsage> {
+    Some(RewriteUsage {
+        input_tokens: value.get("prompt_tokens")?.as_u64()?,
+        output_tokens: value.get("completion_tokens")?.as_u64()?,
+        prompt_cache_hit_tokens: value
+            .get("prompt_cache_hit_tokens")
+            .and_then(|tokens| tokens.as_u64()),
+        prompt_cache_miss_tokens: value
+            .get("prompt_cache_miss_tokens")
+            .and_then(|tokens| tokens.as_u64()),
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DeepSeekStreamingEvent {
+    TextDelta(String),
+    Usage(RewriteUsage),
+    Done,
+    Ignored,
+}
+
+fn parse_deepseek_streaming_event(line: &str) -> Result<DeepSeekStreamingEvent, ProviderError> {
+    let Some(body) = line.strip_prefix("data: ") else {
+        return Ok(DeepSeekStreamingEvent::Ignored);
+    };
+    if body.trim() == "[DONE]" {
+        return Ok(DeepSeekStreamingEvent::Done);
+    }
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|error| {
+        ProviderError::ProviderResponse(format!(
+            "DeepSeek streaming rewrite returned invalid JSON: {error}"
+        ))
+    })?;
+    if let Some(content) = value
+        .pointer("/choices/0/delta/content")
+        .and_then(|content| content.as_str())
+        .filter(|content| !content.is_empty())
+    {
+        return Ok(DeepSeekStreamingEvent::TextDelta(content.to_string()));
+    }
+    if let Some(usage) = value.get("usage").and_then(parse_deepseek_usage) {
+        return Ok(DeepSeekStreamingEvent::Usage(usage));
+    }
+    Ok(DeepSeekStreamingEvent::Ignored)
+}
+
+fn optional_provider_key(provider: &str) -> Option<String> {
+    provider_key(provider).ok()
+}
+
+pub(crate) fn validate_provider_models(
+    stt_provider: &str,
+    stt_model: &str,
+    rewrite_provider: &str,
+    rewrite_model: &str,
+) -> Result<(), ProviderError> {
+    let stt_valid = match stt_provider {
+        "groq" => matches!(stt_model, "whisper-large-v3-turbo" | "whisper-large-v3"),
+        "qwen-local" => stt_model == "Qwen/Qwen3-ASR-0.6B",
+        "qwen-api" => stt_model == "Qwen/Qwen3-ASR-1.7B",
+        "doubao" => stt_model == "bigmodel",
+        "openai-realtime" => stt_model == "gpt-realtime-2",
+        _ => false,
+    };
+    if !stt_valid {
+        return Err(ProviderError::InvalidInput(format!(
+            "Unsupported model {stt_model} for {stt_provider}"
+        )));
+    }
+    let rewrite_valid = match rewrite_provider {
+        "openai" => matches!(rewrite_model, "gpt-5-nano" | "gpt-5-mini"),
+        "deepseek" => matches!(rewrite_model, "deepseek-v4-flash" | "deepseek-v4-pro"),
+        _ => false,
+    };
+    if !rewrite_valid {
+        return Err(ProviderError::InvalidInput(format!(
+            "Unsupported model {rewrite_model} for {rewrite_provider}"
+        )));
+    }
+    Ok(())
 }

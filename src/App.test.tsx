@@ -251,31 +251,25 @@ describe("Gospeak Alpha app shell", () => {
     expect(screen.queryByText(/Sync Folder/i)).not.toBeInTheDocument();
   });
 
-  it("renders experimental streaming dictation toggle", async () => {
+  it("lists OpenAI Realtime as an ASR provider", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await openSettingsTab(user, "Advanced");
-    expect(
-      await screen.findByRole("checkbox", {
-        name: /experimental streaming dictation/i,
-      }),
-    ).not.toBeChecked();
+    await openSettingsTab(user, "Providers");
+    expect(screen.getByLabelText("ASR provider")).toHaveTextContent(
+      "OpenAI Realtime",
+    );
   });
 
-  it("falls back to batch dictation when streaming dictation fails before insertion", async () => {
+  it("does not fall back to another ASR provider when realtime fails", async () => {
     const user = userEvent.setup();
     vi.mocked(runStreamingDictation).mockRejectedValueOnce(
       new Error("stream unavailable"),
     );
     render(<App />);
 
-    await openSettingsTab(user, "Advanced");
-    await user.click(
-      await screen.findByRole("checkbox", {
-        name: /experimental streaming dictation/i,
-      }),
-    );
+    await openSettingsTab(user, "Providers");
+    await user.selectOptions(screen.getByLabelText("ASR provider"), "openai-realtime");
     await user.click(screen.getByRole("button", { name: "General" }));
     await startDictationWithGlobalShortcut();
     expect(startStreamingRecording).toHaveBeenCalledTimes(1);
@@ -284,22 +278,19 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(runStreamingDictation).toHaveBeenCalledTimes(1));
     expect(runStreamingDictation).toHaveBeenCalledWith(
       expect.objectContaining({
-        stt_model: "gpt-realtime-whisper",
+        stt_provider: "openai-realtime",
+        stt_model: "gpt-realtime-2",
       }),
     );
-    await waitFor(() => expect(runAudioFileDictation).toHaveBeenCalledTimes(1));
+    expect(runAudioFileDictation).not.toHaveBeenCalled();
   });
 
   it("runs streaming dictation from the global shortcut", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await openSettingsTab(user, "Advanced");
-    await user.click(
-      await screen.findByRole("checkbox", {
-        name: /experimental streaming dictation/i,
-      }),
-    );
+    await openSettingsTab(user, "Providers");
+    await user.selectOptions(screen.getByLabelText("ASR provider"), "openai-realtime");
     await user.click(screen.getByRole("button", { name: "General" }));
     await dictateWithGlobalShortcut();
 
@@ -321,7 +312,10 @@ describe("Gospeak Alpha app shell", () => {
     expect(runAudioFileDictation).toHaveBeenCalledWith({
       audio_path: "C:\\Temp\\gospeak-test.wav",
       profile_id: "normal",
+      stt_provider: "groq",
       stt_model: "whisper-large-v3-turbo",
+      stt_base_url: null,
+      rewrite_provider: "openai",
       rewrite_model: "gpt-5-nano",
       selected_text: null,
       skip_rewrite: false,

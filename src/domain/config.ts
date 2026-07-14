@@ -1,9 +1,29 @@
 export type ProviderKind = "stt" | "rewrite";
 
-export type ProviderId = "groq" | "openai";
+export type SttProviderId =
+  | "groq"
+  | "qwen-local"
+  | "qwen-api"
+  | "doubao"
+  | "openai-realtime";
 
-export type ProviderConfig = {
-  providerId: ProviderId;
+export type RewriteProviderId = "openai" | "deepseek";
+
+export type CredentialProviderId =
+  | "groq"
+  | "openai"
+  | "qwen-api"
+  | "doubao"
+  | "deepseek";
+
+export type SttProviderConfig = {
+  providerId: SttProviderId;
+  model: string;
+  baseUrl?: string;
+};
+
+export type RewriteProviderConfig = {
+  providerId: RewriteProviderId;
   model: string;
 };
 
@@ -45,7 +65,10 @@ export type AppProfileRule = {
 };
 
 export type AppConfig = {
-  providers: Record<ProviderKind, ProviderConfig>;
+  providers: {
+    stt: SttProviderConfig;
+    rewrite: RewriteProviderConfig;
+  };
   hotkey: {
     binding: string;
     mode: "push-to-talk" | "toggle";
@@ -59,7 +82,6 @@ export type AppConfig = {
   performance: {
     fastMode: boolean;
     speakToEdit: boolean;
-    streamingMode: boolean;
   };
   appRouting: {
     enabled: boolean;
@@ -68,7 +90,51 @@ export type AppConfig = {
   promptProfiles: PromptProfile[];
 };
 
-export type ApiKeyPresence = Partial<Record<ProviderId, boolean>>;
+export type ApiKeyPresence = Partial<Record<CredentialProviderId, boolean>>;
+
+export const STT_PROVIDER_OPTIONS: Array<{
+  id: SttProviderId;
+  label: string;
+  models: string[];
+  defaultBaseUrl?: string;
+}> = [
+  {
+    id: "groq",
+    label: "Groq Whisper",
+    models: ["whisper-large-v3-turbo", "whisper-large-v3"],
+  },
+  {
+    id: "qwen-local",
+    label: "Qwen Local",
+    models: ["Qwen/Qwen3-ASR-0.6B"],
+    defaultBaseUrl: "http://127.0.0.1:8000/v1",
+  },
+  {
+    id: "qwen-api",
+    label: "Qwen API",
+    models: ["Qwen/Qwen3-ASR-1.7B"],
+    defaultBaseUrl: "",
+  },
+  { id: "doubao", label: "Doubao ASR", models: ["bigmodel"] },
+  {
+    id: "openai-realtime",
+    label: "OpenAI Realtime",
+    models: ["gpt-realtime-2"],
+  },
+];
+
+export const REWRITE_PROVIDER_OPTIONS: Array<{
+  id: RewriteProviderId;
+  label: string;
+  models: string[];
+}> = [
+  { id: "openai", label: "OpenAI", models: ["gpt-5-nano", "gpt-5-mini"] },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+  },
+];
 
 export type TranscriptHistoryItem = {
   rawTranscript: string;
@@ -88,6 +154,14 @@ export type ConfigExportPayload = {
     promptProfiles: PromptProfile[];
     dictionaryTerms: DictionaryTerm[];
     appRules: AppProfileRule[];
+  };
+};
+
+export type ConfigImportPayload = Omit<ConfigExportPayload, "data"> & {
+  data: Omit<ConfigExportPayload["data"], "privacy" | "performance"> & {
+    privacy: Pick<AppConfig["privacy"], "saveRawAudio"> &
+      Partial<Omit<AppConfig["privacy"], "saveRawAudio">>;
+    performance: AppConfig["performance"] & { streamingMode?: boolean };
   };
 };
 
@@ -169,7 +243,6 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   performance: {
     fastMode: false,
     speakToEdit: false,
-    streamingMode: false,
   },
   appRouting: {
     enabled: false,
@@ -238,6 +311,121 @@ export function updateProviderModel(
       },
     },
   };
+}
+
+export function updateSttProvider(
+  config: AppConfig,
+  providerId: SttProviderId,
+): AppConfig {
+  const option = STT_PROVIDER_OPTIONS.find((item) => item.id === providerId);
+  if (!option) return config;
+  return {
+    ...config,
+    providers: {
+      ...config.providers,
+      stt: {
+        providerId,
+        model: option.models[0],
+        ...(option.defaultBaseUrl !== undefined
+          ? { baseUrl: option.defaultBaseUrl }
+          : {}),
+      },
+    },
+  };
+}
+
+export function updateRewriteProvider(
+  config: AppConfig,
+  providerId: RewriteProviderId,
+): AppConfig {
+  const option = REWRITE_PROVIDER_OPTIONS.find((item) => item.id === providerId);
+  if (!option) return config;
+  return {
+    ...config,
+    providers: {
+      ...config.providers,
+      rewrite: { providerId, model: option.models[0] },
+    },
+  };
+}
+
+export function updateSttBaseUrl(config: AppConfig, baseUrl: string): AppConfig {
+  return {
+    ...config,
+    providers: {
+      ...config.providers,
+      stt: { ...config.providers.stt, baseUrl },
+    },
+  };
+}
+
+export function validateSttBaseUrl(config: AppConfig): string | null {
+  const provider = config.providers.stt.providerId;
+  if (provider !== "qwen-local" && provider !== "qwen-api") return null;
+  const rawUrl = config.providers.stt.baseUrl?.trim();
+  if (!rawUrl) return `${provider === "qwen-local" ? "Qwen Local" : "Qwen API"} base URL is required.`;
+  try {
+    const url = new URL(rawUrl);
+    if (provider === "qwen-api" && url.protocol !== "https:") {
+      return "Qwen API base URL must use HTTPS.";
+    }
+    if (
+      provider === "qwen-local" &&
+      !["localhost", "127.0.0.1", "[::1]", "::1"].includes(url.hostname)
+    ) {
+      return "Qwen Local base URL must use a loopback host.";
+    }
+  } catch {
+    return "ASR base URL is invalid.";
+  }
+  return null;
+}
+
+export function applyStoredPreferences(
+  base: AppConfig,
+  preferences: Record<string, string>,
+): AppConfig {
+  const providers = parsePreference<Partial<AppConfig["providers"]>>(
+    preferences.providers,
+  );
+  const performance = parsePreference<
+    Partial<AppConfig["performance"]> & { streamingMode?: boolean }
+  >(preferences.performance);
+  const privacy = parsePreference<Partial<AppConfig["privacy"]>>(
+    preferences.privacy,
+  );
+  const hotkey = parsePreference<Partial<AppConfig["hotkey"]>>(
+    preferences.hotkey,
+  );
+  const appRouting = parsePreference<Partial<AppConfig["appRouting"]>>(
+    preferences.app_routing,
+  );
+
+  const next: AppConfig = {
+    ...base,
+    providers: {
+      stt: { ...base.providers.stt, ...providers?.stt },
+      rewrite: { ...base.providers.rewrite, ...providers?.rewrite },
+    },
+    hotkey: { ...base.hotkey, ...hotkey },
+    privacy: {
+      ...base.privacy,
+      saveRawAudio: privacy?.saveRawAudio ?? base.privacy.saveRawAudio,
+      saveTranscriptHistory: false,
+      syncTranscriptHistory: false,
+      crashReportIncludesTranscript: false,
+    },
+    performance: {
+      fastMode: performance?.fastMode ?? base.performance.fastMode,
+      speakToEdit: performance?.speakToEdit ?? base.performance.speakToEdit,
+    },
+    appRouting: { ...base.appRouting, ...appRouting },
+    activeProfileId: preferences.active_profile_id ?? base.activeProfileId,
+  };
+
+  return performance?.streamingMode
+    ? updateSttProvider(next, "openai-realtime")
+    : next;
 }
 
 export function buildExportPayload(input: {
@@ -340,22 +528,33 @@ export function getProviderReadiness(
   config: AppConfig,
   keyPresence: ApiKeyPresence,
 ) {
-  const sttKey = keyPresence[config.providers.stt.providerId] === true;
+  const sttProvider = config.providers.stt.providerId;
+  const sttCredential =
+    sttProvider === "openai-realtime"
+      ? "openai"
+      : sttProvider === "qwen-local"
+        ? null
+        : sttProvider;
+  const sttKey = sttCredential === null || sttProvider === "qwen-api"
+    ? true
+    : keyPresence[sttCredential] === true;
+  const sttBaseUrlError = validateSttBaseUrl(config);
   const rewriteKey = keyPresence[config.providers.rewrite.providerId] === true;
 
   return {
-    stt: sttKey
+    stt: sttKey && !sttBaseUrlError
       ? { ready: true as const }
       : {
           ready: false as const,
-          reason: "Groq API key is missing. Configure it before live STT.",
+          reason: sttBaseUrlError
+            ? sttBaseUrlError
+            : `${credentialName(sttCredential!)} API key is missing. Configure it before live STT.`,
         },
     rewrite: rewriteKey
       ? { ready: true as const }
       : {
           ready: false as const,
-          reason:
-            "OpenAI API key is missing. Configure it before live rewrite.",
+          reason: `${credentialName(config.providers.rewrite.providerId)} API key is missing. Configure it before live rewrite.`,
         },
   };
 }
@@ -366,4 +565,23 @@ function normalize(value: string | null | undefined) {
 
 function formatUsd(value: number) {
   return `$${value.toFixed(4)}`;
+}
+
+function parsePreference<T>(value: string | undefined): T | undefined {
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function credentialName(provider: CredentialProviderId): string {
+  return {
+    groq: "Groq",
+    openai: "OpenAI",
+    "qwen-api": "Qwen",
+    doubao: "Doubao",
+    deepseek: "DeepSeek",
+  }[provider];
 }

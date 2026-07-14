@@ -1,27 +1,35 @@
 import { Download, Upload } from "lucide-react";
-import type { ApiKeyPresence, AppConfig } from "../domain/config";
+import {
+  REWRITE_PROVIDER_OPTIONS,
+  STT_PROVIDER_OPTIONS,
+  type ApiKeyPresence,
+  type AppConfig,
+  type CredentialProviderId,
+  type RewriteProviderId,
+  type SttProviderId,
+} from "../domain/config";
 import type { SettingsTab } from "../domain/navigation";
 
 type SettingsPageProps = {
   activeTab: SettingsTab;
   config: AppConfig;
   keyPresence: ApiKeyPresence;
-  groqKey: string;
-  openAiKey: string;
+  keyDrafts: Partial<Record<CredentialProviderId, string>>;
   onTabChange: (tab: SettingsTab) => void;
-  onGroqKeyChange: (value: string) => void;
-  onOpenAiKeyChange: (value: string) => void;
-  onSaveKey: (provider: "groq" | "openai", key: string) => void;
+  onKeyDraftChange: (provider: CredentialProviderId, value: string) => void;
+  onSaveKey: (provider: CredentialProviderId, key: string) => void;
   onRefreshKeys: () => void;
   onChangeHotkey: (next: Partial<AppConfig["hotkey"]>) => void;
   onChangeProviderModel: (kind: "stt" | "rewrite", model: string) => void;
+  onChangeSttProvider: (provider: SttProviderId) => void;
+  onChangeRewriteProvider: (provider: RewriteProviderId) => void;
+  onChangeSttBaseUrl: (baseUrl: string) => void;
   onChangePrivacy: (
     key: keyof AppConfig["privacy"],
     enabled: boolean,
   ) => void;
   onChangeFastMode: (enabled: boolean) => void;
   onChangeSpeakToEdit: (enabled: boolean) => void;
-  onChangeStreamingMode: (enabled: boolean) => void;
   onChangeAppRouting: (enabled: boolean) => void;
   onExport: () => void;
   onImport: () => void;
@@ -136,45 +144,78 @@ function DictationSettings(props: SettingsPageProps) {
 }
 
 function ProviderSettings(props: SettingsPageProps) {
+  const sttOption = STT_PROVIDER_OPTIONS.find(
+    (option) => option.id === props.config.providers.stt.providerId,
+  )!;
+  const rewriteOption = REWRITE_PROVIDER_OPTIONS.find(
+    (option) => option.id === props.config.providers.rewrite.providerId,
+  )!;
+  const credentialProviders = providerCredentials(props.config);
+
   return (
     <div className="providers-panel">
       <div className="provider-row">
         <div>
-          <h3>Groq STT</h3>
-          <p>{props.keyPresence.groq ? "Key ready" : "Key missing"}</p>
+          <h3>Speech recognition</h3>
+          <p>{sttOption.label}</p>
         </div>
+        <label>
+          ASR provider
+          <select
+            value={props.config.providers.stt.providerId}
+            onChange={(event) =>
+              props.onChangeSttProvider(event.target.value as SttProviderId)
+            }
+          >
+            {STT_PROVIDER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         <label>
           STT model
           <select
             value={props.config.providers.stt.model}
             onChange={(event) => props.onChangeProviderModel("stt", event.target.value)}
           >
-            <option value="whisper-large-v3-turbo">whisper-large-v3-turbo</option>
-            <option value="whisper-large-v3">whisper-large-v3</option>
+            {sttOption.models.map((model) => (
+              <option key={model} value={model}>{model}</option>
+            ))}
           </select>
         </label>
       </div>
-      <div className="key-row">
-        <input
-          aria-label="Groq API key"
-          onChange={(event) => props.onGroqKeyChange(event.target.value)}
-          placeholder="Groq API key"
-          type="password"
-          value={props.groqKey}
-        />
-        <button
-          disabled={!props.groqKey.trim()}
-          onClick={() => props.onSaveKey("groq", props.groqKey)}
-          type="button"
-        >
-          Save Groq key
-        </button>
-      </div>
+      {props.config.providers.stt.providerId === "qwen-local" ||
+      props.config.providers.stt.providerId === "qwen-api" ? (
+        <label>
+          ASR base URL
+          <input
+            aria-label="ASR base URL"
+            onChange={(event) => props.onChangeSttBaseUrl(event.target.value)}
+            placeholder={sttOption.defaultBaseUrl}
+            value={props.config.providers.stt.baseUrl ?? ""}
+          />
+        </label>
+      ) : null}
       <div className="provider-row">
         <div>
-          <h3>OpenAI Rewrite</h3>
-          <p>{props.keyPresence.openai ? "Key ready" : "Key missing"}</p>
+          <h3>Rewrite</h3>
+          <p>{rewriteOption.label}</p>
         </div>
+        <label>
+          Rewrite provider
+          <select
+            value={props.config.providers.rewrite.providerId}
+            onChange={(event) =>
+              props.onChangeRewriteProvider(
+                event.target.value as RewriteProviderId,
+              )
+            }
+          >
+            {REWRITE_PROVIDER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         <label>
           Rewrite model
           <select
@@ -183,27 +224,37 @@ function ProviderSettings(props: SettingsPageProps) {
               props.onChangeProviderModel("rewrite", event.target.value)
             }
           >
-            <option value="gpt-5-nano">gpt-5-nano</option>
-            <option value="gpt-5-mini">gpt-5-mini</option>
+            {rewriteOption.models.map((model) => (
+              <option key={model} value={model}>{model}</option>
+            ))}
           </select>
         </label>
       </div>
-      <div className="key-row">
-        <input
-          aria-label="OpenAI API key"
-          onChange={(event) => props.onOpenAiKeyChange(event.target.value)}
-          placeholder="OpenAI API key"
-          type="password"
-          value={props.openAiKey}
-        />
-        <button
-          disabled={!props.openAiKey.trim()}
-          onClick={() => props.onSaveKey("openai", props.openAiKey)}
-          type="button"
-        >
-          Save OpenAI key
-        </button>
-      </div>
+      {credentialProviders.map((provider) => {
+        const value = props.keyDrafts[provider] ?? "";
+        const label = credentialLabel(provider);
+        return (
+          <div className="key-row" key={provider}>
+            <input
+              aria-label={`${label} API key`}
+              onChange={(event) =>
+                props.onKeyDraftChange(provider, event.target.value)
+              }
+              placeholder={`${label} API key`}
+              type="password"
+              value={value}
+            />
+            <button
+              disabled={!value.trim()}
+              onClick={() => props.onSaveKey(provider, value)}
+              type="button"
+            >
+              Save {label} key
+            </button>
+            <span>{props.keyPresence[provider] ? "Key ready" : "Key missing"}</span>
+          </div>
+        );
+      })}
       <div className="message-row">
         <span>Keys stay in the OS credential store.</span>
         <button onClick={props.onRefreshKeys} type="button">
@@ -263,17 +314,31 @@ function AdvancedSettings(props: SettingsPageProps) {
           type="checkbox"
         />
       </label>
-      <label className="privacy-line">
-        <span>
-          <strong>Experimental streaming dictation</strong>
-          <small>Experimental</small>
-        </span>
-        <input
-          checked={props.config.performance.streamingMode}
-          onChange={(event) => props.onChangeStreamingMode(event.target.checked)}
-          type="checkbox"
-        />
-      </label>
     </div>
   );
+}
+
+function providerCredentials(config: AppConfig): CredentialProviderId[] {
+  const providers: CredentialProviderId[] = [];
+  const sttCredential: CredentialProviderId | null =
+    config.providers.stt.providerId === "openai-realtime"
+      ? "openai"
+      : config.providers.stt.providerId === "qwen-local"
+        ? null
+        : config.providers.stt.providerId;
+  if (sttCredential) providers.push(sttCredential);
+  if (!providers.includes(config.providers.rewrite.providerId)) {
+    providers.push(config.providers.rewrite.providerId);
+  }
+  return providers;
+}
+
+function credentialLabel(provider: CredentialProviderId): string {
+  return {
+    groq: "Groq",
+    openai: "OpenAI",
+    "qwen-api": "Qwen",
+    doubao: "Doubao",
+    deepseek: "DeepSeek",
+  }[provider];
 }

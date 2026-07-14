@@ -7,9 +7,10 @@ pub mod storage;
 mod streaming;
 
 use provider::{
-    estimate_groq_stt_cost_usd, estimate_openai_rewrite_cost_usd, provider_key_status,
-    run_alpha_pipeline, run_audio_file_pipeline, save_provider_key, AudioFilePipelineRequest,
-    PipelineContext, PipelineResult, ProviderRuntimeConfig, RewriteUsage,
+    estimate_deepseek_rewrite_cost_usd, estimate_groq_stt_cost_usd,
+    estimate_openai_rewrite_cost_usd, provider_key_status, run_alpha_pipeline,
+    run_audio_file_pipeline, save_provider_key, AudioFilePipelineRequest, PipelineContext,
+    PipelineResult, ProviderRuntimeConfig, RewriteUsage,
 };
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
@@ -73,31 +74,37 @@ fn run_audio_file_dictation(
     if result.no_speech {
         return Ok(result);
     }
-    let stt_estimated_cost = estimate_groq_stt_cost_usd(&request.stt_model, result.audio_seconds);
-    let rewrite_estimated_cost = estimate_openai_rewrite_cost_usd(
-        &request.rewrite_model,
-        result
-            .rewrite_input_tokens
-            .zip(result.rewrite_output_tokens)
-            .map(|(input_tokens, output_tokens)| RewriteUsage {
-                input_tokens,
-                output_tokens,
-            }),
-    );
+    let stt_estimated_cost = match request.stt_provider.as_str() {
+        "groq" => estimate_groq_stt_cost_usd(&request.stt_model, result.audio_seconds),
+        "qwen-local" => Some(0.0),
+        _ => None,
+    };
+    let rewrite_usage = result
+        .rewrite_input_tokens
+        .zip(result.rewrite_output_tokens)
+        .map(|(input_tokens, output_tokens)| RewriteUsage {
+            input_tokens,
+            output_tokens,
+            prompt_cache_hit_tokens: result.rewrite_cache_hit_tokens,
+            prompt_cache_miss_tokens: result.rewrite_cache_miss_tokens,
+        });
+    let rewrite_estimated_cost = match request.rewrite_provider.as_str() {
+        "openai" => estimate_openai_rewrite_cost_usd(&request.rewrite_model, rewrite_usage),
+        "deepseek" => estimate_deepseek_rewrite_cost_usd(&request.rewrite_model, rewrite_usage),
+        _ => None,
+    };
     let estimated_cost = match (stt_estimated_cost, rewrite_estimated_cost) {
         (Some(stt), Some(rewrite)) => Some(stt + rewrite),
-        (Some(stt), None) => Some(stt),
-        (None, Some(rewrite)) => Some(rewrite),
-        (None, None) => None,
+        _ => None,
     };
     let output_character_count = output_character_count(&result.text);
     storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {
             id: format!("usage_{}", uuid::Uuid::new_v4()),
-            stt_provider: "groq".to_string(),
+            stt_provider: request.stt_provider,
             stt_model: request.stt_model,
-            llm_provider: "openai".to_string(),
+            llm_provider: request.rewrite_provider,
             llm_model: request.rewrite_model,
             profile_id: result.profile_id.clone(),
             audio_seconds: result.audio_seconds,
@@ -128,7 +135,9 @@ fn run_streaming_dictation(
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
     let stt_model = request.stt_model.clone();
+    let stt_provider = request.stt_provider.clone();
     let llm_model = request.rewrite_model.clone();
+    let llm_provider = request.rewrite_provider.clone();
     let pcm_chunks = state
         .streaming_chunks
         .lock()
@@ -152,14 +161,28 @@ fn run_streaming_dictation(
     if result.no_speech {
         return Ok(result);
     }
+    let rewrite_usage = result
+        .rewrite_input_tokens
+        .zip(result.rewrite_output_tokens)
+        .map(|(input_tokens, output_tokens)| RewriteUsage {
+            input_tokens,
+            output_tokens,
+            prompt_cache_hit_tokens: result.rewrite_cache_hit_tokens,
+            prompt_cache_miss_tokens: result.rewrite_cache_miss_tokens,
+        });
+    let rewrite_estimated_cost = match llm_provider.as_str() {
+        "openai" => estimate_openai_rewrite_cost_usd(&llm_model, rewrite_usage),
+        "deepseek" => estimate_deepseek_rewrite_cost_usd(&llm_model, rewrite_usage),
+        _ => None,
+    };
     let output_character_count = output_character_count(&result.text);
     match storage::insert_usage_event(
         &database,
         &storage::UsageEventRecord {
             id: format!("usage_{}", uuid::Uuid::new_v4()),
-            stt_provider: "openai-realtime".to_string(),
+            stt_provider,
             stt_model,
-            llm_provider: "openai".to_string(),
+            llm_provider,
             llm_model,
             profile_id: result.profile_id.clone(),
             audio_seconds: result.audio_seconds,
@@ -167,7 +190,7 @@ fn run_streaming_dictation(
             rewrite_latency_ms: result.rewrite_latency_ms,
             rewrite_fallback_used: result.rewrite_fallback_used,
             stt_estimated_cost: None,
-            rewrite_estimated_cost: None,
+            rewrite_estimated_cost,
             estimated_cost: None,
             output_character_count,
             created_at: chrono::Utc::now().to_rfc3339(),
