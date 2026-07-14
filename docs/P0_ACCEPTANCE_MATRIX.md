@@ -16,7 +16,7 @@ and are not treated as manually accepted.
 
 | Item | Value |
 | --- | --- |
-| Commit | `f626d25` implementation on `codex/multi-provider-asr-rewrite`, plus final documentation/migration follow-up |
+| Commit | Current `codex/multi-provider-asr-rewrite` HEAD; core implementation `f626d25`, runtime hardening `e9e0394` |
 | App version | `0.1.0` debug bundle |
 | NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-14 00:10:06`, 5,672,587 bytes) |
 | MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-14 00:10:16`, 10,178,560 bytes) |
