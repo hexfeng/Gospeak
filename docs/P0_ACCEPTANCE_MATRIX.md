@@ -16,14 +16,14 @@ and are not treated as manually accepted.
 
 | Item | Value |
 | --- | --- |
-| Commit | Current `codex/multi-provider-asr-rewrite` HEAD; core implementation `f626d25`, runtime hardening `e9e0394` |
+| Commit | Merged into `main` on 2026-07-14; core implementation `f626d25`, runtime hardening `e9e0394` |
 | App version | `0.1.0` debug bundle |
 | NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-14 00:10:06`, 5,672,587 bytes) |
 | MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-14 00:10:16`, 10,178,560 bytes) |
 | OS | Recorded P0 manual environment: Windows 10 Home, version 2009, build 26200, 64-bit |
 | Microphone | Recorded P0 manual environment: `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
 | Target apps detected | Recorded P0 manual environment: Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
-| Automated verification | `npm test` (108 tests), `npm run lint`, `npm run build`, `cargo test` (112 tests; native paste smoke ignored), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-14 |
+| Automated verification | After merging current remote `main`: `npm test` (109 tests), `npm run lint`, `npm run build`, `cargo test` (112 tests; native paste smoke ignored), `cargo fmt -- --check`, and `cargo clippy --all-targets --all-features -- -D warnings` passed on 2026-07-14. The multi-provider debug installer build passed before the remote frontend-only merge. |
 | Manual acceptance | User-reported pass for the original P0 trigger/input, profile/target-app, failure/privacy, and clean-install checks on 2026-06-30; App-aware routing and Speak to Edit accepted on 2026-07-01 |
 | Current-head install acceptance | Pending for the multi-provider debug installers listed above |
 
@@ -102,7 +102,7 @@ targets.
 
 ## Current Post-P0 Development Matrix
 
-These rows describe the current feature branch. They do not change the earlier
+These rows describe the current `main` branch. They do not change the earlier
 P0, App-aware routing, or Speak to Edit acceptance decisions.
 
 | Scenario | Expected result | Status |
@@ -157,6 +157,6 @@ user-reported manual target-app acceptance.
 
 ## Current Head Decision
 
-The multi-provider feature branch passes full automated verification and debug
+The merged multi-provider implementation passes full automated verification and debug
 packaging. The real-provider/manual matrix above remains pending. Public Beta
 planning is intentionally deferred while functional acceptance is completed.

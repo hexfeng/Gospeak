@@ -8,7 +8,7 @@ Gospeak's Windows P0 Alpha was accepted on 2026-06-30. App-aware Profile
 routing and Speak to Edit were accepted on 2026-07-01. Those acceptance
 decisions remain valid.
 
-Since that acceptance, the current feature branch has added explicit
+Since that acceptance, the current `main` branch has added explicit
 multi-provider ASR and Rewrite routing, local light rewrite, a four-page frontend
 information architecture, privacy-safe all-time character counts, and a
 redesigned General dashboard. Current-head real-provider and installed-runtime
