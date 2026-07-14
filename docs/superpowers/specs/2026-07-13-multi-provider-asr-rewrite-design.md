@@ -26,8 +26,9 @@ Rewrite providers:
 | `openai` | Existing OpenAI models |
 | `deepseek` | `deepseek-v4-flash`, `deepseek-v4-pro` |
 
-The exact Settings interaction and layout are intentionally deferred to a
-separate design discussion.
+Settings uses the minimum provider, model, conditional Qwen Base URL, and
+deduplicated credential controls. It does not add health monitoring, downloads,
+or advanced provider parameters.
 
 ## Configuration Model
 
@@ -50,11 +51,13 @@ provider. Keep explicit provider matching; do not introduce a dynamic plugin
 registry or a universal compatibility adapter.
 
 - `groq` keeps the current audio-file transcription path.
-- `qwen-local` runs Qwen3-ASR 0.6B locally. Its first delivery supports complete
-  WAV-file transcription only through a local `qwen-asr` sidecar. Installation,
-  model-path selection, and process lifecycle UX remain to be designed.
-- `qwen-api` uploads audio to the configured Qwen3-ASR 1.7B API.
-- `doubao` uses its provider-specific batch ASR request and audio constraints.
+- `qwen-local` uploads complete WAV files to a user-managed loopback
+  `/v1/audio/transcriptions` service using `Qwen/Qwen3-ASR-0.6B`.
+- `qwen-api` uploads complete WAV files to a configured HTTPS
+  `/v1/audio/transcriptions` endpoint using `Qwen/Qwen3-ASR-1.7B`; Bearer
+  authentication is optional.
+- `doubao` uses the Flash recording-file API with a single `X-Api-Key`, fixed
+  `volc.bigasr.auc_turbo` resource, and `bigmodel` model.
 - `openai-realtime` selects the existing streaming pipeline.
 
 Provider selection is authoritative. A failed local transcription must never
@@ -62,21 +65,18 @@ fall back to a cloud provider automatically, because doing so would transmit
 audio without an explicit user choice. Provider failures are returned to the
 user with no cross-provider retry.
 
-The remote Qwen adapter must follow the actual API documentation supplied for
-the deployment. Its base URL, authentication, audio format, response schema,
-and model identifier are not assumed to be OpenAI-compatible.
-
 For Rewrite, keep the existing OpenAI adapter and add a DeepSeek adapter using
-DeepSeek's supported Chat Completions request format. Both produce the same
-internal rewritten-text result used by the rest of the pipeline.
+DeepSeek's Chat Completions request format. Flash disables Thinking and Pro
+enables Thinking. Batch and streaming parsing use only `content` and ignore
+`reasoning_content`.
 
 ## Streaming Boundary
 
 The initial multi-provider delivery does not add Qwen or Doubao streaming.
 Selecting `openai-realtime` explicitly selects the existing streaming path;
-selecting another ASR provider uses its batch path. The future relationship
-between this provider choice and the current Streaming control belongs to the
-deferred Settings design.
+selecting another ASR provider uses its batch path. There is no separate
+Streaming control. A legacy enabled flag migrates once to `openai-realtime`;
+Provider selection is then the only runtime source of truth.
 
 ## Usage And Cost
 
@@ -102,7 +102,7 @@ verification remains required before a slice is considered complete.
 
 ## Out Of Scope
 
-- Settings information architecture and interaction details.
+- Settings information-architecture redesign beyond the minimum selectors.
 - A general third-party provider plugin system.
 - Automatic model downloading or updating.
 - Qwen or Doubao streaming in the first delivery.

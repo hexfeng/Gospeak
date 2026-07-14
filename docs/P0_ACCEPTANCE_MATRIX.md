@@ -6,7 +6,7 @@ Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
 fallback, clipboard behavior, recorder-window permissions, latency diagnostics,
 fast dictation, App-aware routing, provider cost visibility, Speak to Edit,
-experimental streaming, local light rewrite, the current frontend, linting,
+OpenAI Realtime streaming, multi-provider routing, local light rewrite, the current frontend, linting,
 compilation, and packaging. Manual P0, App-aware routing, and Speak to Edit rows
 remain recorded as passed based on user-reported acceptance on 2026-06-30 and
 2026-07-01 where noted. Features added after those dates are tracked separately
@@ -16,16 +16,16 @@ and are not treated as manually accepted.
 
 | Item | Value |
 | --- | --- |
-| Commit | `c1f15f5` (`main`, frontend and General dashboard refinements) |
+| Commit | `f626d25` implementation on `codex/multi-provider-asr-rewrite`, plus final documentation/migration follow-up |
 | App version | `0.1.0` debug bundle |
-| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-13 22:32:28`, 5,660,166 bytes) |
-| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-13 22:32:35`, 10,145,792 bytes) |
+| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-13 23:57:08`, 5,675,241 bytes) |
+| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-13 23:57:18`, 10,178,560 bytes) |
 | OS | Recorded P0 manual environment: Windows 10 Home, version 2009, build 26200, 64-bit |
 | Microphone | Recorded P0 manual environment: `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
 | Target apps detected | Recorded P0 manual environment: Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
-| Automated verification | `npm test` (100 tests), `npm run lint`, `npm run build`, `cargo test` (99 tests), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-13 |
+| Automated verification | `npm test` (107 tests), `npm run lint`, `npm run build`, `cargo test` (110 tests; native paste smoke ignored), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-13 |
 | Manual acceptance | User-reported pass for the original P0 trigger/input, profile/target-app, failure/privacy, and clean-install checks on 2026-06-30; App-aware routing and Speak to Edit accepted on 2026-07-01 |
-| Current-head install acceptance | Pending for the `c1f15f5` debug installers |
+| Current-head install acceptance | Pending for the multi-provider debug installers listed above |
 
 ## Trigger and Input Matrix
 
@@ -60,6 +60,10 @@ targets.
 | --- | --- | --- |
 | Missing Groq key | Clear error before network request | Pass - automated provider-readiness test covers missing Groq key |
 | Missing OpenAI key | Clear error before network request | Pass - automated provider-readiness test covers missing OpenAI key; Fast dictation allows missing OpenAI key when rewrite is skipped |
+| Qwen Local remote host | Request is rejected before audio can leave the machine | Pass - frontend and Rust URL validation cover loopback-only hosts |
+| Qwen API non-HTTPS or missing URL | Recording is blocked with a clear configuration error | Pass - frontend and Rust URL validation cover required HTTPS endpoints |
+| Provider failure | Error is returned without selecting or uploading to another ASR Provider | Pass - frontend routing test verifies no Realtime-to-Groq fallback; Rust routing is explicit |
+| Provider error payload | Key, audio, transcript, and reasoning content are not returned in cleaned errors | Pass - adapter and sanitizer tests cover request boundaries and payload omission |
 | Rewrite failure | Raw transcript returned with fallback flag | Pass - automated provider fallback test covers raw transcript fallback |
 | Paste failure | Text remains on clipboard with recovery message | Pass - automated clipboard failure handling covers recoverable paste result |
 | No microphone | Clear recorder error; app remains usable | Pass - user-reported manual acceptance on 2026-06-30 |
@@ -98,21 +102,35 @@ targets.
 
 ## Current Post-P0 Development Matrix
 
-These rows describe the current `main` branch. They do not change the earlier
+These rows describe the current feature branch. They do not change the earlier
 P0, App-aware routing, or Speak to Edit acceptance decisions.
 
 | Scenario | Expected result | Status |
 | --- | --- | --- |
 | Frontend information architecture | General, Profiles, Dictionary, and Settings preserve existing dictation and configuration behavior | Automated pass - browser design QA was recorded at `7d30c08` before final General refinements; current-head browser and installed Tauri acceptance pending |
 | All-time usage summary | General aggregates duration, non-whitespace output characters, usage mode, and cost without storing transcript content | Pass - frontend aggregation and Rust storage tests pass |
-| Experimental streaming | Opt-in streaming transcribes, rewrites or locally cleans safe text, inserts without duplicate fallback text, and falls back to batch before partial insertion | Automated pass - current-build manual network, partial-insertion, and fallback acceptance pending |
+| OpenAI Realtime Provider | Selecting `openai-realtime` transcribes with `gpt-realtime-2`, uses OpenAI or DeepSeek streaming Rewrite, and never falls back to batch ASR | Automated pass - current-build live network and partial-insertion acceptance pending |
 | Local light rewrite | Short safe dictation is cleaned locally; ambiguous, long, or profile-specific text uses model rewrite | Automated pass - manual checklist exists; current-build spoken-input acceptance pending |
 | Unsupported privacy controls | Settings does not imply transcript history, sync, or crash-report behavior that is not implemented | Automated pass - unsupported controls are removed; legacy false fields remain import-compatible |
+
+## Multi-Provider Functional Matrix
+
+| Combination / scenario | Automated status | Manual status |
+| --- | --- | --- |
+| Groq + OpenAI | Existing adapter and route coverage pass | Previous P0 path accepted; current feature-branch regression pending |
+| Groq + DeepSeek Flash/Pro | Routing, Thinking, batch parsing, usage, and cost tests pass | Pending real DeepSeek credentials |
+| OpenAI Realtime + OpenAI/DeepSeek | Provider/model selection and both streaming Rewrite implementations pass automated coverage | Pending live Realtime incremental-insertion checks |
+| Qwen Local 0.6B service running | Loopback, multipart, model, response, and zero external-cost checks pass | Pending user-managed RTX 4060 environment |
+| Qwen Local stopped / wrong port | Connection errors remain on the selected Provider with no cloud fallback | Pending installed-runtime check |
+| Qwen API 1.7B | HTTPS, optional Bearer, multipart, fixed model, and unknown-cost behavior pass | Pending deployment URL and live API |
+| Doubao normal speech / silence | Fixed headers/resource/model, Base64 body, success, silence, and cleaned-error parsing pass | Pending live Doubao key |
+| Fast / normal / Prompt Profile | Existing pipeline coverage passes across local and model Rewrite paths | Pending multi-provider spoken regression |
+| OpenAI Realtime + Speak to Edit | Explicit incompatibility is returned; no Groq upload occurs | Pending target-app confirmation |
 
 ## Original P0 Release Gate
 
 These checks apply to the accepted P0 build and do not assert that the current
-`c1f15f5` installers have completed the same manual gate.
+multi-provider installers have completed the same manual gate.
 
 - [x] Pass - Complete every manual row relevant to the Windows Alpha.
 - [x] Pass - Install the generated installer on a clean Windows user profile.
@@ -139,7 +157,6 @@ user-reported manual target-app acceptance.
 
 ## Current Head Decision
 
-Commit `c1f15f5` passes automated verification and debug packaging. Experimental
-streaming, local light rewrite, and the latest frontend still require
-current-head browser or installed-runtime acceptance as applicable. Public Beta
-planning is intentionally deferred while functional gaps are prioritized.
+The multi-provider feature branch passes full automated verification and debug
+packaging. The real-provider/manual matrix above remains pending. Public Beta
+planning is intentionally deferred while functional acceptance is completed.

@@ -911,6 +911,36 @@ describe("Gospeak Alpha app shell", () => {
     );
   });
 
+  it("persists the one-time legacy streaming migration", async () => {
+    vi.mocked(listPreferences).mockResolvedValueOnce([
+      {
+        key: "performance",
+        value: JSON.stringify({
+          fastMode: false,
+          speakToEdit: false,
+          streamingMode: true,
+        }),
+        updated_at: "2026-07-01T10:00:00.000Z",
+      },
+    ]);
+    render(<App />);
+
+    await waitFor(() =>
+      expect(upsertPreference).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: "providers",
+          value: expect.stringContaining('"providerId":"openai-realtime"'),
+        }),
+      ),
+    );
+    expect(upsertPreference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "performance",
+        value: JSON.stringify({ fastMode: false, speakToEdit: false }),
+      }),
+    );
+  });
+
   it("allows privacy defaults to be changed and persisted", async () => {
     const user = userEvent.setup();
     render(<App />);

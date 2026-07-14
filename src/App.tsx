@@ -623,6 +623,12 @@ function App() {
         { ...DEFAULT_APP_CONFIG, promptProfiles: mappedProfiles },
         preferences,
       );
+      if (hasLegacyStreamingPreference(preferences.performance)) {
+        await Promise.all([
+          persistPreference("providers", nextConfig.providers),
+          persistPreference("performance", nextConfig.performance),
+        ]);
+      }
       setConfig({
         ...nextConfig,
         activeProfileId: resolveActiveProfileId(
@@ -930,6 +936,16 @@ function parseJsonList(value: string) {
       : [];
   } catch {
     return [];
+  }
+}
+
+function hasLegacyStreamingPreference(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return Object.prototype.hasOwnProperty.call(parsed, "streamingMode");
+  } catch {
+    return false;
   }
 }
 
