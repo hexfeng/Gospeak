@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
-  Gauge,
+  House,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -85,7 +85,7 @@ const seedDictionaryTerms: DictionaryTerm[] = [
 ];
 
 const navItems = [
-  { id: "general", label: "General", icon: Gauge },
+  { id: "general", label: "General", icon: House },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
   { id: "settings", label: "Settings", icon: Settings },
@@ -748,9 +748,14 @@ function App() {
           ))}
         </nav>
 
+        <div className="sidebar-status" aria-label="Application status">
+          <span className="sidebar-status-dot" aria-hidden="true" />
+          <strong>All systems normal</strong>
+          <span>Gospeak is running locally</span>
+        </div>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace workspace-${activeSection}`}>
         {notice ? (
           <p
             className="app-message"

@@ -20,7 +20,7 @@ describe("Gospeak responsive layout CSS", () => {
 
 describe("Settings CSS contract", () => {
   it("keeps the final primary navigation to stable desktop targets", () => {
-    expect(css).toMatch(/\.nav-item\s*\{[^}]*min-height:\s*40px/s);
+    expect(css).toMatch(/\.nav-item\s*\{[^}]*min-height:\s*56px/s);
   });
 
   it("collapses the Profile split layout below the existing breakpoint", () => {
@@ -40,7 +40,8 @@ describe("Settings CSS contract", () => {
   });
 
   it("uses a scrollbar-safe shell and vertical Settings tabs at 980px", () => {
-    expect(css).toMatch(/\.app-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%/s);
+    expect(css).toMatch(/\.app-shell\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none/s);
+    expect(css).toMatch(/\.app-shell\s*\{[^}]*border-radius:\s*0/s);
     expect(css).toMatch(
       /@media \(max-width: 980px\)[\s\S]*\.settings-tabs\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
@@ -58,23 +59,29 @@ describe("General dashboard CSS contract", () => {
   it("renders shortcut keys as separate framed keys with an unframed separator", () => {
     expect(css).toMatch(/\.hotkey-combo,\s*\.hotkey-part\s*\{[^}]*display:\s*inline-flex/s);
     expect(css).toMatch(/\.hotkey-separator\s*\{[^}]*color:\s*var\(--text-muted\)/s);
-    expect(css).toMatch(/\.general-header kbd\s*\{[^}]*border:\s*1px solid var\(--border\)/s);
+    expect(css).toMatch(/\.general-header kbd\s*\{[^}]*border:\s*1px solid #d7dce5/s);
   });
 
   it("uses the approved responsive metric and setup-status layout", () => {
     expect(css).toMatch(
-      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
-    );
-    expect(css).toMatch(/\.general-metrics\s*\{[^}]*padding:\s*16px/s);
-    expect(css).toMatch(/\.general-metrics\s*\{[^}]*border-radius:\s*20px/s);
-    expect(css).toMatch(/\.general-metrics\s*\{[^}]*background:\s*#f7f4ec;/s);
-    expect(css).toMatch(
-      /\.general-metric\s*\{[^}]*grid-template-columns:\s*48px minmax\(0, 1fr\)/s,
+      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
     );
     expect(css).toMatch(
-      /\.general-status-card\s*\{[^}]*min-height:\s*156px/s,
+      /\.general-metric\s*\{[^}]*grid-template-columns:\s*42px minmax\(0, 1fr\)/s,
     );
-    expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*2px solid/s);
+    expect(css).toMatch(
+      /\.general-hero\s*\{[^}]*grid-template-columns:\s*68px minmax\(0, 1fr\)/s,
+    );
+    expect(css).toMatch(
+      /\.activity-panel\s*\{[^}]*border-radius:\s*16px/s,
+    );
+    expect(css).toMatch(
+      /\.workspace-general\s*\{[^}]*overflow:\s*hidden/s,
+    );
+    expect(css).toMatch(
+      /\.general-status-card\s*\{[^}]*min-height:\s*clamp\(124px, 14\.5vh, 144px\)/s,
+    );
+    expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*1px solid #e4e9f1/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(
@@ -89,14 +96,20 @@ describe("General dashboard CSS contract", () => {
     expect(css).toMatch(
       /@media \(max-width: 560px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
+    expect(css).toMatch(
+      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.activity-chart svg\s*\{[^}]*min-height:\s*132px/s,
+    );
+    expect(css).toMatch(
+      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.general-status-card\s*\{[^}]*min-height:\s*136px/s,
+    );
   });
 
   it("uses accessible status, focus, and page-surface treatments", () => {
     expect(css).toMatch(
-      /\.general-status-card\.is-ready\s*\{[^}]*border-color:\s*#3f7f5c;/s,
+      /\.general-status-card\.is-ready\s*\{[^}]*border-color:\s*#e4e9f1;/s,
     );
     expect(css).toMatch(
-      /\.general-status-card\.is-not-ready\s*\{[^}]*border-color:\s*#a85c55;/s,
+      /\.general-status-card\.is-not-ready\s*\{[^}]*border-color:\s*#e4e9f1;/s,
     );
     expect(css).toMatch(
       /\.general-status-card:focus-visible\s*\{[^}]*outline:\s*3px solid #2563eb;/s,
@@ -104,7 +117,17 @@ describe("General dashboard CSS contract", () => {
     expect(css).toMatch(/\.general-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.general-page\s*\{[^}]*border-radius:\s*0;/s);
     expect(css).toMatch(/\.general-page\s*\{[^}]*box-shadow:\s*none;/s);
-    expect(css).toMatch(/\.general-status-card\.is-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#f2fbf5;/s);
-    expect(css).toMatch(/\.general-status-card\.is-not-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#fff5f3;/s);
+    expect(css).toMatch(/\.general-status-card\.is-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#f5fbf7;/s);
+    expect(css).toMatch(/\.general-status-card\.is-not-ready:hover:not\(:disabled\)\s*\{[^}]*background:\s*#fff7f6;/s);
+  });
+});
+
+describe("Secondary page CSS contract", () => {
+  it("aligns Profiles, Dictionary, and Settings with the General page surface style", () => {
+    expect(css).toMatch(/\.dictionary-page\s*\{[^}]*background:\s*transparent;/s);
+    expect(css).toMatch(/\.profiles-page,\s*\.settings-page\s*\{[^}]*background:\s*transparent;/s);
+    expect(css).toMatch(/\.profile-split > aside\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
+    expect(css).toMatch(/\.settings-content\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
+    expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
   });
 });
