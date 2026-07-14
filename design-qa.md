@@ -2,63 +2,39 @@
 
 ## Evidence
 
-- Source visual truth: `C:\Users\PC\AppData\Local\Temp\codex-clipboard-19837cfc-a404-49f2-8bb8-785ab86ca1eb.png`.
-- Implementation screenshot: `artifacts/gospeak-home-no-sidebar-recorder.png`.
-- Full-view comparison: `artifacts/general-design-qa-comparison.png`.
-- Viewport: `1154x770`.
-- State: General page, no sidebar recorder preview, split `Alt` + `Space` shortcut, ASR Not Set, Rewrite Not Set, Active Profile Normal; hover checks for missing and ready cards.
-- Focused region comparison: not needed; the header, 2x2 metric grid, and three setup cards are readable in the full-view comparison.
-
-## Browser Checks
-
-- Local URL: `http://127.0.0.1:5174/`.
-- In-app browser DOM check: heading `Gospeak`, 4 `.general-metric` cards, 3 `.general-status-card` buttons.
-- Playwright screenshot check: no horizontal overflow at `1154x770`.
-- Hover check: not-ready cards fill `rgb(255, 245, 243)` and ready cards fill `rgb(242, 251, 245)` after transition.
-- Shortcut check: header renders two `kbd` elements, `Alt` and `Space`, with one unframed `+` separator.
-- Sidebar check: no `.recorder-card`, no `Ready for push-to-talk` text, navigation remains General, Profiles, Dictionary, Settings.
-- Primary interactions covered by tests: ASR and Rewrite status cards route to Providers, Active Profile routes to Profiles.
-- Console errors: no runtime error surfaced during page load or DOM inspection.
-
-## Comparison History
-
-**Current Iteration**
-- Removed the lower-left sidebar recorder preview pill.
-
-**Previous Iteration**
-- Split the shortcut display so each key has its own framed `kbd`, while the `+` separator remains unframed.
-
-**Earlier Iteration**
-- Added a rounded warm-neutral container around the four metric cards.
-- Increased status-card border weight to `2px`.
-- Added state-colored icon accents and hover fills for ready and not-ready cards.
-
-**Initial Visual Iteration**
-- Changed the metric surface from one combined four-cell card to four separate cards in a fixed 2x2 desktop grid.
-- Added existing `lucide-react` icons to each metric card and status card.
-- Increased the three setup/status cards to `156px` minimum height, added bold main titles, descriptions, visible values, and a small top-right activity icon.
-- Added explicit accessible labels to status-card buttons so ASR and Rewrite are uniquely targetable.
-
-**Resolved Prior Findings**
-- State borders remain accessible: ready `#3f7f5c`, missing `#a85c55`.
-- Focus outline remains opaque `#2563eb` at `3px`.
-- General page remains a flat transparent page surface, with cards only for actual repeated items.
-- Status-card hover keeps the white surface, slight lift, and shadow.
-
-## Required Fidelity Surfaces
-
-- Typography: current Gospeak system font, compact hierarchy, bold status titles, and readable smaller descriptions match the requested minimal style.
-- Spacing and layout rhythm: metric cards use the reference-like 2x2 rhythm inside a grouped container; status cards are taller and evenly spaced.
-- Colors and tokens: warm-neutral metric grouping and semantic green/red status treatment improve hierarchy while staying inside Gospeak's restrained palette.
-- Image quality and assets: no raster assets were needed; icons use the already-installed icon library.
-- Copy and content: General page content stays unchanged in meaning: total time, characters, usage mode, total cost, ASR, Rewrite, and Active Profile.
+- Source visual truth path: `C:\Users\PC\.codex\attachments\45db25c9-ac69-491b-9e53-ffc8bc278272\image-1.png`.
+- Implementation screenshot path: `artifacts/current-general-playwright-1486.png`.
+- Full-view comparison evidence: `artifacts/general-design-qa-current-comparison.png`.
+- Viewport: `1486x1102`, device scale factor `1`.
+- State: General page, ASR Not Set, Rewrite Not Set, Active Profile Normal, usage totals at zero.
+- Focused region comparison evidence: not needed; the full-view comparison is readable for header, sidebar, hero, metrics, chart, and status-card fidelity.
+- Primary interactions tested: status cards remain routed buttons through existing tests; navigation remains General, Profiles, Dictionary, Settings.
+- Console errors checked: no page errors or console errors during Playwright capture of `http://127.0.0.1:5175/`.
 
 ## Findings
 
 - No actionable P0/P1/P2 findings.
 
+## Open Questions
+
+- None.
+
 ## Follow-up Polish
 
-- P3: none.
+- P3: chart line shape and date labels differ from the reference because the implementation uses real local usage data. Current local state has zero usage events, so the flat 0m line is expected.
+
+## Comparison History
+
+- Current iteration: captured the implementation at the same `1486x1102` viewport as the source and tuned vertical rhythm so the title, shortcut, hero, metrics, activity chart, and three setup cards land in the same visual bands as the reference.
+- Previous iteration: added the rounded app frame, macOS-style window dots, larger translucent sidebar, active General accent, bottom local status card, Ready hero, four metric cards, 7-day activity chart, and reference-like setup cards with chevrons.
+- Earlier iteration: General used a narrower 2x2 metric block and three thick-bordered status cards without the source hero or chart.
+
+## Required Fidelity Surfaces
+
+- Fonts and typography: existing Inter/system stack, bold Gospeak title, medium nav labels, compact card titles, and smaller supporting copy match the reference hierarchy closely.
+- Spacing and layout rhythm: same-viewport capture confirms the app frame, sidebar, title block, hero, metrics, chart, and bottom cards align with the source composition.
+- Colors and visual tokens: light blue/white app frame, soft sidebar, blue active nav, pastel icon tiles, subtle borders, and restrained shadows match the reference style.
+- Image quality and asset fidelity: supplied favicon is used for the brand mark; standard UI icons use the existing Lucide set. No missing raster content remains from the source.
+- Copy and content: source copy and requested General content are present: title, shortcut, readiness, usage totals, activity, ASR, Rewrite, and Active Profile.
 
 final result: passed
