@@ -35,12 +35,19 @@ tests.
 - App-aware Profile routing for foreground app/window-title rules.
 - Speak to Edit mode that captures selected text, records a spoken edit
   instruction, rewrites the selected text, and pastes the replacement.
-- Usage cost totals split into STT and rewrite estimates from recorded usage.
+- Experimental streaming dictation behind an opt-in setting, with batch
+  dictation fallback.
+- Local light rewrite for short, safe Fast dictation cleanup, with model
+  fallback when local rules are insufficient.
+- A four-page General, Profiles, Dictionary, and Settings frontend. General
+  shows privacy-safe all-time usage and cost totals.
 - Prompt profile defaults for Normal, Email, Prompt, and Translate.
 - Profile and dictionary editing UI backed by SQLite CRUD commands and consumed
   by the live STT/rewrite pipeline.
 - Privacy-safe JSON import/export through native file dialogs.
-- Privacy, provider, hotkey, and active-profile preferences persisted locally.
+- Raw-audio privacy, provider, hotkey, and active-profile preferences persisted
+  locally. Unsupported transcript-history, history-sync, and
+  transcript-in-crash-report controls are not exposed.
 - Rust provider interface commands:
   - `check_provider_keys`
   - `save_provider_api_key`
@@ -68,19 +75,19 @@ tests.
 - API key storage uses the OS credential store through Rust `keyring`.
 - Export payloads exclude API keys, raw audio, transcript history, and logs.
 
-## Remaining Gaps
+## Current Status And Remaining Work
 
-- Full microphone dictation with real spoken input still needs a human-in-loop
-  acceptance pass in the Tauri runtime.
-- Live Groq/OpenAI smoke tests pass with a generated WAV. The test returns text
-  successfully, with one product-dictionary finding: "Gospeak" is transcribed as
-  "Gawspeak".
-- Native paste smoke tests pass in Notepad, Chrome textarea, Cursor/VS Code
-  editor, and a browser contenteditable composer.
-- Human-in-loop acceptance remains tracked in
+- The Windows P0 Alpha, App-aware Profile routing, and Speak to Edit have
+  user-reported manual acceptance recorded in
   [docs/P0_ACCEPTANCE_MATRIX.md](docs/P0_ACCEPTANCE_MATRIX.md).
-- Sync folder, WebDAV, and local Whisper are deferred roadmap features, not
-  current P0 scope.
+- Experimental streaming, local light rewrite, and the latest frontend have
+  automated coverage. Their current-build Tauri runtime acceptance is still
+  pending.
+- VAD, explicit provider retry, additional provider adapters, and transcript
+  history are not implemented.
+- Sync folder, WebDAV, and local Whisper remain deferred roadmap features.
+- Public Beta planning is deferred while the current functional backlog is
+  being prioritized.
 
 ## Development
 

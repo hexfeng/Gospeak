@@ -81,7 +81,7 @@ export type ConfigExportPayload = {
   data: {
     providers: AppConfig["providers"];
     hotkey: AppConfig["hotkey"];
-    privacy: AppConfig["privacy"];
+    privacy: Pick<AppConfig["privacy"], "saveRawAudio">;
     performance: AppConfig["performance"];
     appRouting: AppConfig["appRouting"];
     activeProfileId: string;
@@ -253,7 +253,7 @@ export function buildExportPayload(input: {
     data: {
       providers: input.config.providers,
       hotkey: input.config.hotkey,
-      privacy: input.config.privacy,
+      privacy: { saveRawAudio: input.config.privacy.saveRawAudio },
       performance: input.config.performance,
       appRouting: input.config.appRouting,
       activeProfileId: input.config.activeProfileId,

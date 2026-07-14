@@ -220,12 +220,6 @@ function PrivacyDataSettings(props: SettingsPageProps) {
     label: string;
   }> = [
     { key: "saveRawAudio", label: "Save raw audio" },
-    { key: "saveTranscriptHistory", label: "Save transcript history" },
-    { key: "syncTranscriptHistory", label: "Sync transcript history" },
-    {
-      key: "crashReportIncludesTranscript",
-      label: "Crash report includes transcript",
-    },
   ];
 
   return (

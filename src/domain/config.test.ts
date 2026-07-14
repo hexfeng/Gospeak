@@ -76,12 +76,16 @@ describe("Gospeak provider configuration", () => {
 
     expect(payload.schemaVersion).toBe(1);
     expect(payload.data.providers.stt.providerId).toBe("groq");
+    expect(payload.data.privacy).toEqual({ saveRawAudio: false });
     expect(payload.data.performance.fastMode).toBe(false);
     expect(payload.data.appRouting.enabled).toBe(false);
     expect(payload.data.appRules).toEqual(appRules);
     expect(serialized).not.toContain("apiKey");
     expect(serialized).not.toContain("private transcript");
     expect(serialized).not.toContain("private polished text");
+    expect(serialized).not.toContain("saveTranscriptHistory");
+    expect(serialized).not.toContain("syncTranscriptHistory");
+    expect(serialized).not.toContain("crashReportIncludesTranscript");
   });
 
   it("marks providers as not ready when required keys are missing", () => {

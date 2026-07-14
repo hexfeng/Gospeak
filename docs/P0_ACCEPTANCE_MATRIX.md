@@ -1,28 +1,31 @@
 # Gospeak P0 Alpha Acceptance Matrix
 
-Last updated: 2026-07-01
+Last updated: 2026-07-13
 
 Automated checks cover the application state machine, configuration pipeline,
 privacy-safe usage events, storage migration, import validation, provider
 fallback, clipboard behavior, recorder-window permissions, latency diagnostics,
 fast dictation, App-aware routing, provider cost visibility, Speak to Edit,
-linting, compilation, and packaging. Manual rows below are
-recorded as passed based on user-reported acceptance on 2026-06-30 and
-2026-07-01 where noted.
+experimental streaming, local light rewrite, the current frontend, linting,
+compilation, and packaging. Manual P0, App-aware routing, and Speak to Edit rows
+remain recorded as passed based on user-reported acceptance on 2026-06-30 and
+2026-07-01 where noted. Features added after those dates are tracked separately
+and are not treated as manually accepted.
 
 ## Test Environment
 
 | Item | Value |
 | --- | --- |
-| Commit | Local working tree after Speak to Edit and usage-cost updates |
+| Commit | `c1f15f5` (`main`, frontend and General dashboard refinements) |
 | App version | `0.1.0` debug bundle |
-| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-01 11:18:26`, 5,469,775 bytes) |
-| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-01 11:18:33`, 9,781,248 bytes) |
-| OS | Windows 10 Home, version 2009, build 26200, 64-bit |
-| Microphone | `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
-| Target apps detected | Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
-| Automated verification | `npm test`, `npm run lint`, `npm run build`, `cargo test`, `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `npm run tauri -- build --debug` all passed on 2026-07-01 |
-| Manual acceptance | User-reported pass for P0 trigger/input, profile/target-app, failure/privacy, and clean-install release-gate checks on 2026-06-30 |
+| NSIS installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\nsis\Gospeak_0.1.0_x64-setup.exe` (`2026-07-13 22:32:28`, 5,660,166 bytes) |
+| MSI installer | `D:\Projects\Gospeak\src-tauri\target\debug\bundle\msi\Gospeak_0.1.0_x64_en-US.msi` (`2026-07-13 22:32:35`, 10,145,792 bytes) |
+| OS | Recorded P0 manual environment: Windows 10 Home, version 2009, build 26200, 64-bit |
+| Microphone | Recorded P0 manual environment: `Microphone (Realtek(R) Audio)` reported `OK` by Windows PnP |
+| Target apps detected | Recorded P0 manual environment: Notepad `10.0.26100.8457`; Chrome `149.0.7827.103`; Edge `149.0.4022.98`; Outlook `16.0.20131.20090`; VS Code `1.109.0`; Cursor `3.8.11` |
+| Automated verification | `npm test` (100 tests), `npm run lint`, `npm run build`, `cargo test` (99 tests), `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `npm run tauri -- build --debug` passed on 2026-07-13 |
+| Manual acceptance | User-reported pass for the original P0 trigger/input, profile/target-app, failure/privacy, and clean-install checks on 2026-06-30; App-aware routing and Speak to Edit accepted on 2026-07-01 |
+| Current-head install acceptance | Pending for the `c1f15f5` debug installers |
 
 ## Trigger and Input Matrix
 
@@ -81,7 +84,7 @@ targets.
 | Disabled or deleted rule | Rule is ignored and fallback Profile is used | Pass - automated Rust and frontend tests cover disabled and deleted rules |
 | Missing fallback Profile | Built-in Normal Profile is used instead of sending a missing Profile id | Pass - automated frontend tests cover missing and disabled fallback Profiles |
 | App Rules export | App Rules are exported as config without keys, audio, transcript, or polished text | Pass - automated frontend export tests cover privacy-safe payloads |
-| Provider usage cost totals | Providers page shows cumulative STT and rewrite cost metrics from recorded usage events | Pass - automated frontend tests cover cumulative STT and rewrite totals; Rust tests cover usage cost persistence and provider cost formulas |
+| Provider usage cost totals | General shows privacy-safe aggregate usage and cost metrics from recorded usage events | Pass - automated frontend tests cover all-time usage aggregation; Rust tests cover usage cost and character-count persistence |
 
 ## Post-P0 Speak to Edit Matrix
 
@@ -93,7 +96,23 @@ targets.
 | Target-app replacement | Selected text is replaced in Notepad, browser text fields, Outlook/Teams, and VS Code/Cursor | Pass - user-reported manual acceptance on 2026-07-01 |
 | Deferred sync/local STT | Sync Folder, WebDAV, and local Whisper are not required for the current P0/Post-P0 acceptance gate | Pass - documented as deferred roadmap scope |
 
-## Release Gate
+## Current Post-P0 Development Matrix
+
+These rows describe the current `main` branch. They do not change the earlier
+P0, App-aware routing, or Speak to Edit acceptance decisions.
+
+| Scenario | Expected result | Status |
+| --- | --- | --- |
+| Frontend information architecture | General, Profiles, Dictionary, and Settings preserve existing dictation and configuration behavior | Automated pass - browser design QA was recorded at `7d30c08` before final General refinements; current-head browser and installed Tauri acceptance pending |
+| All-time usage summary | General aggregates duration, non-whitespace output characters, usage mode, and cost without storing transcript content | Pass - frontend aggregation and Rust storage tests pass |
+| Experimental streaming | Opt-in streaming transcribes, rewrites or locally cleans safe text, inserts without duplicate fallback text, and falls back to batch before partial insertion | Automated pass - current-build manual network, partial-insertion, and fallback acceptance pending |
+| Local light rewrite | Short safe dictation is cleaned locally; ambiguous, long, or profile-specific text uses model rewrite | Automated pass - manual checklist exists; current-build spoken-input acceptance pending |
+| Unsupported privacy controls | Settings does not imply transcript history, sync, or crash-report behavior that is not implemented | Automated pass - unsupported controls are removed; legacy false fields remain import-compatible |
+
+## Original P0 Release Gate
+
+These checks apply to the accepted P0 build and do not assert that the current
+`c1f15f5` installers have completed the same manual gate.
 
 - [x] Pass - Complete every manual row relevant to the Windows Alpha.
 - [x] Pass - Install the generated installer on a clean Windows user profile.
@@ -103,10 +122,9 @@ targets.
 
 ## P0 Acceptance Decision
 
-P0 Alpha is accepted as of 2026-06-30. Automated verification passed, the latest
-debug installers were rebuilt, and the remaining manual acceptance rows are
-recorded as user-reported passes. App-aware Profile routing can begin as the
-next post-P0 phase.
+P0 Alpha remains accepted as of 2026-06-30. Its automated verification and
+manual acceptance rows are recorded above. Later current-branch work is tracked
+separately and does not retroactively change this decision.
 
 ## Post-P0 App-Aware Acceptance Decision
 
@@ -117,5 +135,11 @@ be limited to bug fixes unless a new App Rules requirement is explicitly scoped.
 ## Post-P0 Speak to Edit Acceptance Decision
 
 Speak to Edit is accepted as of 2026-07-01 based on automated coverage plus
-user-reported manual target-app acceptance. The P0 Alpha plus post-P0 alpha
-slice can be treated as complete for PR/release-candidate publishing.
+user-reported manual target-app acceptance.
+
+## Current Head Decision
+
+Commit `c1f15f5` passes automated verification and debug packaging. Experimental
+streaming, local light rewrite, and the latest frontend still require
+current-head browser or installed-runtime acceptance as applicable. Public Beta
+planning is intentionally deferred while functional gaps are prioritized.

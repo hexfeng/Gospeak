@@ -86,6 +86,17 @@ describe("SettingsPage", () => {
     expect(onSaveKey).toHaveBeenCalledWith("groq", "gsk-test");
   });
 
+  it("shows only the implemented raw-audio privacy control", () => {
+    render(<SettingsPage {...settingsProps} activeTab="privacy-data" />);
+
+    expect(screen.getByLabelText("Save raw audio")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Save transcript history")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sync transcript history")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Crash report includes transcript"),
+    ).not.toBeInTheDocument();
+  });
+
   it("saves a changed hotkey when the field loses focus", async () => {
     const user = userEvent.setup();
     const onChangeHotkey = vi.fn();

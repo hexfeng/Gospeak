@@ -1,14 +1,20 @@
 # Gospeak P0 Status And Next Plan
 
-Last updated: 2026-07-01
+Last updated: 2026-07-13
 
 ## Current Status
 
-Gospeak is now effectively P0 Alpha complete in the local working tree. The
-base P0 Alpha was accepted on 2026-06-30, and the latest local debug build adds
-the remaining post-P0 alpha slice: App-aware routing, provider usage cost
-totals, and Speak to Edit. Automated verification and debug packaging pass on
-the latest local build. The main backend loop is present:
+Gospeak's Windows P0 Alpha was accepted on 2026-06-30. App-aware Profile
+routing and Speak to Edit were accepted on 2026-07-01. Those acceptance
+decisions remain valid.
+
+Since that acceptance, the current `main` branch has added experimental
+streaming dictation, local light rewrite, a four-page frontend information
+architecture, privacy-safe all-time character counts, and a redesigned General
+dashboard. Automated verification and debug packaging pass at commit
+`c1f15f5`. Browser design QA was recorded at `7d30c08`, before the final
+General refinements; current-head browser and Tauri runtime acceptance has not
+yet been recorded for these newer features. The main backend loop remains:
 
 ```text
 Alt+Space or Start button
@@ -67,11 +73,20 @@ acceptance as of 2026-07-01.
 - App-aware Profile routing with Windows foreground app/window-title detection,
   SQLite-backed App Rules, active Profile fallback, and built-in Normal fallback.
 - Provider usage cost totals that record STT cost from actual audio duration and
-  rewrite cost from OpenAI token usage, displayed as separate STT and rewrite
-  metrics.
+  rewrite cost from OpenAI token usage, aggregated as Total cost on General.
 - Speak to Edit with selected-text capture through native Copy, clipboard
   restoration, spoken edit instruction transcription, selected-text rewrite,
   and native paste replacement.
+- Experimental streaming dictation behind `performance.streamingMode`, with
+  OpenAI realtime transcription, streaming rewrite, guarded Windows Unicode
+  insertion, and batch dictation fallback.
+- Local light rewrite after STT for short safe dictation: filler cleanup,
+  punctuation repair, simple casing, and conservative numbered-list formatting
+  before model fallback.
+- General, Profiles, Dictionary, and Settings frontend information architecture,
+  including the redesigned General usage and readiness dashboard.
+- Privacy-safe `output_character_count` usage storage and all-time usage
+  aggregation without storing transcript or polished text.
 - Privacy-safe JSON import/export file commands excluding keys, audio,
   transcript history, and logs.
 - Native paste smoke tests passed in Notepad, Chrome textarea, Cursor/VS Code,
@@ -81,19 +96,27 @@ acceptance as of 2026-07-01.
 
 ## Partial
 
-- No active implementation or manual acceptance partials remain for P0 Alpha.
+- Experimental streaming has automated coverage and remains opt-in; current-build
+  manual network, partial-insertion, and fallback acceptance is not recorded.
+- Local light rewrite has automated coverage and a manual test checklist;
+  current-build spoken-input acceptance is not recorded.
+- The latest frontend passes automated tests. Browser design QA was recorded
+  before the final General refinements; current-head browser and installed
+  Tauri regression acceptance is not recorded.
 
 ## Not Done
 
 - No remaining P0 Alpha implementation items.
-- Sync/WebDAV/local Whisper remain deferred follow-up features, not P0 scope.
-- Experimental streaming dictation path implemented behind `performance.streamingMode`: OpenAI realtime STT, OpenAI streaming rewrite, guarded Windows Unicode insertion, and current batch dictation fallback.
-- Local light rewrite implemented after STT for short safe dictation: filler cleanup, punctuation repair, simple casing, and conservative numbered-list formatting before falling back to LLM rewrite.
+- Transcript history, history sync, and transcript-in-crash-report behavior are
+  not implemented. Their unsupported Settings controls have been removed.
+- VAD, explicit provider retry, and additional provider adapters are not
+  implemented.
+- Sync Folder, WebDAV, and local Whisper remain deferred follow-up features.
 
 ## Next Plan
 
-1. Publish the current branch/PR using the existing secret-safe workflow.
-2. Treat the next slice as release hardening: installer/update notes,
-   regression smoke script, and packaging sanity checks.
-3. After release hardening, consider VAD/error handling. Keep local Whisper and
-   Sync Folder/WebDAV deferred until explicitly scoped.
+1. Keep Public Beta planning deferred until the functional backlog is reviewed.
+2. Implement the approved multi-provider ASR and Rewrite slice without automatic
+   cross-provider fallback.
+3. Keep VAD, transcript history, Sync Folder, WebDAV, and local model lifecycle
+   management deferred until explicitly prioritized.
