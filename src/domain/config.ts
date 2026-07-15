@@ -1,3 +1,5 @@
+import type { ProviderConfigurationState } from "./providerConfigurations";
+
 export type ProviderKind = "stt" | "rewrite";
 
 export type SttProviderId =
@@ -42,11 +44,32 @@ export type DictionaryTerm = {
   id: string;
   spoken: string;
   written: string;
+  type: DictionaryTermType;
   aliases: string[];
   tags: string[];
   enabled: boolean;
   updatedAt: string;
 };
+
+export type DictionaryTermType =
+  | "person"
+  | "organization"
+  | "brand-product"
+  | "technical-term"
+  | "acronym"
+  | "other";
+
+export const DICTIONARY_TERM_TYPES: Array<{
+  id: DictionaryTermType;
+  label: string;
+}> = [
+  { id: "person", label: "Person" },
+  { id: "organization", label: "Organization" },
+  { id: "brand-product", label: "Brand / Product" },
+  { id: "technical-term", label: "Technical term" },
+  { id: "acronym", label: "Acronym" },
+  { id: "other", label: "Other" },
+];
 
 export type ForegroundAppContext = {
   appId?: string | null;
@@ -141,11 +164,14 @@ export type TranscriptHistoryItem = {
   polishedText: string;
 };
 
+export type StoredProviderConfiguration = AppConfig["providers"] &
+  Partial<ProviderConfigurationState>;
+
 export type ConfigExportPayload = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   exportedAt: string;
   data: {
-    providers: AppConfig["providers"];
+    providers: StoredProviderConfiguration;
     hotkey: AppConfig["hotkey"];
     privacy: Pick<AppConfig["privacy"], "saveRawAudio">;
     performance: AppConfig["performance"];
@@ -157,7 +183,8 @@ export type ConfigExportPayload = {
   };
 };
 
-export type ConfigImportPayload = Omit<ConfigExportPayload, "data"> & {
+export type ConfigImportPayload = Omit<ConfigExportPayload, "schemaVersion" | "data"> & {
+  schemaVersion: 1 | 2;
   data: Omit<ConfigExportPayload["data"], "privacy" | "performance"> & {
     privacy: Pick<AppConfig["privacy"], "saveRawAudio"> &
       Partial<Omit<AppConfig["privacy"], "saveRawAudio">>;
@@ -477,14 +504,17 @@ export function buildExportPayload(input: {
   config: AppConfig;
   dictionaryTerms: DictionaryTerm[];
   appRules?: AppProfileRule[];
+  providerState?: ProviderConfigurationState;
   apiKeyPresence?: ApiKeyPresence;
   transcriptHistory?: TranscriptHistoryItem[];
 }): ConfigExportPayload {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     data: {
-      providers: input.config.providers,
+      providers: input.providerState
+        ? { ...input.config.providers, ...input.providerState }
+        : input.config.providers,
       hotkey: input.config.hotkey,
       privacy: { saveRawAudio: input.config.privacy.saveRawAudio },
       performance: input.config.performance,

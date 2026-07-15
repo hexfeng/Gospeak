@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import {
   BookMarked,
   House,
+  ServerCog,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -9,6 +10,7 @@ import "./App.css";
 import { DictionaryPage } from "./components/DictionaryPage";
 import { GeneralPage } from "./components/GeneralPage";
 import { ProfilesPage } from "./components/ProfilesPage";
+import { ProvidersPage } from "./components/ProvidersPage";
 import { SettingsPage } from "./components/SettingsPage";
 import {
   DEFAULT_APP_CONFIG,
@@ -19,24 +21,30 @@ import {
   type DictionaryTerm,
   type ForegroundAppContext,
   type PromptProfile,
-  type RewriteProviderId,
-  type SttProviderId,
   applyStoredPreferences,
   buildExportPayload,
   resolveActiveProfileId,
   resolveProfileForContext,
-  updateProviderModel,
-  updateRewriteProvider,
-  updateSttBaseUrl,
-  updateSttProvider,
   validateSttBaseUrl,
 } from "./domain/config";
 import {
   DICTATION_INITIAL_STATE,
   dictationReducer,
 } from "./domain/dictation";
-import type { AppSection, SettingsTab } from "./domain/navigation";
+import type { AppSection } from "./domain/navigation";
 import {
+  activateProviderConfiguration,
+  activeProviderPair,
+  addLegacyCredentialConfigurations,
+  deleteProviderConfiguration,
+  migrateProviderConfigurations,
+  upsertProviderConfiguration,
+  type ConfigurationKeyPresence,
+  type ProviderConfiguration,
+  type ProviderConfigurationState,
+} from "./domain/providerConfigurations";
+import {
+  checkProviderConfigurationKeys,
   checkProviderKeys,
   cleanupTempAudioFile,
   copyTextForPaste,
@@ -50,11 +58,14 @@ import {
   listUsageEvents,
   listenForGlobalShortcut,
   listenForTrayAction,
+  migrateProviderConfigurationApiKey,
   publishRecorderState,
   readSelectedTextForEdit,
+  removeProviderApiKey,
+  removeProviderConfigurationApiKey,
   runAudioFileDictation,
   runStreamingDictation,
-  saveProviderApiKey,
+  saveProviderConfigurationApiKey,
   selectExportPath,
   selectImportPath,
   startRecording,
@@ -76,6 +87,7 @@ const seedDictionaryTerms: DictionaryTerm[] = [
     id: "dict_agent_security",
     spoken: "agent security",
     written: "AI Agent Security",
+    type: "technical-term",
     aliases: ["agent 安全", "agent security project"],
     tags: ["work", "ai"],
     enabled: true,
@@ -85,6 +97,7 @@ const seedDictionaryTerms: DictionaryTerm[] = [
     id: "dict_runtime_monitoring",
     spoken: "runtime monitoring",
     written: "runtime monitoring",
+    type: "technical-term",
     aliases: ["运行时监控"],
     tags: ["engineering"],
     enabled: true,
@@ -94,6 +107,7 @@ const seedDictionaryTerms: DictionaryTerm[] = [
 
 const navItems = [
   { id: "general", label: "General", icon: House },
+  { id: "providers", label: "Providers", icon: ServerCog },
   { id: "profiles", label: "Profiles", icon: SlidersHorizontal },
   { id: "dictionary", label: "Dictionary", icon: BookMarked },
   { id: "settings", label: "Settings", icon: Settings },
@@ -103,15 +117,21 @@ type AppNotice = { text: string; tone: "info" | "error" } | null;
 
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>("general");
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("dictation");
+  const [providerFocus, setProviderFocus] = useState<{
+    kind: ProviderConfiguration["kind"];
+    configurationId: string;
+    requestId: number;
+  }>();
   const [config, setConfig] = useState<AppConfig>(DEFAULT_APP_CONFIG);
+  const [providerState, setProviderState] = useState<ProviderConfigurationState>(
+    () => migrateProviderConfigurations(DEFAULT_APP_CONFIG.providers),
+  );
+  const [configurationKeyPresence, setConfigurationKeyPresence] =
+    useState<ConfigurationKeyPresence>({});
   const [keyPresence, setKeyPresence] = useState<ApiKeyPresence>({
     groq: false,
     openai: false,
   });
-  const [keyDrafts, setKeyDrafts] = useState<
-    Partial<Record<CredentialProviderId, string>>
-  >({});
   const [profiles, setProfiles] = useState<PromptProfile[]>(
     DEFAULT_APP_CONFIG.promptProfiles,
   );
@@ -133,25 +153,6 @@ function App() {
     const timeout = window.setTimeout(() => setNotice(null), 4000);
     return () => window.clearTimeout(timeout);
   }, [notice]);
-
-  async function refreshKeys() {
-    const status = await checkProviderKeys();
-    setKeyPresence(status);
-    setNotice({
-      text: "Credential status refreshed without exposing key values.",
-      tone: "info",
-    });
-  }
-
-  async function saveKey(provider: CredentialProviderId, apiKey: string) {
-    const status = await saveProviderApiKey(provider, apiKey);
-    setKeyPresence(status);
-    setKeyDrafts((current) => ({ ...current, [provider]: "" }));
-    setNotice({
-      text: `${provider.toUpperCase()} key saved to the OS credential store.`,
-      tone: "info",
-    });
-  }
 
   async function saveProfile(profile: PromptProfile) {
     const nextProfile =
@@ -225,6 +226,7 @@ function App() {
       id: term.id,
       spoken: term.spoken,
       written: term.written,
+      term_type: term.type,
       aliases_json: JSON.stringify(term.aliases),
       tags_json: JSON.stringify(term.tags),
       enabled: term.enabled,
@@ -243,6 +245,7 @@ function App() {
       id: term.id,
       spoken: term.spoken,
       written: term.written,
+      term_type: term.type,
       aliases_json: JSON.stringify(term.aliases),
       tags_json: JSON.stringify(term.tags),
       enabled: false,
@@ -295,18 +298,57 @@ function App() {
       return;
     }
     const payload = await importConfigFromFile(path);
-    setConfig(
-      applyStoredPreferences(DEFAULT_APP_CONFIG, {
+    const importedConfig = applyStoredPreferences(DEFAULT_APP_CONFIG, {
         providers: JSON.stringify(payload.data.providers),
         hotkey: JSON.stringify(payload.data.hotkey),
         privacy: JSON.stringify(payload.data.privacy),
         performance: JSON.stringify(payload.data.performance),
         app_routing: JSON.stringify(payload.data.appRouting),
         active_profile_id: payload.data.activeProfileId,
-      }),
+      });
+    const importedProvidersJson = JSON.stringify(payload.data.providers);
+    const importedProviderState = parseStoredProviderState(
+      importedProvidersJson,
+      importedConfig.providers,
     );
+    if (!storedProviderState(importedProvidersJson)) {
+      await migrateLegacyConfigurationKeys(importedProviderState);
+    }
+    const activeProviders = activeProviderPair(importedProviderState);
+    const importedPresence = await loadConfigurationKeyPresence(importedProviderState);
+    const legacyPresence = await checkProviderKeys();
+    setProviderState(importedProviderState);
+    setConfigurationKeyPresence(importedPresence);
+    setKeyPresence(
+      mergeActiveConfigurationPresence(
+        legacyPresence,
+        importedProviderState,
+        importedPresence,
+      ),
+    );
+    setConfig({
+      ...importedConfig,
+      providers: {
+        stt: {
+          providerId: activeProviders.stt.providerId,
+          model: activeProviders.stt.model,
+          ...(activeProviders.stt.baseUrl !== undefined
+            ? { baseUrl: activeProviders.stt.baseUrl }
+            : {}),
+        },
+        rewrite: {
+          providerId: activeProviders.rewrite.providerId,
+          model: activeProviders.rewrite.model,
+        },
+      },
+    });
     setProfiles(payload.data.promptProfiles);
-    setDictionaryTerms(payload.data.dictionaryTerms);
+    setDictionaryTerms(
+      payload.data.dictionaryTerms.map((term) => ({
+        ...term,
+        type: term.type ?? "other",
+      })),
+    );
     setAppRules(payload.data.appRules ?? []);
     setNotice({ text: `Configuration imported from ${path}`, tone: "info" });
   }
@@ -406,9 +448,11 @@ function App() {
         audio_path: audioPath,
         profile_id: profileId,
         stt_provider: config.providers.stt.providerId,
+        stt_config_id: providerState.activeAsrConfigId,
         stt_base_url: config.providers.stt.baseUrl ?? null,
         stt_model: config.providers.stt.model,
         rewrite_provider: config.providers.rewrite.providerId,
+        rewrite_config_id: providerState.activeRewriteConfigId,
         rewrite_model: config.providers.rewrite.model,
         selected_text: selectedTextForEditRef.current,
         skip_rewrite:
@@ -623,22 +667,72 @@ function App() {
         { ...DEFAULT_APP_CONFIG, promptProfiles: mappedProfiles },
         preferences,
       );
+      const existingProviderState = storedProviderState(preferences.providers);
+      const parsedProviderState = parseStoredProviderState(
+        preferences.providers,
+        nextConfig.providers,
+      );
+      const nextProviderState = existingProviderState
+        ? parsedProviderState
+        : addLegacyCredentialConfigurations(
+            parsedProviderState,
+            storedKeyPresence,
+          );
+      if (!existingProviderState) {
+        await migrateLegacyConfigurationKeys(nextProviderState);
+      }
+      const nextConfigurationKeyPresence = await loadConfigurationKeyPresence(
+        nextProviderState,
+      );
+      if (disposed) return;
+      const activeProviders = activeProviderPair(nextProviderState);
+      const configWithActiveProviders: AppConfig = {
+        ...nextConfig,
+        providers: {
+          stt: {
+            providerId: activeProviders.stt.providerId,
+            model: activeProviders.stt.model,
+            ...(activeProviders.stt.baseUrl !== undefined
+              ? { baseUrl: activeProviders.stt.baseUrl }
+              : {}),
+          },
+          rewrite: {
+            providerId: activeProviders.rewrite.providerId,
+            model: activeProviders.rewrite.model,
+          },
+        },
+      };
       if (hasLegacyStreamingPreference(preferences.performance)) {
         await Promise.all([
-          persistPreference("providers", nextConfig.providers),
+          persistPreference(
+            "providers",
+            providerPreference(nextProviderState),
+          ),
           persistPreference("performance", nextConfig.performance),
         ]);
       }
+      if (!existingProviderState) {
+        await persistPreference("providers", providerPreference(nextProviderState));
+      }
+      setProviderState(nextProviderState);
+      setConfigurationKeyPresence(nextConfigurationKeyPresence);
+      setKeyPresence(
+        mergeActiveConfigurationPresence(
+          storedKeyPresence,
+          nextProviderState,
+          nextConfigurationKeyPresence,
+        ),
+      );
       setConfig({
-        ...nextConfig,
+        ...configWithActiveProviders,
         activeProfileId: resolveActiveProfileId(
-          nextConfig.activeProfileId,
+          configWithActiveProviders.activeProfileId,
           enabledProfileIds(mappedProfiles),
         ),
       });
-      if (nextConfig.hotkey.binding !== DEFAULT_APP_CONFIG.hotkey.binding) {
+      if (configWithActiveProviders.hotkey.binding !== DEFAULT_APP_CONFIG.hotkey.binding) {
         await updateGlobalShortcut(
-          nextConfig.hotkey.binding,
+          configWithActiveProviders.hotkey.binding,
           DEFAULT_APP_CONFIG.hotkey.binding,
         );
       }
@@ -683,6 +777,16 @@ function App() {
     setActiveSection(section);
   }
 
+  function openActiveProvider(kind: ProviderConfiguration["kind"]) {
+    const active = activeProviderPair(providerState);
+    setProviderFocus({
+      kind,
+      configurationId: kind === "stt" ? active.stt.id : active.rewrite.id,
+      requestId: Date.now(),
+    });
+    navigate("providers");
+  }
+
   async function changeHotkey(
     next: Partial<AppConfig["hotkey"]>,
   ) {
@@ -695,35 +799,99 @@ function App() {
     setNotice({ text: "Saved", tone: "info" });
   }
 
-  async function changeProviderModel(
-    kind: "stt" | "rewrite",
-    model: string,
+  async function persistProviderState(next: ProviderConfigurationState) {
+    const active = activeProviderPair(next);
+    const providers: AppConfig["providers"] = {
+      stt: {
+        providerId: active.stt.providerId,
+        model: active.stt.model,
+        ...(active.stt.baseUrl !== undefined ? { baseUrl: active.stt.baseUrl } : {}),
+      },
+      rewrite: {
+        providerId: active.rewrite.providerId,
+        model: active.rewrite.model,
+      },
+    };
+    await persistPreference("providers", providerPreference(next));
+    setProviderState(next);
+    setConfig((current) => ({ ...current, providers }));
+  }
+
+  async function refreshProviderConfigurationKeys(
+    state = providerState,
+    announce = true,
   ) {
-    const next = updateProviderModel(config, kind, model);
-    setConfig(next);
-    await persistPreference("providers", next.providers);
-    setNotice({ text: "Saved", tone: "info" });
+    const presence = await loadConfigurationKeyPresence(state);
+    const legacyPresence = await checkProviderKeys();
+    setConfigurationKeyPresence(presence);
+    setKeyPresence(
+      mergeActiveConfigurationPresence(legacyPresence, state, presence),
+    );
+    if (announce) {
+      setNotice({
+        text: "Local Provider status refreshed without exposing key values.",
+        tone: "info",
+      });
+    }
   }
 
-  async function changeSttProvider(provider: SttProviderId) {
-    const next = updateSttProvider(config, provider);
-    setConfig(next);
-    await persistPreference("providers", next.providers);
-    setNotice({ text: "Saved", tone: "info" });
+  async function saveProviderConfiguration(
+    configuration: ProviderConfiguration,
+    apiKey?: string,
+  ) {
+    const existing = providerState.configurations.find(
+      (item) => item.id === configuration.id,
+    );
+    const next = upsertProviderConfiguration(providerState, configuration);
+    const credentialProvider = credentialProviderForConfiguration(configuration);
+    if (existing && existing.providerId !== configuration.providerId) {
+      const oldProvider = credentialProviderForConfiguration(existing);
+      if (oldProvider) {
+        await removeProviderConfigurationApiKey(configuration.id, oldProvider);
+      }
+    }
+    if (apiKey && credentialProvider) {
+      await saveProviderConfigurationApiKey(
+        configuration.id,
+        credentialProvider,
+        apiKey,
+      );
+    }
+    await persistProviderState(next);
+    await refreshProviderConfigurationKeys(next, false);
+    setNotice({ text: `Provider configuration saved: ${configuration.name}`, tone: "info" });
   }
 
-  async function changeRewriteProvider(provider: RewriteProviderId) {
-    const next = updateRewriteProvider(config, provider);
-    setConfig(next);
-    await persistPreference("providers", next.providers);
-    setNotice({ text: "Saved", tone: "info" });
+  async function activateConfiguration(configurationId: string) {
+    const next = activateProviderConfiguration(providerState, configurationId);
+    await persistProviderState(next);
+    await refreshProviderConfigurationKeys(next, false);
+    setNotice({ text: "Active Provider configuration updated.", tone: "info" });
   }
 
-  async function changeSttBaseUrl(baseUrl: string) {
-    const next = updateSttBaseUrl(config, baseUrl);
-    setConfig(next);
-    await persistPreference("providers", next.providers);
-    setNotice({ text: "Saved", tone: "info" });
+  async function removeProviderConfigurationKey(configuration: ProviderConfiguration) {
+    const provider = credentialProviderForConfiguration(configuration);
+    if (provider) {
+      await removeProviderConfigurationApiKey(configuration.id, provider);
+    }
+    await refreshProviderConfigurationKeys(providerState, false);
+    setNotice({ text: `Saved key removed from ${configuration.name}.`, tone: "info" });
+  }
+
+  async function deleteConfiguration(configuration: ProviderConfiguration) {
+    const next = deleteProviderConfiguration(providerState, configuration.id);
+    const provider = credentialProviderForConfiguration(configuration);
+    if (provider) {
+      await removeProviderConfigurationApiKey(configuration.id, provider);
+    }
+    try {
+      await persistProviderState(next);
+    } catch (error) {
+      await refreshProviderConfigurationKeys(providerState, false);
+      throw error;
+    }
+    await refreshProviderConfigurationKeys(next, false);
+    setNotice({ text: `Provider configuration deleted: ${configuration.name}`, tone: "info" });
   }
 
   async function changePrivacy(
@@ -761,6 +929,7 @@ function App() {
     config,
     dictionaryTerms,
     appRules,
+    providerState,
   });
 
   return (
@@ -816,38 +985,27 @@ function App() {
               profiles={profiles}
               usageEvents={usageEvents}
               onOpenProfiles={() => navigate("profiles")}
-              onOpenSettings={(tab) => {
-                setSettingsTab(tab);
-                navigate("settings");
-              }}
+              onOpenProviders={openActiveProvider}
+            />
+          ) : null}
+
+          {activeSection === "providers" ? (
+            <ProvidersPage
+              focus={providerFocus}
+              keyPresence={configurationKeyPresence}
+              onActivate={activateConfiguration}
+              onDelete={deleteConfiguration}
+              onRefresh={() => refreshProviderConfigurationKeys()}
+              onRemoveKey={removeProviderConfigurationKey}
+              onSave={saveProviderConfiguration}
+              state={providerState}
             />
           ) : null}
 
           {activeSection === "settings" ? (
             <SettingsPage
-              activeTab={settingsTab}
               config={config}
-              keyPresence={keyPresence}
-              keyDrafts={keyDrafts}
-              onTabChange={setSettingsTab}
-              onKeyDraftChange={(provider, value) =>
-                setKeyDrafts((current) => ({ ...current, [provider]: value }))
-              }
-              onSaveKey={(provider, key) => void saveKey(provider, key)}
-              onRefreshKeys={() => void refreshKeys()}
               onChangeHotkey={(next) => void changeHotkey(next)}
-              onChangeProviderModel={(kind, model) =>
-                void changeProviderModel(kind, model)
-              }
-              onChangeSttProvider={(provider) =>
-                void changeSttProvider(provider)
-              }
-              onChangeRewriteProvider={(provider) =>
-                void changeRewriteProvider(provider)
-              }
-              onChangeSttBaseUrl={(baseUrl) =>
-                void changeSttBaseUrl(baseUrl)
-              }
               onChangePrivacy={(key, enabled) =>
                 void changePrivacy(key, enabled)
               }
@@ -876,9 +1034,9 @@ function App() {
 
           {activeSection === "dictionary" ? (
             <DictionaryPage
-              onDeleteTerm={(term) => void deleteDictionaryTerm(term)}
+              onDeleteTerm={deleteDictionaryTerm}
               onSaveTerm={saveDictionaryTerm}
-              onToggleTerm={(term, enabled) => void toggleDictionaryTerm(term, enabled)}
+              onToggleTerm={toggleDictionaryTerm}
               terms={dictionaryTerms}
             />
           ) : null}
@@ -921,6 +1079,7 @@ function dictionaryRecordToTerm(record: DictionaryRecord): DictionaryTerm {
     id: record.id,
     spoken: record.spoken,
     written: record.written,
+    type: record.term_type ?? "other",
     aliases: parseJsonList(record.aliases_json),
     tags: parseJsonList(record.tags_json),
     enabled: record.enabled,
@@ -947,6 +1106,116 @@ function hasLegacyStreamingPreference(value: string | undefined): boolean {
   } catch {
     return false;
   }
+}
+
+type StoredProviderPreference = AppConfig["providers"] &
+  Partial<ProviderConfigurationState>;
+
+function storedProviderState(value: string | undefined): ProviderConfigurationState | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredProviderPreference>;
+    if (
+      !Array.isArray(parsed.configurations) ||
+      typeof parsed.activeAsrConfigId !== "string" ||
+      typeof parsed.activeRewriteConfigId !== "string" ||
+      parsed.activeAsrConfigId === parsed.activeRewriteConfigId ||
+      parsed.configurations.some(
+        (configuration) =>
+          !configuration ||
+          typeof configuration !== "object" ||
+          typeof configuration.id !== "string" ||
+          !configuration.id.trim(),
+      ) ||
+      new Set(parsed.configurations.map((configuration) => configuration.id)).size !==
+        parsed.configurations.length
+    ) {
+      return null;
+    }
+    const state = {
+      configurations: parsed.configurations,
+      activeAsrConfigId: parsed.activeAsrConfigId,
+      activeRewriteConfigId: parsed.activeRewriteConfigId,
+    };
+    activeProviderPair(state);
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function parseStoredProviderState(
+  value: string | undefined,
+  providers: AppConfig["providers"],
+) {
+  const stored = storedProviderState(value);
+  return stored ?? migrateProviderConfigurations(providers);
+}
+
+function providerPreference(state: ProviderConfigurationState): StoredProviderPreference {
+  const active = activeProviderPair(state);
+  return {
+    stt: {
+      providerId: active.stt.providerId,
+      model: active.stt.model,
+      ...(active.stt.baseUrl !== undefined ? { baseUrl: active.stt.baseUrl } : {}),
+    },
+    rewrite: {
+      providerId: active.rewrite.providerId,
+      model: active.rewrite.model,
+    },
+    ...state,
+  };
+}
+
+function credentialProviderForConfiguration(
+  configuration: ProviderConfiguration,
+): CredentialProviderId | null {
+  if (configuration.providerId === "qwen-local") return null;
+  if (configuration.providerId === "openai-realtime") return "openai";
+  return configuration.providerId as CredentialProviderId;
+}
+
+async function loadConfigurationKeyPresence(state: ProviderConfigurationState) {
+  return checkProviderConfigurationKeys(
+    state.configurations.flatMap((configuration) => {
+      const provider = credentialProviderForConfiguration(configuration);
+      return provider ? [{ configId: configuration.id, provider }] : [];
+    }),
+  );
+}
+
+async function migrateLegacyConfigurationKeys(state: ProviderConfigurationState) {
+  const byProvider = new Map<CredentialProviderId, string[]>();
+  for (const configuration of state.configurations) {
+    const provider = credentialProviderForConfiguration(configuration);
+    if (!provider) continue;
+    byProvider.set(provider, [...(byProvider.get(provider) ?? []), configuration.id]);
+  }
+  await Promise.all(
+    [...byProvider].map(async ([provider, configIds]) => {
+      await Promise.all(
+        configIds.map((configId) => migrateProviderConfigurationApiKey(configId, provider)),
+      );
+      await removeProviderApiKey(provider);
+    }),
+  );
+}
+
+function mergeActiveConfigurationPresence(
+  _legacy: ApiKeyPresence,
+  state: ProviderConfigurationState,
+  configurationPresence: ConfigurationKeyPresence,
+): ApiKeyPresence {
+  const active = activeProviderPair(state);
+  const next: ApiKeyPresence = {};
+  for (const configuration of [active.stt, active.rewrite]) {
+    const provider = credentialProviderForConfiguration(configuration);
+    if (provider && configurationPresence[configuration.id]) {
+      next[provider] = true;
+    }
+  }
+  return next;
 }
 
 export default App;

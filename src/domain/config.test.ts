@@ -171,6 +171,7 @@ describe("Gospeak provider configuration", () => {
           id: "dict_agent",
           spoken: "agent security",
           written: "AI Agent Security",
+          type: "technical-term",
           aliases: ["agent 安全"],
           tags: ["work"],
           enabled: true,
@@ -191,7 +192,7 @@ describe("Gospeak provider configuration", () => {
 
     const serialized = JSON.stringify(payload);
 
-    expect(payload.schemaVersion).toBe(1);
+    expect(payload.schemaVersion).toBe(2);
     expect(payload.data.providers.stt.providerId).toBe("groq");
     expect(payload.data.privacy).toEqual({ saveRawAudio: false });
     expect(payload.data.performance.fastMode).toBe(false);

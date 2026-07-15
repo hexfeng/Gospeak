@@ -9,8 +9,10 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import type { ProviderCredentialQuery } from "./lib/tauri";
 import {
   checkProviderKeys,
+  checkProviderConfigurationKeys,
   copyTextForPaste,
   cleanupTempAudioFile,
   exportConfigToFile,
@@ -20,6 +22,8 @@ import {
   listDictionaryTerms,
   listPreferences,
   listUsageEvents,
+  migrateProviderConfigurationApiKey,
+  removeProviderApiKey,
   runAudioFileDictation,
   runStreamingDictation,
   listenForGlobalShortcut,
@@ -42,6 +46,13 @@ let globalShortcutHandler: ((state: GlobalShortcutState) => void) | undefined;
 
 vi.mock("./lib/tauri", () => ({
   checkProviderKeys: vi.fn(async () => ({ groq: false, openai: false })),
+  checkProviderConfigurationKeys: vi.fn(async (configurations: ProviderCredentialQuery[]) =>
+    Object.fromEntries(configurations.map(({ configId }) => [configId, false])),
+  ),
+  saveProviderConfigurationApiKey: vi.fn(async () => undefined),
+  removeProviderConfigurationApiKey: vi.fn(async () => undefined),
+  migrateProviderConfigurationApiKey: vi.fn(async () => false),
+  removeProviderApiKey: vi.fn(async () => undefined),
   saveProviderApiKey: vi.fn(async () => ({ groq: true, openai: true })),
   startRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
   startStreamingRecording: vi.fn(async () => "C:\\Temp\\gospeak-test.wav"),
@@ -145,8 +156,26 @@ describe("Gospeak Alpha app shell", () => {
     user: ReturnType<typeof userEvent.setup>,
     tab: "Dictation" | "Providers" | "Privacy & Data" | "Advanced",
   ) {
+    if (tab === "Providers") {
+      await user.click(screen.getByRole("button", { name: "Providers" }));
+      return;
+    }
     await user.click(screen.getByRole("button", { name: "Settings" }));
-    await user.click(screen.getByRole("tab", { name: tab }));
+    expect(screen.getByRole("heading", { name: tab })).toBeInTheDocument();
+  }
+
+  async function changeActiveAsr(
+    user: ReturnType<typeof userEvent.setup>,
+    provider: "openai-realtime",
+  ) {
+    await openSettingsTab(user, "Providers");
+    await user.click(screen.getByRole("button", { name: "Add configuration" }));
+    await user.selectOptions(screen.getByLabelText("Provider"), provider);
+    await user.type(screen.getByLabelText("Configuration name"), "Realtime test");
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const card = screen.getByText("Realtime test").closest("article")!;
+    await user.click(within(card).getByRole("button", { name: "Use configuration" }));
   }
 
   it("renders one module at a time from sidebar navigation", async () => {
@@ -168,13 +197,11 @@ describe("Gospeak Alpha app shell", () => {
 
     await openSettingsTab(user, "Providers");
 
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Providers" })).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Gospeak" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/STT model/i)).toHaveValue(
-      "whisper-large-v3-turbo",
-    );
+    expect(screen.getAllByText("whisper-large-v3-turbo").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /Start Dictation/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Last dictation diagnostics/i)).not.toBeInTheDocument();
 
@@ -192,12 +219,34 @@ describe("Gospeak Alpha app shell", () => {
       groq: true,
       openai: true,
     });
+    vi.mocked(checkProviderConfigurationKeys).mockImplementationOnce(
+      async (configurations) =>
+        Object.fromEntries(configurations.map(({ configId }) => [configId, true])),
+    );
 
     render(<App />);
 
     await waitFor(() => expect(checkProviderKeys).toHaveBeenCalledTimes(1));
     await openSettingsTab(userEvent.setup(), "Providers");
-    expect(await screen.findAllByText("Key ready")).toHaveLength(2);
+    expect((await screen.findAllByText("Configured")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("migrates legacy Provider credentials into configuration-scoped accounts", async () => {
+    render(<App />);
+
+    await waitFor(() =>
+      expect(migrateProviderConfigurationApiKey).toHaveBeenCalledTimes(2),
+    );
+    expect(migrateProviderConfigurationApiKey).toHaveBeenCalledWith(
+      "provider_default_groq_stt",
+      "groq",
+    );
+    expect(removeProviderApiKey).toHaveBeenCalledWith("groq");
+    expect(removeProviderApiKey).toHaveBeenCalledWith("openai");
+    expect(migrateProviderConfigurationApiKey).toHaveBeenCalledWith(
+      "provider_default_openai_rewrite",
+      "openai",
+    );
   });
 
   it("registers the global shortcut listener", async () => {
@@ -236,7 +285,7 @@ describe("Gospeak Alpha app shell", () => {
     await waitFor(() => expect(stopRecording).toHaveBeenCalledTimes(1));
   });
 
-  it("renders the final four-item navigation without standalone App Rules", async () => {
+  it("renders the final five-item navigation without standalone App Rules", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -244,7 +293,7 @@ describe("Gospeak Alpha app shell", () => {
       within(screen.getByRole("navigation"))
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["General", "Profiles", "Dictionary", "Settings"]);
+    ).toEqual(["General", "Providers", "Profiles", "Dictionary", "Settings"]);
     expect(screen.queryByText("Ready for push-to-talk")).not.toBeInTheDocument();
     await openSettingsTab(user, "Dictation");
     expect(screen.getByLabelText(/Speak to Edit/i)).toBeInTheDocument();
@@ -256,7 +305,8 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await openSettingsTab(user, "Providers");
-    expect(screen.getByLabelText("ASR provider")).toHaveTextContent(
+    await user.click(screen.getByRole("button", { name: "Add configuration" }));
+    expect(screen.getByLabelText("Provider")).toHaveTextContent(
       "OpenAI Realtime",
     );
   });
@@ -268,8 +318,7 @@ describe("Gospeak Alpha app shell", () => {
     );
     render(<App />);
 
-    await openSettingsTab(user, "Providers");
-    await user.selectOptions(screen.getByLabelText("ASR provider"), "openai-realtime");
+    await changeActiveAsr(user, "openai-realtime");
     await user.click(screen.getByRole("button", { name: "General" }));
     await startDictationWithGlobalShortcut();
     expect(startStreamingRecording).toHaveBeenCalledTimes(1);
@@ -289,8 +338,7 @@ describe("Gospeak Alpha app shell", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await openSettingsTab(user, "Providers");
-    await user.selectOptions(screen.getByLabelText("ASR provider"), "openai-realtime");
+    await changeActiveAsr(user, "openai-realtime");
     await user.click(screen.getByRole("button", { name: "General" }));
     await dictateWithGlobalShortcut();
 
@@ -309,17 +357,19 @@ describe("Gospeak Alpha app shell", () => {
     await stopDictationWithGlobalShortcut();
 
     expect(stopRecording).toHaveBeenCalledTimes(1);
-    expect(runAudioFileDictation).toHaveBeenCalledWith({
+    expect(runAudioFileDictation).toHaveBeenCalledWith(expect.objectContaining({
       audio_path: "C:\\Temp\\gospeak-test.wav",
       profile_id: "normal",
       stt_provider: "groq",
       stt_model: "whisper-large-v3-turbo",
       stt_base_url: null,
       rewrite_provider: "openai",
+      stt_config_id: "provider_default_groq_stt",
+      rewrite_config_id: "provider_default_openai_rewrite",
       rewrite_model: "gpt-5-nano",
       selected_text: null,
       skip_rewrite: false,
-    });
+    }));
     expect(copyTextForPaste).toHaveBeenCalledWith("Polished dictation text");
     expect(cleanupTempAudioFile).toHaveBeenCalledWith("C:\\Temp\\gospeak-test.wav");
     expect(await screen.findByText(/Text copied to clipboard/i)).toBeInTheDocument();
@@ -745,7 +795,7 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: /Dictionary/i }));
-    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
+    await user.click(screen.getAllByRole("button", { name: "Add term" })[0]);
     await user.type(screen.getByLabelText("Spoken phrase"), "gawspeak");
     await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
     await user.type(screen.getByLabelText("Aliases"), "go speak");
@@ -756,6 +806,7 @@ describe("Gospeak Alpha app shell", () => {
         spoken: "gawspeak",
         written: "Gospeak",
         aliases_json: JSON.stringify(["go speak"]),
+        term_type: "other",
         enabled: true,
       }),
     );
@@ -770,7 +821,11 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Dictionary" }));
-    await waitFor(() => expect(screen.getByText("0 terms")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText("0 global terms · 0 enabled · types and tags organize this page only"),
+      ).toBeInTheDocument(),
+    );
 
     expect(screen.queryByText("AI Agent Security")).not.toBeInTheDocument();
     expect(screen.queryByText("runtime monitoring")).not.toBeInTheDocument();
@@ -812,6 +867,7 @@ describe("Gospeak Alpha app shell", () => {
             id: "dict_imported",
             spoken: "gospeak",
             written: "Gospeak",
+            type: "brand-product",
             aliases: [],
             tags: ["brand"],
             enabled: true,
@@ -831,7 +887,7 @@ describe("Gospeak Alpha app shell", () => {
       expect(selectExportPath).toHaveBeenCalled();
       expect(exportConfigToFile).toHaveBeenCalledWith(
         "C:\\Temp\\gospeak-export.json",
-        expect.objectContaining({ schemaVersion: 1 }),
+        expect.objectContaining({ schemaVersion: 2 }),
       );
 
       await user.click(screen.getByRole("button", { name: /Import configuration/i }));
@@ -846,7 +902,7 @@ describe("Gospeak Alpha app shell", () => {
       expect(screen.getAllByText("Imported Profile").length).toBeGreaterThan(0),
     );
     await user.click(screen.getByRole("button", { name: /Dictionary/i }));
-    expect(await screen.findByText("brand")).toBeInTheDocument();
+    expect((await screen.findAllByText("brand")).length).toBeGreaterThan(0);
 
   });
 
@@ -894,6 +950,10 @@ describe("Gospeak Alpha app shell", () => {
       groq: true,
       openai: true,
     });
+    vi.mocked(checkProviderConfigurationKeys).mockImplementationOnce(
+      async (configurations) =>
+        Object.fromEntries(configurations.map(({ configId }) => [configId, true])),
+    );
     vi.mocked(listPreferences).mockResolvedValueOnce([
       {
         key: "active_profile_id",

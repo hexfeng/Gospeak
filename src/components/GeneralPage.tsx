@@ -16,7 +16,6 @@ import {
   type PromptProfile,
 } from "../domain/config";
 import { summarizeUsage } from "../domain/usage";
-import type { SettingsTab } from "../domain/navigation";
 import type { UsageEventRecord } from "../lib/tauri";
 
 type GeneralPageProps = {
@@ -25,7 +24,7 @@ type GeneralPageProps = {
   profiles: PromptProfile[];
   usageEvents: UsageEventRecord[];
   onOpenProfiles: () => void;
-  onOpenSettings: (tab: SettingsTab) => void;
+  onOpenProviders: (kind: "stt" | "rewrite") => void;
 };
 
 export function GeneralPage({
@@ -34,7 +33,7 @@ export function GeneralPage({
   profiles,
   usageEvents,
   onOpenProfiles,
-  onOpenSettings,
+  onOpenProviders,
 }: GeneralPageProps) {
   const readiness = getProviderReadiness(config, keyPresence);
   const usage = summarizeUsage(usageEvents);
@@ -99,7 +98,7 @@ export function GeneralPage({
           label="ASR model"
           value={readiness.stt.ready ? config.providers.stt.model : "Not Set"}
           ready={readiness.stt.ready}
-          onClick={() => onOpenSettings("providers")}
+          onClick={() => onOpenProviders("stt")}
         />
         <StatusCard
           description="Writing model that cleans up the recognized text."
@@ -107,7 +106,7 @@ export function GeneralPage({
           label="Rewrite model"
           value={readiness.rewrite.ready ? config.providers.rewrite.model : "Not Set"}
           ready={readiness.rewrite.ready}
-          onClick={() => onOpenSettings("providers")}
+          onClick={() => onOpenProviders("rewrite")}
         />
         <StatusCard
           description="Current writing behavior used for new dictation."

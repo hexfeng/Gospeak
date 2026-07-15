@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::BufRead;
 
 const KEYRING_SERVICE: &str = "com.gospeak.alpha";
@@ -37,9 +38,13 @@ pub struct AudioFilePipelineRequest {
     pub profile_id: String,
     pub stt_provider: String,
     #[serde(default)]
+    pub stt_config_id: Option<String>,
+    #[serde(default)]
     pub stt_base_url: Option<String>,
     pub stt_model: String,
     pub rewrite_provider: String,
+    #[serde(default)]
+    pub rewrite_config_id: Option<String>,
     pub rewrite_model: String,
     #[serde(default)]
     pub selected_text: Option<String>,
@@ -161,6 +166,99 @@ pub fn save_provider_key(provider: &str, api_key: &str) -> Result<ProviderKeySta
     Ok(provider_key_status())
 }
 
+pub fn remove_provider_key(provider: &str) -> Result<(), String> {
+    provider_env_name(provider).map_err(|error| error.to_string())?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, provider).map_err(to_safe_error)?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(to_safe_error(error)),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCredentialQuery {
+    pub config_id: String,
+    pub provider: String,
+}
+
+fn configuration_key_account(config_id: &str, provider: &str) -> Result<String, String> {
+    let config_id = config_id.trim();
+    if config_id.is_empty() {
+        return Err("Configuration ID cannot be empty".to_string());
+    }
+    provider_env_name(provider).map_err(|error| error.to_string())?;
+    Ok(format!("configuration:{provider}:{config_id}"))
+}
+
+pub fn save_provider_configuration_key(
+    config_id: &str,
+    provider: &str,
+    api_key: &str,
+) -> Result<(), String> {
+    provider_env_name(provider).map_err(|error| error.to_string())?;
+    if api_key.trim().is_empty() {
+        return Err("API key cannot be empty".to_string());
+    }
+
+    let account = configuration_key_account(config_id, provider)?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, &account).map_err(to_safe_error)?;
+    entry.set_password(api_key).map_err(to_safe_error)
+}
+
+pub fn remove_provider_configuration_key(config_id: &str, provider: &str) -> Result<(), String> {
+    let account = configuration_key_account(config_id, provider)?;
+    let entry = keyring::Entry::new(KEYRING_SERVICE, &account).map_err(to_safe_error)?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(to_safe_error(error)),
+    }
+}
+
+pub fn migrate_provider_configuration_key(config_id: &str, provider: &str) -> Result<bool, String> {
+    provider_env_name(provider).map_err(|error| error.to_string())?;
+    let account = configuration_key_account(config_id, provider)?;
+    let configuration_entry =
+        keyring::Entry::new(KEYRING_SERVICE, &account).map_err(to_safe_error)?;
+    if configuration_entry
+        .get_password()
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(false);
+    }
+
+    let legacy_key = keyring::Entry::new(KEYRING_SERVICE, provider)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+        .filter(|value| !value.trim().is_empty());
+    let Some(legacy_key) = legacy_key else {
+        return Ok(false);
+    };
+    configuration_entry
+        .set_password(&legacy_key)
+        .map_err(to_safe_error)?;
+    Ok(true)
+}
+
+pub fn provider_configuration_key_status(
+    configurations: &[ProviderCredentialQuery],
+) -> HashMap<String, bool> {
+    configurations
+        .iter()
+        .map(|configuration| {
+            (
+                configuration.config_id.clone(),
+                provider_key_for_configuration(
+                    &configuration.provider,
+                    Some(&configuration.config_id),
+                )
+                .is_ok(),
+            )
+        })
+        .collect()
+}
+
 pub fn run_alpha_pipeline(config: &ProviderRuntimeConfig) -> Result<String, ProviderError> {
     validate_pipeline_readiness(config, &provider_key_status())?;
     Err(ProviderError::NotImplemented(
@@ -181,7 +279,7 @@ pub fn run_audio_file_pipeline(
     let options = PipelineOptions {
         skip_rewrite: request.skip_rewrite && request.selected_text.is_none(),
     };
-    let status = provider_key_status();
+    let status = provider_key_status_for_request(request);
     validate_audio_file_pipeline_readiness(&config, &status, options)?;
 
     validate_provider_models(
@@ -191,7 +289,10 @@ pub fn run_audio_file_pipeline(
         &request.rewrite_model,
     )?;
     let stt_provider: Box<dyn SttProvider> = match request.stt_provider.as_str() {
-        "groq" => Box::new(GroqSttProvider::new(provider_key("groq")?)),
+        "groq" => Box::new(GroqSttProvider::new(provider_key_for_configuration(
+            "groq",
+            request.stt_config_id.as_deref(),
+        )?)),
         "qwen-local" => Box::new(QwenSttProvider::new(
             "qwen-local",
             request
@@ -203,9 +304,12 @@ pub fn run_audio_file_pipeline(
         "qwen-api" => Box::new(QwenSttProvider::new(
             "qwen-api",
             request.stt_base_url.as_deref().unwrap_or(""),
-            optional_provider_key("qwen-api"),
+            optional_provider_key_for_configuration("qwen-api", request.stt_config_id.as_deref()),
         )?),
-        "doubao" => Box::new(DoubaoSttProvider::new(provider_key("doubao")?)),
+        "doubao" => Box::new(DoubaoSttProvider::new(provider_key_for_configuration(
+            "doubao",
+            request.stt_config_id.as_deref(),
+        )?)),
         "openai-realtime" => {
             return Err(ProviderError::InvalidInput(
                 "OpenAI Realtime must use the streaming pipeline".to_string(),
@@ -215,6 +319,7 @@ pub fn run_audio_file_pipeline(
     };
     let rewrite_provider = DeferredRewriteProvider {
         provider: request.rewrite_provider.clone(),
+        config_id: request.rewrite_config_id.clone(),
     };
 
     run_alpha_pipeline_with_clients(
@@ -232,27 +337,67 @@ fn has_provider_key(provider: &str) -> bool {
 }
 
 pub(crate) fn provider_key(provider: &str) -> Result<String, ProviderError> {
-    let env_name = match provider {
+    provider_key_for_configuration(provider, None)
+}
+
+fn provider_env_name(provider: &str) -> Result<&'static str, ProviderError> {
+    Ok(match provider {
         "groq" => "GROQ_API_KEY",
         "openai" => "OPENAI_API_KEY",
         "qwen-api" => "QWEN_API_KEY",
         "doubao" => "DOUBAO_API_KEY",
         "deepseek" => "DEEPSEEK_API_KEY",
         _ => return Err(ProviderError::UnsupportedProvider(provider.to_string())),
-    };
+    })
+}
 
-    if let Ok(value) = std::env::var(env_name) {
-        if !value.trim().is_empty() {
-            return Ok(value);
+pub(crate) fn provider_key_for_configuration(
+    provider: &str,
+    config_id: Option<&str>,
+) -> Result<String, ProviderError> {
+    let env_name = provider_env_name(provider)?;
+
+    if config_id.is_none() {
+        if let Ok(value) = std::env::var(env_name) {
+            if !value.trim().is_empty() {
+                return Ok(value);
+            }
         }
     }
 
-    let key = keyring::Entry::new(KEYRING_SERVICE, provider)
-        .ok()
+    let account = match config_id {
+        Some(config_id) => configuration_key_account(config_id, provider).ok(),
+        None => Some(provider.to_string()),
+    };
+    let key = account
+        .and_then(|account| keyring::Entry::new(KEYRING_SERVICE, &account).ok())
         .and_then(|entry| entry.get_password().ok())
         .filter(|value| !value.trim().is_empty());
 
     key.ok_or_else(|| ProviderError::MissingKey(provider.to_string()))
+}
+
+fn provider_key_status_for_request(request: &AudioFilePipelineRequest) -> ProviderKeyStatus {
+    let stt_key = || {
+        provider_key_for_configuration(&request.stt_provider, request.stt_config_id.as_deref())
+            .is_ok()
+    };
+    let rewrite_key = || {
+        provider_key_for_configuration(
+            &request.rewrite_provider,
+            request.rewrite_config_id.as_deref(),
+        )
+        .is_ok()
+    };
+
+    ProviderKeyStatus {
+        groq: request.stt_provider != "groq" || stt_key(),
+        openai: (request.stt_provider != "openai-realtime" || stt_key())
+            && (request.rewrite_provider != "openai" || rewrite_key()),
+        qwen_api: request.stt_provider != "qwen-api" || stt_key(),
+        doubao: request.stt_provider != "doubao" || stt_key(),
+        deepseek: request.rewrite_provider != "deepseek" || rewrite_key(),
+    }
 }
 
 fn to_safe_error(error: keyring::Error) -> String {
@@ -531,13 +676,22 @@ impl StreamingRewriteProvider for OpenAiRewriteProvider {
 
 struct DeferredRewriteProvider {
     provider: String,
+    config_id: Option<String>,
 }
 
 impl RewriteProvider for DeferredRewriteProvider {
     fn rewrite(&self, input: &RewriteInput) -> Result<RewriteOutput, ProviderError> {
         match self.provider.as_str() {
-            "openai" => OpenAiRewriteProvider::new(provider_key("openai")?).rewrite(input),
-            "deepseek" => DeepSeekRewriteProvider::new(provider_key("deepseek")?).rewrite(input),
+            "openai" => OpenAiRewriteProvider::new(provider_key_for_configuration(
+                "openai",
+                self.config_id.as_deref(),
+            )?)
+            .rewrite(input),
+            "deepseek" => DeepSeekRewriteProvider::new(provider_key_for_configuration(
+                "deepseek",
+                self.config_id.as_deref(),
+            )?)
+            .rewrite(input),
             other => Err(ProviderError::UnsupportedProvider(other.to_string())),
         }
     }
@@ -1310,6 +1464,34 @@ mod tests {
         assert!(!serde_json::to_string(&status).unwrap().contains("sk-"));
         assert!(serde_json::to_string(&status).unwrap().contains("qwen-api"));
         assert!(!serde_json::to_string(&status).unwrap().contains("qwen_api"));
+    }
+
+    #[test]
+    fn configuration_key_account_is_scoped_to_configuration() {
+        assert_eq!(
+            configuration_key_account("cfg-work", "openai").unwrap(),
+            "configuration:openai:cfg-work"
+        );
+        assert!(configuration_key_account("  ", "openai").is_err());
+        assert!(configuration_key_account("cfg-work", "unknown").is_err());
+    }
+
+    #[test]
+    fn audio_request_deserializes_configuration_ids() {
+        let request: AudioFilePipelineRequest = serde_json::from_value(serde_json::json!({
+            "audio_path": "test.wav",
+            "profile_id": "profile-default",
+            "stt_provider": "groq",
+            "stt_config_id": "asr-work",
+            "stt_model": "whisper-large-v3-turbo",
+            "rewrite_provider": "openai",
+            "rewrite_config_id": "rewrite-work",
+            "rewrite_model": "gpt-5-nano"
+        }))
+        .unwrap();
+
+        assert_eq!(request.stt_config_id.as_deref(), Some("asr-work"));
+        assert_eq!(request.rewrite_config_id.as_deref(), Some("rewrite-work"));
     }
 
     #[test]
@@ -2562,8 +2744,11 @@ fn parse_deepseek_streaming_event(line: &str) -> Result<DeepSeekStreamingEvent, 
     Ok(DeepSeekStreamingEvent::Ignored)
 }
 
-fn optional_provider_key(provider: &str) -> Option<String> {
-    provider_key(provider).ok()
+fn optional_provider_key_for_configuration(
+    provider: &str,
+    config_id: Option<&str>,
+) -> Option<String> {
+    provider_key_for_configuration(provider, config_id).ok()
 }
 
 pub(crate) fn validate_provider_models(

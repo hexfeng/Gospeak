@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,10 +11,45 @@ pub struct PreferenceRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+struct StoredProviderConfiguration {
+    id: String,
+    name: String,
+    kind: String,
+    provider_id: String,
+    model: String,
+    #[serde(default)]
+    base_url: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredProviderState {
+    configurations: Vec<StoredProviderConfiguration>,
+    active_asr_config_id: String,
+    active_rewrite_config_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedProviderPipeline {
+    pub stt_config_id: String,
+    pub stt_provider: String,
+    pub stt_model: String,
+    pub stt_base_url: Option<String>,
+    pub rewrite_config_id: String,
+    pub rewrite_provider: String,
+    pub rewrite_model: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DictionaryRecord {
     pub id: String,
     pub spoken: String,
     pub written: String,
+    pub term_type: String,
     pub aliases_json: String,
     pub tags_json: String,
     pub enabled: bool,
@@ -119,6 +155,7 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
         id TEXT PRIMARY KEY,
         spoken TEXT NOT NULL,
         written TEXT NOT NULL,
+        term_type TEXT NOT NULL DEFAULT 'other',
         aliases_json TEXT NOT NULL DEFAULT '[]',
         tags_json TEXT NOT NULL DEFAULT '[]',
         enabled INTEGER NOT NULL DEFAULT 1,
@@ -193,6 +230,12 @@ pub fn migrate(connection: &Connection) -> Result<(), String> {
       "#,
         )
         .map_err(|error| format!("Cannot migrate SQLite database: {error}"))?;
+    ensure_column(
+        connection,
+        "dictionary_terms",
+        "term_type",
+        "TEXT NOT NULL DEFAULT 'other'",
+    )?;
     ensure_column(
         connection,
         "usage_events",
@@ -301,11 +344,12 @@ pub fn upsert_dictionary_term(
         .execute(
             r#"
       INSERT INTO dictionary_terms
-        (id, spoken, written, aliases_json, tags_json, enabled, updated_at, deleted_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        (id, spoken, written, term_type, aliases_json, tags_json, enabled, updated_at, deleted_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
       ON CONFLICT(id) DO UPDATE SET
         spoken = excluded.spoken,
         written = excluded.written,
+        term_type = excluded.term_type,
         aliases_json = excluded.aliases_json,
         tags_json = excluded.tags_json,
         enabled = excluded.enabled,
@@ -316,6 +360,7 @@ pub fn upsert_dictionary_term(
                 record.id,
                 record.spoken,
                 record.written,
+                record.term_type,
                 record.aliases_json,
                 record.tags_json,
                 record.enabled as i32,
@@ -331,7 +376,7 @@ pub fn list_dictionary_terms(connection: &Connection) -> Result<Vec<DictionaryRe
     let mut statement = connection
         .prepare(
             r#"
-      SELECT id, spoken, written, aliases_json, tags_json, enabled, updated_at, deleted_at
+      SELECT id, spoken, written, term_type, aliases_json, tags_json, enabled, updated_at, deleted_at
       FROM dictionary_terms
       WHERE deleted_at IS NULL
       ORDER BY spoken
@@ -344,11 +389,12 @@ pub fn list_dictionary_terms(connection: &Connection) -> Result<Vec<DictionaryRe
                 id: row.get(0)?,
                 spoken: row.get(1)?,
                 written: row.get(2)?,
-                aliases_json: row.get(3)?,
-                tags_json: row.get(4)?,
-                enabled: row.get::<_, i32>(5)? != 0,
-                updated_at: row.get(6)?,
-                deleted_at: row.get(7)?,
+                term_type: row.get(3)?,
+                aliases_json: row.get(4)?,
+                tags_json: row.get(5)?,
+                enabled: row.get::<_, i32>(6)? != 0,
+                updated_at: row.get(7)?,
+                deleted_at: row.get(8)?,
             })
         })
         .map_err(|error| format!("Cannot query dictionary terms: {error}"))?;
@@ -580,18 +626,205 @@ pub fn list_usage_events(connection: &Connection) -> Result<Vec<UsageEventRecord
         .map_err(|error| format!("Cannot read usage events: {error}"))
 }
 
+fn provider_model_is_allowed(kind: &str, provider: &str, model: &str) -> bool {
+    match (kind, provider) {
+        ("stt", "groq") => matches!(model, "whisper-large-v3-turbo" | "whisper-large-v3"),
+        ("stt", "qwen-local") => model == "Qwen/Qwen3-ASR-0.6B",
+        ("stt", "qwen-api") => model == "Qwen/Qwen3-ASR-1.7B",
+        ("stt", "doubao") => model == "bigmodel",
+        ("stt", "openai-realtime") => model == "gpt-realtime-2",
+        ("rewrite", "openai") => matches!(model, "gpt-5-nano" | "gpt-5-mini"),
+        ("rewrite", "deepseek") => matches!(model, "deepseek-v4-flash" | "deepseek-v4-pro"),
+        _ => false,
+    }
+}
+
+fn validate_provider_state(state: &StoredProviderState) -> Result<(), String> {
+    if state.configurations.is_empty() {
+        return Err("Provider configurations cannot be empty".to_string());
+    }
+    let mut ids = HashSet::new();
+    let mut names = HashSet::new();
+    for configuration in &state.configurations {
+        if configuration.id.trim().is_empty()
+            || configuration.name.trim().is_empty()
+            || configuration.created_at.trim().is_empty()
+            || configuration.updated_at.trim().is_empty()
+        {
+            return Err("Provider configuration fields cannot be empty".to_string());
+        }
+        if !ids.insert(configuration.id.as_str()) {
+            return Err("Provider configuration IDs must be unique".to_string());
+        }
+        if !provider_model_is_allowed(
+            &configuration.kind,
+            &configuration.provider_id,
+            &configuration.model,
+        ) {
+            return Err(
+                "Provider configuration has an unsupported kind, Provider, or model".to_string(),
+            );
+        }
+        let name_key = format!(
+            "{}\u{0}{}\u{0}{}",
+            configuration.kind,
+            configuration.provider_id,
+            configuration.name.trim().to_lowercase()
+        );
+        if !names.insert(name_key) {
+            return Err(
+                "Provider configuration names must be unique within a Provider".to_string(),
+            );
+        }
+        if configuration
+            .base_url
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("Provider Base URL cannot be blank when present".to_string());
+        }
+    }
+    if state.active_asr_config_id == state.active_rewrite_config_id {
+        return Err("Active ASR and Rewrite configurations must be different".to_string());
+    }
+    let active_asr = state
+        .configurations
+        .iter()
+        .find(|item| item.id == state.active_asr_config_id && item.kind == "stt")
+        .ok_or_else(|| "Active ASR configuration is missing or has the wrong kind".to_string())?;
+    let active_rewrite = state
+        .configurations
+        .iter()
+        .find(|item| item.id == state.active_rewrite_config_id && item.kind == "rewrite")
+        .ok_or_else(|| {
+            "Active Rewrite configuration is missing or has the wrong kind".to_string()
+        })?;
+    if !provider_model_is_allowed(&active_asr.kind, &active_asr.provider_id, &active_asr.model)
+        || !provider_model_is_allowed(
+            &active_rewrite.kind,
+            &active_rewrite.provider_id,
+            &active_rewrite.model,
+        )
+    {
+        return Err("Active Provider configuration is invalid".to_string());
+    }
+    Ok(())
+}
+
+fn normalized_import_payload(payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let mut normalized = payload.clone();
+    if payload
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(2)
+    {
+        return Ok(normalized);
+    }
+
+    let dictionary = normalized
+        .pointer("/data/dictionaryTerms")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Config payload is missing dictionaryTerms".to_string())?;
+    for term in dictionary {
+        let term_type = term.get("type").and_then(serde_json::Value::as_str);
+        if !matches!(
+            term_type,
+            Some(
+                "person"
+                    | "organization"
+                    | "brand-product"
+                    | "technical-term"
+                    | "acronym"
+                    | "other"
+            )
+        ) {
+            return Err("Dictionary term has an invalid type".to_string());
+        }
+    }
+
+    let providers = normalized
+        .pointer_mut("/data/providers")
+        .ok_or_else(|| "Config payload is missing providers".to_string())?;
+    let state: StoredProviderState = serde_json::from_value(providers.clone())
+        .map_err(|_| "Config payload has invalid Provider configurations".to_string())?;
+    validate_provider_state(&state)?;
+
+    let id_map: HashMap<String, String> = state
+        .configurations
+        .iter()
+        .map(|configuration| {
+            (
+                configuration.id.clone(),
+                format!("provider_{}", uuid::Uuid::new_v4()),
+            )
+        })
+        .collect();
+    let object = providers
+        .as_object_mut()
+        .ok_or_else(|| "Config payload providers must be an object".to_string())?;
+    let configurations = object
+        .get_mut("configurations")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| "Config payload has invalid Provider configurations".to_string())?;
+    for configuration in configurations {
+        let old_id = configuration
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "Provider configuration is missing an ID".to_string())?;
+        configuration["id"] = serde_json::Value::String(id_map[old_id].clone());
+    }
+    object.insert(
+        "activeAsrConfigId".to_string(),
+        serde_json::Value::String(id_map[&state.active_asr_config_id].clone()),
+    );
+    object.insert(
+        "activeRewriteConfigId".to_string(),
+        serde_json::Value::String(id_map[&state.active_rewrite_config_id].clone()),
+    );
+    Ok(normalized)
+}
+
+pub fn resolve_active_provider_pipeline(
+    connection: &Connection,
+) -> Result<ResolvedProviderPipeline, String> {
+    let preference = get_preference(connection, "providers")?
+        .ok_or_else(|| "Provider configuration preference is missing".to_string())?;
+    let state: StoredProviderState = serde_json::from_str(&preference)
+        .map_err(|_| "Stored Provider configurations are invalid".to_string())?;
+    validate_provider_state(&state)?;
+    let stt = state
+        .configurations
+        .iter()
+        .find(|item| item.id == state.active_asr_config_id)
+        .expect("validated active ASR configuration");
+    let rewrite = state
+        .configurations
+        .iter()
+        .find(|item| item.id == state.active_rewrite_config_id)
+        .expect("validated active Rewrite configuration");
+    Ok(ResolvedProviderPipeline {
+        stt_config_id: stt.id.clone(),
+        stt_provider: stt.provider_id.clone(),
+        stt_model: stt.model.clone(),
+        stt_base_url: stt.base_url.clone(),
+        rewrite_config_id: rewrite.id.clone(),
+        rewrite_provider: rewrite.provider_id.clone(),
+        rewrite_model: rewrite.model.clone(),
+    })
+}
+
 pub fn import_config_payload(
     connection: &mut Connection,
     payload: &serde_json::Value,
-) -> Result<(), String> {
-    if payload
+) -> Result<serde_json::Value, String> {
+    let schema_version = payload
         .get("schemaVersion")
-        .and_then(|value| value.as_u64())
-        != Some(1)
-    {
+        .and_then(|value| value.as_u64());
+    if !matches!(schema_version, Some(1 | 2)) {
         return Err("Unsupported config schema version".to_string());
     }
-    let data = payload
+    let normalized = normalized_import_payload(payload)?;
+    let data = normalized
         .get("data")
         .and_then(|value| value.as_object())
         .ok_or_else(|| "Config payload is missing data".to_string())?;
@@ -691,7 +924,8 @@ pub fn import_config_payload(
     }
     transaction
         .commit()
-        .map_err(|error| format!("Cannot commit config import: {error}"))
+        .map_err(|error| format!("Cannot commit config import: {error}"))?;
+    Ok(normalized)
 }
 
 fn profile_from_export(value: &serde_json::Value) -> Result<ProfileRecord, String> {
@@ -715,10 +949,27 @@ fn profile_from_export(value: &serde_json::Value) -> Result<ProfileRecord, Strin
 }
 
 fn dictionary_from_export(value: &serde_json::Value) -> Result<DictionaryRecord, String> {
+    let term_type = value
+        .get("type")
+        .and_then(|field| field.as_str())
+        .filter(|value| {
+            matches!(
+                *value,
+                "person"
+                    | "organization"
+                    | "brand-product"
+                    | "technical-term"
+                    | "acronym"
+                    | "other"
+            )
+        })
+        .unwrap_or("other")
+        .to_string();
     Ok(DictionaryRecord {
         id: required_string(value, "id")?,
         spoken: required_string(value, "spoken")?,
         written: required_string(value, "written")?,
+        term_type,
         aliases_json: value
             .get("aliases")
             .cloned()
@@ -779,6 +1030,32 @@ fn required_string(value: &serde_json::Value, field: &str) -> Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn named_provider_import_payload() -> serde_json::Value {
+        serde_json::json!({
+          "schemaVersion": 2,
+          "data": {
+            "providers": {
+              "stt": { "providerId": "groq", "model": "whisper-large-v3-turbo" },
+              "rewrite": { "providerId": "openai", "model": "gpt-5-nano" },
+              "configurations": [
+                { "id": "known-local-id", "name": "Groq", "kind": "stt", "providerId": "groq", "model": "whisper-large-v3-turbo", "createdAt": "2026-07-15T00:00:00Z", "updatedAt": "2026-07-15T00:00:00Z" },
+                { "id": "known-rewrite-id", "name": "OpenAI", "kind": "rewrite", "providerId": "openai", "model": "gpt-5-nano", "createdAt": "2026-07-15T00:00:00Z", "updatedAt": "2026-07-15T00:00:00Z" }
+              ],
+              "activeAsrConfigId": "known-local-id",
+              "activeRewriteConfigId": "known-rewrite-id"
+            },
+            "hotkey": { "binding": "Alt+Space", "mode": "push-to-talk" },
+            "privacy": { "saveRawAudio": false },
+            "performance": { "fastMode": false, "speakToEdit": false },
+            "appRouting": { "enabled": false },
+            "activeProfileId": "normal",
+            "promptProfiles": [{ "id": "normal", "name": "Normal", "mode": "normal", "systemPrompt": "Clean", "userPromptTemplate": "{{transcript}}", "enabled": true, "updatedAt": "2026-07-15T00:00:00Z" }],
+            "dictionaryTerms": [{ "id": "term", "spoken": "go speak", "written": "Gospeak", "type": "brand-product", "aliases": [], "tags": [], "enabled": true, "updatedAt": "2026-07-15T00:00:00Z" }],
+            "appRules": []
+          }
+        })
+    }
 
     #[test]
     fn migrates_and_round_trips_preferences() {
@@ -928,6 +1205,7 @@ mod tests {
                 id: "dict_1".to_string(),
                 spoken: "agent security".to_string(),
                 written: "AI Agent Security".to_string(),
+                term_type: "technical-term".to_string(),
                 aliases_json: "[]".to_string(),
                 tags_json: "[\"work\"]".to_string(),
                 enabled: true,
@@ -937,7 +1215,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(list_dictionary_terms(&connection).unwrap().len(), 1);
+        let terms = list_dictionary_terms(&connection).unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term_type, "technical-term");
     }
 
     #[test]
@@ -1007,11 +1287,15 @@ mod tests {
             "Gospeak"
         );
         assert_eq!(
+            list_dictionary_terms(&connection).unwrap()[0].term_type,
+            "other"
+        );
+        assert_eq!(
             get_preference(&connection, "active_profile_id").unwrap(),
             Some("email".to_string())
         );
 
-        let invalid = serde_json::json!({ "schemaVersion": 2, "data": {} });
+        let invalid = serde_json::json!({ "schemaVersion": 3, "data": {} });
         assert!(import_config_payload(&mut connection, &invalid).is_err());
         assert_eq!(list_profiles(&connection).unwrap().len(), 1);
 
@@ -1025,6 +1309,55 @@ mod tests {
         });
         assert!(import_config_payload(&mut connection, &missing_settings).is_err());
         assert_eq!(list_profiles(&connection).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn v2_import_validates_provider_state_and_remaps_credential_ids() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let payload = named_provider_import_payload();
+
+        let normalized = import_config_payload(&mut connection, &payload).unwrap();
+        let providers = &normalized["data"]["providers"];
+        assert_ne!(providers["activeAsrConfigId"], "known-local-id");
+        assert_ne!(providers["activeRewriteConfigId"], "known-rewrite-id");
+        let persisted = get_preference(&connection, "providers").unwrap().unwrap();
+        let resolved = resolve_active_provider_pipeline(&connection).unwrap();
+        assert!(persisted.contains(&resolved.stt_config_id));
+        assert_eq!(resolved.stt_provider, "groq");
+        assert_eq!(resolved.rewrite_provider, "openai");
+    }
+
+    #[test]
+    fn v2_import_rejects_invalid_provider_state_before_replacing_data() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        let valid = named_provider_import_payload();
+        import_config_payload(&mut connection, &valid).unwrap();
+        let original_profile_count = list_profiles(&connection).unwrap().len();
+
+        let mut invalid = named_provider_import_payload();
+        invalid["data"]["providers"]["activeAsrConfigId"] =
+            serde_json::Value::String("known-rewrite-id".to_string());
+        assert!(import_config_payload(&mut connection, &invalid).is_err());
+        assert_eq!(
+            list_profiles(&connection).unwrap().len(),
+            original_profile_count
+        );
+
+        let mut invalid_type = named_provider_import_payload();
+        invalid_type["data"]["dictionaryTerms"][0]["type"] =
+            serde_json::Value::String("custom".to_string());
+        assert!(import_config_payload(&mut connection, &invalid_type).is_err());
+        assert_eq!(
+            list_profiles(&connection).unwrap().len(),
+            original_profile_count
+        );
+
+        let mut secret_field = named_provider_import_payload();
+        secret_field["data"]["providers"]["configurations"][0]["apiKey"] =
+            serde_json::Value::String("must-not-import".to_string());
+        assert!(import_config_payload(&mut connection, &secret_field).is_err());
     }
 
     #[test]

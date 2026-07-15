@@ -1,27 +1,29 @@
-import { StrictMode } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { DictionaryTerm } from "../domain/config";
 import { DictionaryPage } from "./DictionaryPage";
 
-const terms = [
+const terms: DictionaryTerm[] = [
   {
     id: "dict_agent_security",
     spoken: "agent security",
     written: "AI Agent Security",
+    type: "technical-term",
     aliases: ["agent security project"],
-    tags: ["work", "ai"],
+    tags: ["work", "ai", "security"],
     enabled: true,
     updatedAt: "2026-07-10T00:00:00.000Z",
   },
   {
-    id: "dict_runtime_monitoring",
-    spoken: "runtime monitoring",
-    written: "runtime monitoring",
-    aliases: ["monitoring"],
-    tags: ["engineering"],
-    enabled: true,
-    updatedAt: "2026-07-10T00:00:00.000Z",
+    id: "dict_gospeak",
+    spoken: "go speak",
+    written: "Gospeak",
+    type: "brand-product",
+    aliases: [],
+    tags: ["product"],
+    enabled: false,
+    updatedAt: "2026-07-11T00:00:00.000Z",
   },
 ];
 
@@ -29,250 +31,126 @@ function renderDictionary() {
   const props = {
     terms,
     onSaveTerm: vi.fn(async () => undefined),
-    onDeleteTerm: vi.fn(),
-    onToggleTerm: vi.fn(),
+    onDeleteTerm: vi.fn(async () => undefined),
+    onToggleTerm: vi.fn(async () => undefined),
   };
   render(<DictionaryPage {...props} />);
   return props;
 }
 
 describe("DictionaryPage", () => {
-  it("keeps the add dialog open under StrictMode", async () => {
-    const user = userEvent.setup();
-    const close = vi.spyOn(HTMLDialogElement.prototype, "close");
-    const props = {
-      terms,
-      onSaveTerm: vi.fn(async () => undefined),
-      onDeleteTerm: vi.fn(),
-      onToggleTerm: vi.fn(),
-    };
-    render(
-      <StrictMode>
-        <DictionaryPage {...props} />
-      </StrictMode>,
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Add Dictionary term" }),
-    );
-
-    expect(
-      screen.getByRole("dialog", { name: "Add Dictionary term" }),
-    ).toBeInTheDocument();
-    expect(close).not.toHaveBeenCalled();
-    close.mockRestore();
-  });
-
-  it("filters terms and opens one add dialog", async () => {
+  it("searches and filters the global term table", async () => {
     const user = userEvent.setup();
     renderDictionary();
 
-    await user.type(
-      screen.getByRole("searchbox", { name: "Search Dictionary" }),
-      "agent",
-    );
+    expect(screen.getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Filter by type"), "brand-product");
+    expect(screen.getByText("Gospeak")).toBeInTheDocument();
+    expect(screen.queryByText("AI Agent Security")).not.toBeInTheDocument();
 
+    await user.selectOptions(screen.getByLabelText("Filter by type"), "all");
+    await user.type(screen.getByLabelText("Search Dictionary"), "security project");
     expect(screen.getByText("AI Agent Security")).toBeInTheDocument();
-    expect(screen.queryByText("runtime monitoring")).not.toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Add Dictionary term" }),
-    );
-
-    expect(
-      screen.getByRole("dialog", { name: "Add Dictionary term" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Gospeak")).not.toBeInTheDocument();
   });
 
-  it("rejects a duplicate spoken form without closing", async () => {
+  it("saves type and deduplicated tags", async () => {
+    const user = userEvent.setup();
+    const props = renderDictionary();
+
+    await user.click(screen.getByRole("button", { name: "Add term" }));
+    await user.type(screen.getByLabelText("Spoken phrase"), "open ai");
+    await user.type(screen.getByLabelText("Written phrase"), "OpenAI");
+    await user.selectOptions(screen.getByLabelText("Type"), "organization");
+    await user.type(screen.getByLabelText("Tags"), "AI, ai, work");
+    await user.click(screen.getByRole("button", { name: "Save term" }));
+
+    expect(props.onSaveTerm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spoken: "open ai",
+        written: "OpenAI",
+        type: "organization",
+        tags: ["AI", "work"],
+      }),
+    );
+  });
+
+  it("duplicates metadata but requires a new spoken phrase", async () => {
     const user = userEvent.setup();
     renderDictionary();
+    const row = screen.getByText("AI Agent Security").closest("tr")!;
 
-    await user.click(
-      screen.getByRole("button", { name: "Add Dictionary term" }),
-    );
-    await user.type(screen.getByLabelText("Spoken phrase"), " Agent Security ");
-    await user.type(screen.getByLabelText("Written phrase"), "Agent Security");
-    await user.click(screen.getByRole("button", { name: "Save term" }));
+    await user.click(within(row).getByRole("button", { name: /More actions/i }));
+    await user.click(within(row).getByRole("button", { name: "Duplicate" }));
 
-    expect(
-      screen.getByText("A term with this spoken phrase already exists."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Spoken phrase")).toHaveValue("");
+    expect(screen.getByLabelText("Written phrase")).toHaveValue("AI Agent Security");
+    expect(screen.getByLabelText("Type")).toHaveValue("technical-term");
   });
 
-  it("keeps the dialog open with retryable input after persistence rejects", async () => {
-    const user = userEvent.setup();
-    const onSaveTerm = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce(new Error("database unavailable"))
-      .mockResolvedValueOnce(undefined);
-    render(
-      <DictionaryPage
-        terms={terms}
-        onDeleteTerm={vi.fn()}
-        onSaveTerm={onSaveTerm}
-        onToggleTerm={vi.fn()}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
-    await user.type(screen.getByLabelText("Spoken phrase"), "gospeak");
-    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
-    await user.click(screen.getByRole("button", { name: "Save term" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't save this Dictionary term. Try again.",
-    );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText("Spoken phrase")).toHaveValue("gospeak");
-    expect(onSaveTerm).toHaveBeenCalledOnce();
-
-    await user.click(screen.getByRole("button", { name: "Save term" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(onSaveTerm).toHaveBeenCalledTimes(2);
-  });
-
-  it("blocks same-tick duplicate saves while persistence is pending", async () => {
-    const user = userEvent.setup();
-    let resolveSave: () => void;
-    const pendingSave = new Promise<void>((resolve) => {
-      resolveSave = resolve;
-    });
-    const onSaveTerm = vi.fn(() => pendingSave);
-    render(
-      <DictionaryPage
-        terms={terms}
-        onDeleteTerm={vi.fn()}
-        onSaveTerm={onSaveTerm}
-        onToggleTerm={vi.fn()}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Add Dictionary term" }));
-    await user.type(screen.getByLabelText("Spoken phrase"), "gospeak");
-    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
-
-    const saveButton = screen.getByRole("button", { name: "Save term" });
-    const form = saveButton.closest("form");
-    expect(form).not.toBeNull();
-    fireEvent.submit(form!);
-    fireEvent.submit(form!);
-
-    expect(onSaveTerm).toHaveBeenCalledOnce();
-    expect(saveButton).toBeDisabled();
-
-    resolveSave!();
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-
-  it("explains empty and no-match results with a contextual add action", async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(
-      <DictionaryPage
-        terms={[]}
-        onDeleteTerm={vi.fn()}
-        onSaveTerm={vi.fn(async () => undefined)}
-        onToggleTerm={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("No Dictionary terms yet.")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Add first Dictionary term" }),
-    ).toBeInTheDocument();
-
-    rerender(
-      <DictionaryPage
-        terms={terms}
-        onDeleteTerm={vi.fn()}
-        onSaveTerm={vi.fn(async () => undefined)}
-        onToggleTerm={vi.fn()}
-      />,
-    );
-    await user.type(screen.getByRole("searchbox", { name: "Search Dictionary" }), "gospeak");
-
-    expect(screen.getByText('No Dictionary terms match "gospeak".')).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("button", { name: 'Add "gospeak" to Dictionary' }),
-    );
-    expect(screen.getByLabelText("Spoken phrase")).toHaveValue("gospeak");
-  });
-
-  it("saves comma-separated values and returns focus to the add action", async () => {
-    const user = userEvent.setup();
-    const props = renderDictionary();
-    const addButton = screen.getByRole("button", { name: "Add Dictionary term" });
-
-    await user.click(addButton);
-    await user.type(screen.getByLabelText("Spoken phrase"), "gospeak");
-    await user.type(screen.getByLabelText("Written phrase"), "Gospeak");
-    await user.type(screen.getByLabelText("Aliases"), "go speak, go-speak");
-    await user.type(screen.getByLabelText("Tags"), "product, brand");
-    await user.click(screen.getByRole("button", { name: "Save term" }));
-
-    expect(props.onSaveTerm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: expect.stringMatching(/^dict_/),
-        spoken: "gospeak",
-        written: "Gospeak",
-        aliases: ["go speak", "go-speak"],
-        tags: ["product", "brand"],
-        enabled: true,
-      }),
-    );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(addButton).toHaveFocus();
-  });
-
-  it("edits an existing term without changing its id", async () => {
-    const user = userEvent.setup();
-    const props = renderDictionary();
-
-    await user.click(screen.getByRole("button", { name: "Edit AI Agent Security" }));
-    await user.clear(screen.getByLabelText("Written phrase"));
-    await user.type(screen.getByLabelText("Written phrase"), "Agent Security");
-    await user.click(screen.getByRole("button", { name: "Save term" }));
-
-    expect(props.onSaveTerm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "dict_agent_security",
-        written: "Agent Security",
-      }),
-    );
-  });
-
-  it("duplicates, toggles, and soft-deletes through its callbacks", async () => {
+  it("toggles and deletes through callbacks", async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const props = renderDictionary();
-    const row = screen
-      .getByRole("button", { name: "Edit AI Agent Security" })
-      .closest("article");
+    const row = screen.getByText("AI Agent Security").closest("tr")!;
 
-    expect(row).not.toBeNull();
-
-    await user.click(
-      screen.getByRole("checkbox", { name: "Enable AI Agent Security" }),
-    );
-    await user.click(
-      screen.getByLabelText("More actions for AI Agent Security"),
-    );
-    await user.click(within(row!).getByRole("button", { name: "Duplicate" }));
-
-    expect(
-      screen.getByRole("dialog", { name: "Duplicate Dictionary term" }),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    await user.click(
-      screen.getByLabelText("More actions for AI Agent Security"),
-    );
-    await user.click(within(row!).getByRole("button", { name: "Delete" }));
-
+    await user.click(within(row).getByRole("checkbox", { name: "Enable AI Agent Security" }));
     expect(props.onToggleTerm).toHaveBeenCalledWith(terms[0], false);
-    expect(confirm).toHaveBeenCalledWith("Delete AI Agent Security?");
+
+    await user.click(within(row).getByRole("button", { name: /More actions/i }));
+    await user.click(within(row).getByRole("button", { name: "Delete" }));
     expect(props.onDeleteTerm).toHaveBeenCalledWith(terms[0]);
     confirm.mockRestore();
+  });
+
+  it("clears a filtered empty state instead of suggesting a new term", async () => {
+    const user = userEvent.setup();
+    renderDictionary();
+
+    await user.type(screen.getByLabelText("Search Dictionary"), "no match");
+    expect(screen.getByText(/No Dictionary terms match/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByText("AI Agent Security")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+  });
+
+  it("restores the toggle and reports a failed status update", async () => {
+    const user = userEvent.setup();
+    const props = renderDictionary();
+    props.onToggleTerm.mockRejectedValueOnce(new Error("disk full"));
+    const row = screen.getByText("AI Agent Security").closest("tr")!;
+
+    await user.click(within(row).getByRole("checkbox", { name: "Enable AI Agent Security" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("previous status was restored");
+    expect(within(row).getByRole("checkbox")).toBeChecked();
+  });
+
+  it("returns to the last valid page when the final page becomes empty", async () => {
+    const user = userEvent.setup();
+    const manyTerms = Array.from({ length: 51 }, (_, index): DictionaryTerm => ({
+      id: `term_${index}`,
+      spoken: `term ${String(index).padStart(2, "0")}`,
+      written: `Term ${index}`,
+      type: "other",
+      aliases: [],
+      tags: [],
+      enabled: true,
+      updatedAt: "2026-07-15T00:00:00.000Z",
+    }));
+    const callbacks = {
+      onSaveTerm: vi.fn(async () => undefined),
+      onDeleteTerm: vi.fn(async () => undefined),
+      onToggleTerm: vi.fn(async () => undefined),
+    };
+    const view = render(<DictionaryPage {...callbacks} terms={manyTerms} />);
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Term 50")).toBeInTheDocument();
+
+    view.rerender(<DictionaryPage {...callbacks} terms={manyTerms.slice(0, 50)} />);
+
+    expect(screen.getByText("Term 0")).toBeInTheDocument();
+    expect(screen.queryByText(/No Dictionary terms match/)).not.toBeInTheDocument();
   });
 });

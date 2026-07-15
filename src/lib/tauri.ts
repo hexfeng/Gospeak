@@ -28,9 +28,11 @@ export type AudioFilePipelineRequest = {
   audio_path: string;
   profile_id: string;
   stt_provider: import("../domain/config").SttProviderId;
+  stt_config_id: string | null;
   stt_base_url: string | null;
   stt_model: string;
   rewrite_provider: import("../domain/config").RewriteProviderId;
+  rewrite_config_id: string | null;
   rewrite_model: string;
   selected_text: string | null;
   skip_rewrite: boolean;
@@ -88,6 +90,7 @@ export type DictionaryRecord = {
   id: string;
   spoken: string;
   written: string;
+  term_type: import("../domain/config").DictionaryTermType;
   aliases_json: string;
   tags_json: string;
   enabled: boolean;
@@ -158,6 +161,73 @@ export async function saveProviderApiKey(
   return invoke<ApiKeyPresence>("save_provider_api_key", {
     provider,
     apiKey,
+  });
+}
+
+export async function removeProviderApiKey(
+  provider: CredentialProviderId,
+): Promise<void> {
+  if (!hasTauriRuntime()) return;
+  return invoke<void>("remove_provider_api_key", { provider });
+}
+
+export type ProviderCredentialQuery = {
+  configId: string;
+  provider: CredentialProviderId;
+};
+
+export async function checkProviderConfigurationKeys(
+  configurations: ProviderCredentialQuery[],
+): Promise<Record<string, boolean>> {
+  if (!hasTauriRuntime()) {
+    return Object.fromEntries(
+      configurations.map(({ configId }) => [configId, false]),
+    );
+  }
+
+  return invoke<Record<string, boolean>>("check_provider_configuration_keys", {
+    configurations,
+  });
+}
+
+export async function saveProviderConfigurationApiKey(
+  configId: string,
+  provider: CredentialProviderId,
+  apiKey: string,
+): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+
+  return invoke<void>("save_provider_configuration_api_key", {
+    configId,
+    provider,
+    apiKey,
+  });
+}
+
+export async function removeProviderConfigurationApiKey(
+  configId: string,
+  provider: CredentialProviderId,
+): Promise<void> {
+  if (!hasTauriRuntime()) {
+    return;
+  }
+
+  return invoke<void>("remove_provider_configuration_api_key", { configId, provider });
+}
+
+export async function migrateProviderConfigurationApiKey(
+  configId: string,
+  provider: CredentialProviderId,
+): Promise<boolean> {
+  if (!hasTauriRuntime()) {
+    return false;
+  }
+
+  return invoke<boolean>("migrate_provider_configuration_api_key", {
+    configId,
+    provider,
   });
 }
 

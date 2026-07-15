@@ -125,9 +125,9 @@ describe("General dashboard CSS contract", () => {
 describe("Secondary page CSS contract", () => {
   it("aligns Profiles, Dictionary, and Settings with the General page surface style", () => {
     expect(css).toMatch(/\.dictionary-page\s*\{[^}]*background:\s*transparent;/s);
-    expect(css).toMatch(/\.profiles-page,\s*\.settings-page\s*\{[^}]*background:\s*transparent;/s);
+    expect(css).toMatch(/\.profiles-page,\s*\.providers-page,\s*\.settings-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.profile-split > aside\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
-    expect(css).toMatch(/\.settings-content\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
+    expect(css).toMatch(/\.settings-section\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
     expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
   });
 });

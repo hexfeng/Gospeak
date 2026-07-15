@@ -22,9 +22,13 @@ pub struct StreamingPipelineRequest {
     pub profile_id: String,
     pub stt_provider: String,
     #[serde(default)]
+    pub stt_config_id: Option<String>,
+    #[serde(default)]
     pub stt_base_url: Option<String>,
     pub stt_model: String,
     pub rewrite_provider: String,
+    #[serde(default)]
+    pub rewrite_config_id: Option<String>,
     pub rewrite_model: String,
     #[serde(default)]
     pub selected_text: Option<String>,
@@ -257,7 +261,8 @@ pub fn run_streaming_pipeline(
         ));
     }
 
-    let openai_key = provider::provider_key("openai")?;
+    let openai_key =
+        provider::provider_key_for_configuration("openai", request.stt_config_id.as_deref())?;
     let stt_started = Instant::now();
     let (transcript, first_stt_delta_ms) = OpenAiRealtimeTranscription::new(openai_key.clone())
         .transcribe_chunks(pcm_chunks)
@@ -295,9 +300,17 @@ pub fn run_streaming_pipeline(
 
     let rewrite_provider: Box<dyn provider::StreamingRewriteProvider> =
         match request.rewrite_provider.as_str() {
-            "openai" => Box::new(provider::OpenAiRewriteProvider::new(openai_key)),
+            "openai" => Box::new(provider::OpenAiRewriteProvider::new(
+                provider::provider_key_for_configuration(
+                    "openai",
+                    request.rewrite_config_id.as_deref(),
+                )?,
+            )),
             "deepseek" => Box::new(provider::DeepSeekRewriteProvider::new(
-                provider::provider_key("deepseek")?,
+                provider::provider_key_for_configuration(
+                    "deepseek",
+                    request.rewrite_config_id.as_deref(),
+                )?,
             )),
             other => {
                 return Err(provider::ProviderError::UnsupportedProvider(
@@ -685,9 +698,11 @@ mod tests {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
             stt_provider: "openai-realtime".to_string(),
+            stt_config_id: None,
             stt_base_url: None,
             stt_model: "gpt-realtime-2".to_string(),
             rewrite_provider: "openai".to_string(),
+            rewrite_config_id: None,
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: Some("edit me".to_string()),
             skip_rewrite: false,
@@ -780,9 +795,11 @@ mod tests {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
             stt_provider: "openai-realtime".to_string(),
+            stt_config_id: None,
             stt_base_url: None,
             stt_model: "gpt-realtime-2".to_string(),
             rewrite_provider: "openai".to_string(),
+            rewrite_config_id: None,
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: None,
             skip_rewrite: false,
@@ -816,9 +833,11 @@ mod tests {
             audio_path: "sample.wav".to_string(),
             profile_id: "normal".to_string(),
             stt_provider: "openai-realtime".to_string(),
+            stt_config_id: None,
             stt_base_url: None,
             stt_model: "gpt-realtime-2".to_string(),
             rewrite_provider: "openai".to_string(),
+            rewrite_config_id: None,
             rewrite_model: "gpt-5-nano".to_string(),
             selected_text: None,
             skip_rewrite: false,

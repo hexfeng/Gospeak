@@ -45,6 +45,43 @@ fn save_provider_api_key(
 }
 
 #[tauri::command]
+fn remove_provider_api_key(provider: String) -> Result<(), String> {
+    provider::remove_provider_key(&provider)
+}
+
+#[tauri::command]
+fn check_provider_configuration_keys(
+    configurations: Vec<provider::ProviderCredentialQuery>,
+) -> std::collections::HashMap<String, bool> {
+    provider::provider_configuration_key_status(&configurations)
+}
+
+#[tauri::command]
+fn save_provider_configuration_api_key(
+    config_id: String,
+    provider: String,
+    api_key: String,
+) -> Result<(), String> {
+    provider::save_provider_configuration_key(&config_id, &provider, &api_key)
+}
+
+#[tauri::command]
+fn remove_provider_configuration_api_key(
+    config_id: String,
+    provider: String,
+) -> Result<(), String> {
+    provider::remove_provider_configuration_key(&config_id, &provider)
+}
+
+#[tauri::command]
+fn migrate_provider_configuration_api_key(
+    config_id: String,
+    provider: String,
+) -> Result<bool, String> {
+    provider::migrate_provider_configuration_key(&config_id, &provider)
+}
+
+#[tauri::command]
 fn validate_alpha_pipeline(config: ProviderRuntimeConfig) -> Result<String, String> {
     run_alpha_pipeline(&config).map_err(|error| error.to_string())
 }
@@ -52,9 +89,17 @@ fn validate_alpha_pipeline(config: ProviderRuntimeConfig) -> Result<String, Stri
 #[tauri::command]
 fn run_audio_file_dictation(
     app: tauri::AppHandle,
-    request: AudioFilePipelineRequest,
+    mut request: AudioFilePipelineRequest,
 ) -> Result<PipelineResult, String> {
     let database = open_app_database(&app)?;
+    let providers = storage::resolve_active_provider_pipeline(&database)?;
+    request.stt_config_id = Some(providers.stt_config_id);
+    request.stt_provider = providers.stt_provider;
+    request.stt_model = providers.stt_model;
+    request.stt_base_url = providers.stt_base_url;
+    request.rewrite_config_id = Some(providers.rewrite_config_id);
+    request.rewrite_provider = providers.rewrite_provider;
+    request.rewrite_model = providers.rewrite_model;
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
     let result = run_audio_file_pipeline(
@@ -125,13 +170,22 @@ fn run_audio_file_dictation(
 fn run_streaming_dictation(
     app: tauri::AppHandle,
     state: tauri::State<'_, RecordingState>,
-    request: streaming::StreamingPipelineRequest,
+    mut request: streaming::StreamingPipelineRequest,
 ) -> Result<streaming::StreamingPipelineResult, String> {
-    if !streaming::streaming_eligible(&request) {
-        return Err("Streaming dictation is disabled for Speak to Edit.".to_string());
-    }
-
     let database = open_app_database(&app)?;
+    let providers = storage::resolve_active_provider_pipeline(&database)?;
+    request.stt_config_id = Some(providers.stt_config_id);
+    request.stt_provider = providers.stt_provider;
+    request.stt_model = providers.stt_model;
+    request.stt_base_url = providers.stt_base_url;
+    request.rewrite_config_id = Some(providers.rewrite_config_id);
+    request.rewrite_provider = providers.rewrite_provider;
+    request.rewrite_model = providers.rewrite_model;
+    if !streaming::streaming_eligible(&request) {
+        return Err(
+            "Streaming dictation is disabled for the active ASR configuration.".to_string(),
+        );
+    }
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
     let stt_model = request.stt_model.clone();
@@ -390,8 +444,7 @@ fn import_config_from_file(
 ) -> Result<serde_json::Value, String> {
     let payload = storage::read_json_file(std::path::Path::new(&path))?;
     let mut database = open_app_database(&app)?;
-    storage::import_config_payload(&mut database, &payload)?;
-    Ok(payload)
+    storage::import_config_payload(&mut database, &payload)
 }
 
 fn open_app_database(app: &tauri::AppHandle) -> Result<rusqlite::Connection, String> {
@@ -517,6 +570,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             check_provider_keys,
             save_provider_api_key,
+            remove_provider_api_key,
+            check_provider_configuration_keys,
+            save_provider_configuration_api_key,
+            remove_provider_configuration_api_key,
+            migrate_provider_configuration_api_key,
             validate_alpha_pipeline,
             run_audio_file_dictation,
             run_streaming_dictation,

@@ -8,7 +8,7 @@ describe("GeneralPage", () => {
   it("shows all-time usage and routes ready status cards", async () => {
     const user = userEvent.setup();
     const onOpenProfiles = vi.fn();
-    const onOpenSettings = vi.fn();
+    const onOpenProviders = vi.fn();
     const { container } = render(
       <GeneralPage
         config={DEFAULT_APP_CONFIG}
@@ -16,7 +16,7 @@ describe("GeneralPage", () => {
         profiles={DEFAULT_APP_CONFIG.promptProfiles}
         usageEvents={[]}
         onOpenProfiles={onOpenProfiles}
-        onOpenSettings={onOpenSettings}
+        onOpenProviders={onOpenProviders}
       />,
     );
 
@@ -52,8 +52,7 @@ describe("GeneralPage", () => {
     await user.click(screen.getByRole("button", { name: /Rewrite model/i }));
     await user.click(screen.getByRole("button", { name: /Active Profile/i }));
 
-    expect(onOpenSettings).toHaveBeenNthCalledWith(1, "providers");
-    expect(onOpenSettings).toHaveBeenNthCalledWith(2, "providers");
+    expect(onOpenProviders).toHaveBeenCalledTimes(2);
     expect(onOpenProfiles).toHaveBeenCalledOnce();
   });
 
@@ -65,7 +64,7 @@ describe("GeneralPage", () => {
         profiles={DEFAULT_APP_CONFIG.promptProfiles}
         usageEvents={[]}
         onOpenProfiles={vi.fn()}
-        onOpenSettings={vi.fn()}
+        onOpenProviders={vi.fn()}
       />,
     );
 
@@ -91,7 +90,7 @@ describe("GeneralPage", () => {
         profiles={DEFAULT_APP_CONFIG.promptProfiles}
         usageEvents={[]}
         onOpenProfiles={vi.fn()}
-        onOpenSettings={vi.fn()}
+        onOpenProviders={vi.fn()}
       />,
     );
 

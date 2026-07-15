@@ -1,7 +1,6 @@
-export type AppSection = "general" | "profiles" | "dictionary" | "settings";
-
-export type SettingsTab =
+export type AppSection =
+  | "general"
   | "providers"
-  | "dictation"
-  | "advanced"
-  | "privacy-data";
+  | "profiles"
+  | "dictionary"
+  | "settings";
