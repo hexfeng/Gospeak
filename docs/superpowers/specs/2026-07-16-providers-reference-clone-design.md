@@ -31,7 +31,7 @@ At the reference viewport `1390x1132`:
 - Page title begins around `x=357`, `y=58`; title is `36px`, weight `700`, line height approximately `1`.
 - Description begins around `y=115`; it is `16px` with muted blue-gray text.
 - Pipeline card begins around `x=357`, `y=173`, is approximately `997x158`, and has a `16px` radius.
-- Pipeline is split into two halves by a vertical divider. The arrow is centered in a `48px` circular control on the divider.
+- Pipeline is split into two columns by a vertical divider. The arrow sits in a `48px` circular control approximately `48px` to the right of the divider, matching the supplied composition.
 - Configuration card begins around `x=357`, `y=372`, is approximately `997px` wide, and has a `16px` radius.
 - Configuration header uses approximately `26px` padding and a divider below it.
 - Add configuration is approximately `198x52`, dark navy, `11px` radius.

@@ -134,7 +134,11 @@ describe("Secondary page CSS contract", () => {
 
   it("keeps Provider rows aligned and action labels on one line", () => {
     expect(css).toMatch(/\.workspace-providers\s*\{[^}]*padding:\s*58px 36px 28px 45px/s);
+    expect(css).toMatch(
+      /\.app-shell:has\(\.workspace-providers\) \.nav-item\s*\{[^}]*min-height:\s*50px/s,
+    );
     expect(css).toMatch(/\.pipeline-summary\s*\{[^}]*min-height:\s*158px/s);
+    expect(css).toMatch(/\.pipeline-step\s*\{[^}]*background:\s*transparent/s);
     expect(css).toMatch(/\.pipeline-arrow\s*\{[^}]*width:\s*48px/s);
     expect(css).toMatch(/\.provider-icon-tile\s*\{[^}]*width:\s*54px/s);
     expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*104px/s);

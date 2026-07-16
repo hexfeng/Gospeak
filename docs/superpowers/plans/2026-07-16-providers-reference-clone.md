@@ -30,7 +30,7 @@
 - Consumes: existing `ProviderConfiguration`, `providerLabel`, `Button`, and current callbacks.
 - Produces: `providerIcon(providerId: string): string | null`, `.provider-icon-tile`, `.provider-config-copy`, `.provider-config-title`, and `.pipeline-arrow`.
 
-- [ ] **Step 1: Write failing structure tests**
+- [x] **Step 1: Write failing structure tests**
 
 Add assertions to the existing row/action test:
 
@@ -47,7 +47,7 @@ Add a pipeline assertion:
 expect(within(pipeline).getByTestId("pipeline-arrow")).toBeInTheDocument();
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -57,11 +57,11 @@ npm test -- --run src/components/ProvidersPage.test.tsx
 
 Expected: FAIL because provider images, action classes, and the arrow wrapper do not exist.
 
-- [ ] **Step 3: Add local icon assets**
+- [x] **Step 3: Add local icon assets**
 
 Add the Lobe Icons Groq and OpenAI SVG paths as local files. Set Groq fill to `#7c5cff` and OpenAI fill to `#111111`. Do not add an npm package or runtime CDN URL.
 
-- [ ] **Step 4: Add the minimal Provider-only markup**
+- [x] **Step 4: Add the minimal Provider-only markup**
 
 Update imports:
 
@@ -124,7 +124,7 @@ function providerIcon(providerId: string) {
 }
 ```
 
-- [ ] **Step 5: Run the focused test and verify GREEN**
+- [x] **Step 5: Run the focused test and verify GREEN**
 
 Run:
 
@@ -134,7 +134,7 @@ npm test -- --run src/components/ProvidersPage.test.tsx
 
 Expected: all Providers tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add -- src/assets/providers src/components/ProvidersPage.tsx src/components/ProvidersPage.test.tsx
@@ -151,7 +151,7 @@ git commit -m "feat: add provider identity artwork"
 - Consumes: classes created in Task 1 and current app-shell breakpoints.
 - Produces: desktop reference geometry for `.workspace-providers`, `.providers-page`, `.pipeline-summary`, `.provider-configurations`, and `.provider-config-row`.
 
-- [ ] **Step 1: Write failing CSS contracts**
+- [x] **Step 1: Write failing CSS contracts**
 
 Extend the Providers CSS test:
 
@@ -164,7 +164,7 @@ expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*110px/s);
 expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*104px/s);
 ```
 
-- [ ] **Step 2: Run the CSS test and verify RED**
+- [x] **Step 2: Run the CSS test and verify RED**
 
 Run:
 
@@ -174,7 +174,7 @@ npm test -- --run src/App.css.test.ts
 
 Expected: FAIL because the reference dimensions are not present.
 
-- [ ] **Step 3: Implement scoped desktop geometry**
+- [x] **Step 3: Implement scoped desktop geometry**
 
 Add Provider-only workspace/header rules:
 
@@ -223,7 +223,7 @@ Match the pipeline:
 .pipeline-arrow {
   position: absolute;
   z-index: 1;
-  left: 46.3%;
+  left: calc(46.3% + 48px);
   top: 50%;
   width: 48px;
   height: 48px;
@@ -281,7 +281,7 @@ Match the configuration card and rows:
 
 Keep existing medium/mobile overrides, restoring normal workspace padding below `980px`.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run:
 
@@ -291,7 +291,7 @@ npm test -- --run src/App.css.test.ts src/components/ProvidersPage.test.tsx
 
 Expected: both files pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add -- src/App.css src/App.css.test.ts
@@ -308,11 +308,11 @@ git commit -m "style: match providers reference layout"
 - Consumes: source image `C:\Users\PC\.codex\attachments\ab8d57f5-48c6-4f20-9317-b0f16d73842f\image-1.png`.
 - Produces: same-size implementation capture and `design-qa.md` with `final result: passed`.
 
-- [ ] **Step 1: Run the app and capture the exact target state**
+- [x] **Step 1: Run the app and capture the exact target state**
 
 Use the existing Vite server at `http://127.0.0.1:4174/`. In the Codex in-app Browser, open Providers, set viewport to `1390x1132`, and capture the page with the two default configurations and missing-key states.
 
-- [ ] **Step 2: Compare source and implementation together**
+- [x] **Step 2: Compare source and implementation together**
 
 Create one temporary side-by-side comparison outside the repository. Check:
 
@@ -322,15 +322,15 @@ Create one temporary side-by-side comparison outside the repository. Check:
 - configuration card position, header, button size, row height, icon tiles, columns, and actions;
 - typography, borders, radii, colors, and no clipping.
 
-- [ ] **Step 3: Fix P0-P2 mismatches with TDD**
+- [x] **Step 3: Fix P0-P2 mismatches with TDD**
 
 For each reproducible issue, first add or tighten the smallest CSS/structure contract, verify it fails, make the minimal fix, and re-capture `1390x1132`. Do not loop on P3 pixel polish.
 
-- [ ] **Step 4: Check responsive and interactive behavior**
+- [x] **Step 4: Check responsive and interactive behavior**
 
 Verify Providers at `900x900` and `390x844`, with `scrollWidth === clientWidth`. Open and close Add configuration, open Edit, and confirm focus returns to the opener. Check browser warning/error logs.
 
-- [ ] **Step 5: Update the QA report**
+- [x] **Step 5: Update the QA report**
 
 Append evidence, fixed findings, remaining P3 notes, and:
 
@@ -338,7 +338,7 @@ Append evidence, fixed findings, remaining P3 notes, and:
 final result: passed
 ```
 
-- [ ] **Step 6: Run final verification**
+- [x] **Step 6: Run final verification**
 
 ```powershell
 npm test -- --run
@@ -350,7 +350,7 @@ git status --short
 
 Expected: `125+` tests pass, lint/build/diff check exit `0`, and only intentional QA changes remain before commit.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add -- design-qa.md src

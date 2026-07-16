@@ -41,6 +41,41 @@ final result: passed
 
 ---
 
+# Providers Reference Clone Design QA
+
+## Evidence
+
+- Source visual truth: `C:\Users\PC\.codex\attachments\ab8d57f5-48c6-4f20-9317-b0f16d73842f\image-1.png`.
+- Final implementation capture: `C:\Users\PC\AppData\Local\Temp\gospeak-providers-reference-qa\providers-1390x1132-final.png`.
+- Same-size side-by-side comparison: `C:\Users\PC\AppData\Local\Temp\gospeak-providers-reference-qa\comparison-final.png`.
+- Desktop viewport: `1390x1132`, device scale factor `1`.
+- Responsive captures: `900x1000` and `390x844`.
+- Horizontal-overflow measurements: root `scrollWidth === clientWidth` at `1390`, `900`, and `390` pixels.
+- Interaction checks: Add and Edit dialogs opened and closed at all three widths; focus returned to the triggering button after Cancel.
+- Console checks: no browser warnings, console errors, or page errors in the final three-viewport pass.
+
+## Findings and Resolution
+
+- P1 visual regression: the shared button background initially rendered each pipeline half as a large gray pill. Provider pipeline buttons now explicitly use a transparent background and square inner edges, restoring the white split-card treatment from the reference.
+- P2 shell density: the computed desktop navigation height was `40px` despite the earlier nominal `56px` rule. The Providers shell now scopes the reference's `50px` navigation rows, brand spacing, and bottom status-card height without altering other pages.
+- No remaining actionable P0/P1/P2 findings.
+
+## Required Fidelity Surfaces
+
+- Geometry: desktop measurements match the reference bands: `312px` sidebar, workspace at `x=312`, `45px` left content inset, `997x158` pipeline card, and `997x326` configuration card.
+- Typography and hierarchy: the `36px` page title, `16px` description, section title, labels, status pills, row metadata, and action labels follow the supplied hierarchy.
+- Components and assets: the split pipeline, offset circular arrow, `54px` provider tiles, ASR/Rewrite tags, local provider marks, and bordered Edit/Delete controls are present.
+- Responsive behavior: the pipeline and configuration rows stack at tablet/mobile widths with no horizontal clipping; the root remains vertically scrollable where content exceeds the viewport.
+- Accessibility and behavior: native buttons, dialogs, disabled active Delete actions, pagination, activation callbacks, accessible names, and focus restoration remain intact.
+
+## Follow-up Polish
+
+- P3: the local Groq brand glyph is the closest available real icon and differs slightly from the angular illustrative mark in the supplied screenshot; its slot, size, and purple treatment match.
+
+final result: passed
+
+---
+
 # Shared UI Language Design QA
 
 ## Evidence
