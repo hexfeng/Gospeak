@@ -2,14 +2,27 @@
 
 ## Evidence
 
-- Source visual truth path: `C:\Users\PC\.codex\attachments\45db25c9-ac69-491b-9e53-ffc8bc278272\image-1.png`.
-- Implementation screenshot path: `artifacts/current-general-playwright-1486.png`.
-- Full-view comparison evidence: `artifacts/general-design-qa-current-comparison.png`.
-- Viewport: `1486x1102`, device scale factor `1`.
+- Source visual truth path: `C:\Users\PC\.codex\codex-remote-attachments\019f6c1b-25fb-7be3-8cd9-635f6373b814\70AFE77B-EA93-43D3-8FE9-CB5A39CECFC8\1-Photo-1.jpg`.
+- Implementation screenshot path: `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-desktop-1280x1024.png`.
+- Full-view comparison evidence: `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-comparison.png`.
+- Responsive evidence:
+  - `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-2x2-1050x1100.png`.
+  - `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-mobile-500x1200.png`.
+- Hover evidence: `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-hover-1280x1024.png`.
+- Desktop viewport: `1280x1024`, device scale factor `1`.
 - State: General page, ASR Not Set, Rewrite Not Set, Active Profile Normal, usage totals at zero.
-- Focused region comparison evidence: not needed; the full-view comparison is readable for header, sidebar, hero, metrics, chart, and status-card fidelity.
-- Primary interactions tested: status cards remain routed buttons through existing tests; navigation remains General, Profiles, Dictionary, Settings.
-- Console errors checked: no page errors or console errors during Playwright capture of `http://127.0.0.1:5175/`.
+- Focused region comparison evidence: not needed because the native-size `2560x1024` side-by-side image keeps the typography, icon tiles, dividers, and card anatomy readable.
+- Primary interactions tested:
+  - ASR and Rewrite cards navigate to Providers.
+  - Active Profile navigates to Profiles.
+  - ASR hover changes transform from `none` to `translateY(-2px)`, changes the state background, and increases shadow elevation.
+  - Keyboard focus renders a `3px` blue outline with a `2px` offset.
+- Responsive measurements:
+  - `1280px`: four metric columns.
+  - `1050px`: two-by-two metric grid.
+  - `500px`: one metric column.
+  - Root `scrollWidth === clientWidth` at all three widths.
+- Console errors checked: no browser warnings, console errors, or page errors.
 
 ## Findings
 
@@ -21,21 +34,34 @@
 
 ## Follow-up Polish
 
-- P3: chart line shape and date labels differ from the reference because the implementation uses real local usage data. Current local state has zero usage events, so the flat 0m line is expected.
+- P3: system font rasterization and Lucide glyph details are slightly sharper than the photographed reference. The hierarchy, size, placement, and stroke character remain equivalent.
 
 ## Comparison History
 
-- Current iteration: captured the implementation at the same `1486x1102` viewport as the source and tuned vertical rhythm so the title, shortcut, hero, metrics, activity chart, and three setup cards land in the same visual bands as the reference.
-- Previous iteration: added the rounded app frame, macOS-style window dots, larger translucent sidebar, active General accent, bottom local status card, Ready hero, four metric cards, 7-day activity chart, and reference-like setup cards with chevrons.
-- Earlier iteration: General used a narrower 2x2 metric block and three thick-bordered status cards without the source hero or chart.
+- First pass findings:
+  - P2: General content started about `9px` too high.
+  - P2: vertical section gaps were about `4px` smaller than the reference.
+  - P2: the readiness half started about `20px` too far right.
+  - P2: the global `.app-shell button` rule overrode the intended configuration-card minimum height.
+- Fixes:
+  - Set General workspace top padding to `38px`.
+  - Set the page gap to a maximum of `27px`.
+  - Rebalanced the readiness-card grid to `0.94fr / 1fr`.
+  - Fixed the card-height root cause with the more specific `.app-shell .general-status-card` selector.
+- Final desktop geometry:
+  - readiness card: `top 38px`, `height 225.27px`;
+  - metrics: `top 290.27px`, `height 119.75px`;
+  - activity panel: `top 437.02px`, `height 307.19px`;
+  - status cards: `top 771.20px`, `height 187.39px`.
+- The supplied reference lands at approximately `38px`, `291px`, `436px`, and `773px` for the same four bands.
 
 ## Required Fidelity Surfaces
 
-- Fonts and typography: existing Inter/system stack, bold Gospeak title, medium nav labels, compact card titles, and smaller supporting copy match the reference hierarchy closely.
-- Spacing and layout rhythm: same-viewport capture confirms the app frame, sidebar, title block, hero, metrics, chart, and bottom cards align with the source composition.
-- Colors and visual tokens: light blue/white app frame, soft sidebar, blue active nav, pastel icon tiles, subtle borders, and restrained shadows match the reference style.
-- Image quality and asset fidelity: supplied favicon is used for the brand mark; standard UI icons use the existing Lucide set. No missing raster content remains from the source.
-- Copy and content: source copy and requested General content are present: title, shortcut, readiness, usage totals, activity, ASR, Rewrite, and Active Profile.
+- Fonts and typography: title, shortcut, status headings, metric values, chart labels, and supporting copy match the reference hierarchy and wrapping.
+- Spacing and layout rhythm: the four major desktop bands align within about `0-2px` of the source; widths, dividers, card radii, and internal spacing are consistent.
+- Colors and visual tokens: true white workspace, subtle blue-gray borders, near-black text, muted supporting text, neutral icon tiles, and green status treatment match the source.
+- Image quality and asset fidelity: the existing Gospeak favicon is preserved and the installed Lucide icon family supplies all standard UI icons without placeholders or CSS-drawn substitutes.
+- Copy and content: the reference copy and existing dynamic values remain present with no invented UI or changed behavior.
 
 final result: passed
 

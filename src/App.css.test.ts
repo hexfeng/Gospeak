@@ -64,7 +64,7 @@ describe("General dashboard CSS contract", () => {
 
   it("uses the approved responsive metric and setup-status layout", () => {
     expect(css).toMatch(
-      /\.general-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 1px minmax\(390px, 0\.94fr\)/s,
+      /\.general-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 0\.94fr\) 1px minmax\(390px, 1fr\)/s,
     );
     expect(css).toMatch(/\.general-hero-divider\s*\{[^}]*width:\s*1px/s);
     expect(css).toMatch(
@@ -83,8 +83,10 @@ describe("General dashboard CSS contract", () => {
       /\.workspace-general\s*\{[^}]*overflow:\s*hidden/s,
     );
     expect(css).toMatch(
-      /\.general-status-card\s*\{[^}]*min-height:\s*clamp\(168px, 18vh, 190px\)/s,
+      /\.app-shell \.general-status-card\s*\{[^}]*min-height:\s*clamp\(182px, 18\.3vh, 190px\)/s,
     );
+    expect(css).toMatch(/\.workspace-general\s*\{[^}]*padding-top:\s*38px/s);
+    expect(css).toMatch(/\.general-page\s*\{[^}]*gap:\s*clamp\(22px, 2\.7vh, 27px\)/s);
     expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*1px solid #e4e9f1/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
