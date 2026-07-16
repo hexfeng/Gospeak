@@ -62,6 +62,7 @@ describe("ProvidersPage", () => {
     expect(within(pipeline).getByText("ASR")).toBeInTheDocument();
     expect(within(pipeline).getByText("Rewrite")).toBeInTheDocument();
     expect(within(pipeline).getAllByText("Configured")).toHaveLength(2);
+    expect(within(pipeline).getByTestId("pipeline-arrow")).toBeInTheDocument();
     expect(props.onRefresh).not.toHaveBeenCalled();
   });
 
@@ -164,11 +165,14 @@ describe("ProvidersPage", () => {
     const row = rows()[0];
 
     expect(row).toHaveTextContent("Groq Whisper");
+    expect(within(rows()[0]).getByRole("img", { name: "Groq Whisper" })).toBeInTheDocument();
+    expect(within(rows()[1]).getByRole("img", { name: "OpenAI" })).toBeInTheDocument();
     expect(within(row).getByText("ASR")).toBeInTheDocument();
     expect(within(row).getByText("whisper-large-v3-turbo")).toBeInTheDocument();
     expect(within(row).getByText("Configured")).toBeInTheDocument();
     expect(within(row).getByText("Active")).toBeInTheDocument();
-    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Edit" })).toHaveClass("provider-edit-button");
+    expect(within(row).getByRole("button", { name: "Delete" })).toHaveClass("provider-delete-button");
     expect(within(row).getByRole("button", { name: "Delete" })).toBeDisabled();
     expect(rows()[1]).toHaveTextContent("Rewrite");
     expect(within(rows()[2]).getByRole("button", { name: "Use for ASR" })).toBeInTheDocument();

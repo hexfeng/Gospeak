@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Pencil, Plus, Trash2 } from "lucide-react";
+import groqIcon from "../assets/providers/groq.svg";
+import openaiIcon from "../assets/providers/openai.svg";
 import {
   REWRITE_PROVIDER_OPTIONS,
   STT_PROVIDER_OPTIONS,
@@ -116,7 +118,9 @@ export function ProvidersPage(props: ProvidersPageProps) {
           onSelect={() => focusConfiguration(active.stt.id)}
           presence={props.keyPresence}
         />
-        <ArrowRight aria-hidden="true" size={20} />
+        <span className="pipeline-arrow" data-testid="pipeline-arrow">
+          <ArrowRight aria-hidden="true" size={20} />
+        </span>
         <PipelineStep
           configuration={active.rewrite}
           label="Rewrite"
@@ -148,6 +152,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
               (configuration.providerId === "qwen-local" || configuration.providerId === "qwen-api") && configuration.baseUrl
                 ? shortEndpoint(configuration.baseUrl)
                 : null;
+            const icon = providerIcon(configuration.providerId);
             return (
               <article
                 className="provider-config-row"
@@ -157,12 +162,21 @@ export function ProvidersPage(props: ProvidersPageProps) {
                 tabIndex={-1}
               >
                 <div className="provider-config-identity">
-                  <strong>{configuration.name}</strong>
-                  <span className="provider-kind-label">
-                    {configuration.kind === "stt" ? "ASR" : "Rewrite"}
-                  </span>
-                  <small>{providerLabel(configuration.providerId)}</small>
-                  {endpoint ? <small>{endpoint}</small> : null}
+                  {icon ? (
+                    <span className="provider-icon-tile">
+                      <img alt={providerLabel(configuration.providerId)} src={icon} />
+                    </span>
+                  ) : null}
+                  <div className="provider-config-copy">
+                    <div className="provider-config-title">
+                      <strong>{configuration.name}</strong>
+                      <span className="provider-kind-label">
+                        {configuration.kind === "stt" ? "ASR" : "Rewrite"}
+                      </span>
+                    </div>
+                    <small>{providerLabel(configuration.providerId)}</small>
+                    {endpoint ? <small>{endpoint}</small> : null}
+                  </div>
                 </div>
                 <span className="provider-config-model">{configuration.model}</span>
                 <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
@@ -175,8 +189,22 @@ export function ProvidersPage(props: ProvidersPageProps) {
                       Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                     </Button>
                   )}
-                  <Button onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)} type="button">Edit</Button>
-                  <Button disabled={isActive} onClick={() => remove(configuration)} type="button" variant="danger">Delete</Button>
+                  <Button
+                    className="provider-edit-button"
+                    onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={14} /> Edit
+                  </Button>
+                  <Button
+                    className="provider-delete-button"
+                    disabled={isActive}
+                    onClick={() => remove(configuration)}
+                    type="button"
+                    variant="danger"
+                  >
+                    <Trash2 aria-hidden="true" size={14} /> Delete
+                  </Button>
                 </div>
               </article>
             );
@@ -421,6 +449,12 @@ function providerLabel(providerId: string) {
   return STT_PROVIDER_OPTIONS.find((option) => option.id === providerId)?.label ??
     REWRITE_PROVIDER_OPTIONS.find((option) => option.id === providerId)?.label ??
     providerId;
+}
+
+function providerIcon(providerId: string) {
+  if (providerId === "groq") return groqIcon;
+  if (providerId === "openai") return openaiIcon;
+  return null;
 }
 
 function optionDefaultBaseUrl(option: object) {
