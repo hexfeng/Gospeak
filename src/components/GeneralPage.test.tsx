@@ -37,6 +37,10 @@ describe("GeneralPage", () => {
     expect(screen.getByText("Cloud")).toBeInTheDocument();
     expect(screen.getByText("Ready to dictate")).toBeInTheDocument();
     expect(screen.getByText("Gospeak is ready when you are.")).toBeInTheDocument();
+    expect(container.querySelector(".general-hero > .general-header")).toBeInTheDocument();
+    expect(container.querySelector(".general-hero-divider")).toBeInTheDocument();
+    expect(container.querySelector(".general-readiness")).toBeInTheDocument();
+    expect(container.querySelector(".general-hero-wave")).not.toBeInTheDocument();
     expect(screen.getByText("Dictation activity (7 days)")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Last 7 days of dictation minutes" })).toBeInTheDocument();
     expect(screen.getByText("ASR model")).toBeInTheDocument();

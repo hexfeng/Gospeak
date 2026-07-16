@@ -44,32 +44,35 @@ export function GeneralPage({
 
   return (
     <section className="module-panel general-page" aria-labelledby="general-title">
-      <header className="general-header">
-        <h1 id="general-title">Gospeak</h1>
-        <p>
-          {hotkeyReady ? (
-            <>
-              Press <Hotkey binding={config.hotkey.binding} /> to start dictating.
-            </>
-          ) : (
-            "Set a shortcut to start dictating."
-          )}
-        </p>
-      </header>
-
       <section className="general-hero" aria-label="Dictation readiness">
-        <span className="general-hero-icon" aria-hidden="true">
-          <Mic size={34} strokeWidth={1.9} />
-        </span>
-        <div className="general-hero-copy">
-          <h2>Ready to dictate</h2>
-          <p>Gospeak is ready when you are.</p>
-          <span className="general-hero-pill">
-            <span aria-hidden="true" />
-            All systems normal
+        <header className="general-header">
+          <h1 id="general-title">Gospeak</h1>
+          <p>
+            {hotkeyReady ? (
+              <>
+                Press <Hotkey binding={config.hotkey.binding} /> to start dictating.
+              </>
+            ) : (
+              "Set a shortcut to start dictating."
+            )}
+          </p>
+        </header>
+
+        <span className="general-hero-divider" aria-hidden="true" />
+
+        <div className="general-readiness">
+          <span className="general-hero-icon" aria-hidden="true">
+            <Mic size={34} strokeWidth={1.9} />
           </span>
+          <div className="general-hero-copy">
+            <h2>Ready to dictate</h2>
+            <p>Gospeak is ready when you are.</p>
+            <span className="general-hero-pill">
+              <span aria-hidden="true" />
+              All systems normal
+            </span>
+          </div>
         </div>
-        <span className="general-hero-wave" aria-hidden="true" />
       </section>
 
       <section className="general-metrics" aria-label="All-time usage">
