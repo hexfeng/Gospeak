@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_APP_CONFIG } from "../domain/config";
@@ -114,6 +114,46 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
     await waitFor(() => expect(rows()[1]).toHaveFocus());
+  });
+
+  it("returns focus to the Add or Edit opener whenever the dialog closes", async () => {
+    const user = userEvent.setup();
+    const props = renderProviders({ provider_default_groq_stt: true });
+    const addButton = screen.getByRole("button", { name: "Add configuration" });
+
+    await user.click(addButton);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(addButton).toHaveFocus());
+
+    const editButton = within(rows()[0]).getByRole("button", { name: "Edit" });
+    await user.click(editButton);
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+    await waitFor(() => expect(editButton).toHaveFocus());
+
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await user.click(editButton);
+    await user.click(screen.getByRole("button", { name: "Remove saved key" }));
+    await waitFor(() => expect(editButton).toHaveFocus());
+    expect(props.onRemoveKey).toHaveBeenCalled();
+    confirm.mockRestore();
+
+    await user.click(addButton);
+    await user.click(screen.getByLabelText("Configuration name"));
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
+    await waitFor(() => expect(addButton).toHaveFocus());
+  });
+
+  it("does not disclose a malformed Qwen endpoint in the compact row", () => {
+    const state = paginatedState();
+    state.configurations[3] = {
+      ...state.configurations[3],
+      baseUrl: "not-a-valid-url",
+    };
+
+    renderProviders({}, state);
+
+    expect(rows()[3]).toHaveTextContent("Invalid endpoint");
+    expect(within(rows()[3]).queryByText("not-a-valid-url")).not.toBeInTheDocument();
   });
 
   it("shows row information, explicit actions, and active delete protection", () => {

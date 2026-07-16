@@ -51,6 +51,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
   );
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pageError, setPageError] = useState("");
+  const openerRef = useRef<HTMLElement | null>(null);
   const active = activeProviderPair(props.state);
   const pageCount = Math.max(1, Math.ceil(props.state.configurations.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -65,6 +66,15 @@ export function ProvidersPage(props: ProvidersPageProps) {
     if (!focusConfigurationId) return;
     focusConfigurationRow(focusConfigurationId);
   }, [focusConfigurationId, focusRequestId]);
+
+  useEffect(() => {
+    if (!dialog) openerRef.current?.focus();
+  }, [dialog]);
+
+  function openDialog(state: Exclude<DialogState, null>, target: HTMLElement) {
+    openerRef.current = target;
+    setDialog(state);
+  }
 
   function focusConfiguration(configurationId: string) {
     setPage(pageForConfiguration(props.state.configurations, configurationId));
@@ -123,7 +133,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
             <h2 id="provider-configurations-title">Configurations</h2>
             <p>{props.state.configurations.length} saved</p>
           </div>
-          <button onClick={() => setDialog({ mode: "new", kind: "stt" })} type="button">
+          <button onClick={(event) => openDialog({ mode: "new", kind: "stt" }, event.currentTarget)} type="button">
             <Plus size={14} /> Add configuration
           </button>
         </header>
@@ -134,6 +144,10 @@ export function ProvidersPage(props: ProvidersPageProps) {
             const isActive =
               configuration.id === props.state.activeAsrConfigId ||
               configuration.id === props.state.activeRewriteConfigId;
+            const endpoint =
+              (configuration.providerId === "qwen-local" || configuration.providerId === "qwen-api") && configuration.baseUrl
+                ? shortEndpoint(configuration.baseUrl)
+                : null;
             return (
               <article
                 className="provider-config-row"
@@ -148,9 +162,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
                     {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                   </span>
                   <small>{providerLabel(configuration.providerId)}</small>
-                  {(configuration.providerId === "qwen-local" || configuration.providerId === "qwen-api") && configuration.baseUrl
-                    ? <small>{shortEndpoint(configuration.baseUrl)}</small>
-                    : null}
+                  {endpoint ? <small>{endpoint}</small> : null}
                 </div>
                 <span className="provider-config-model">{configuration.model}</span>
                 <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
@@ -163,7 +175,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
                       Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                     </button>
                   )}
-                  <button onClick={() => setDialog({ mode: "edit", configuration })} type="button">Edit</button>
+                  <button onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)} type="button">Edit</button>
                   <button disabled={isActive} onClick={() => remove(configuration)} type="button">Delete</button>
                 </div>
               </article>
@@ -262,6 +274,11 @@ function ProviderDialog(props: {
     setBaseUrl(optionDefaultBaseUrl(nextProvider));
   }
 
+  function closeDialog() {
+    dialogRef.current?.close();
+    props.onClose();
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
@@ -284,7 +301,7 @@ function ProviderDialog(props: {
         },
         apiKey.trim() || undefined,
       );
-      props.onClose();
+      closeDialog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save configuration.");
     } finally {
@@ -361,7 +378,7 @@ function ProviderDialog(props: {
                   setSaving(true);
                   setError("");
                   void props.onRemoveKey(original)
-                    .then(props.onClose)
+                    .then(closeDialog)
                     .catch(() => setError("Could not remove the saved key."))
                     .finally(() => setSaving(false));
                 }
@@ -371,7 +388,7 @@ function ProviderDialog(props: {
               Remove saved key
             </button>
           ) : null}
-          <button onClick={props.onClose} type="button">Cancel</button>
+          <button onClick={closeDialog} type="button">Cancel</button>
         </div>
       </form>
     </dialog>
@@ -416,7 +433,7 @@ function shortEndpoint(value: string) {
   try {
     return new URL(value).host;
   } catch {
-    return value;
+    return null;
   }
 }
 
