@@ -38,3 +38,33 @@
 - Copy and content: source copy and requested General content are present: title, shortcut, readiness, usage totals, activity, ASR, Rewrite, and Active Profile.
 
 final result: passed
+
+---
+
+# Shared UI Language Design QA
+
+## Evidence
+
+- Source Providers screenshot: `C:\Users\PC\AppData\Local\Temp\codex-clipboard-addf44c4-5b9a-401f-af15-bd4bcbeb387b.png`.
+- General reference capture: `C:\Users\PC\AppData\Local\Temp\gospeak-shared-ui-qa\general-1123x965-final.png`.
+- Final Providers capture: `C:\Users\PC\AppData\Local\Temp\gospeak-shared-ui-qa\providers-1123x965-final2.png`.
+- Side-by-side comparison: `C:\Users\PC\AppData\Local\Temp\gospeak-shared-ui-qa\comparison.png`.
+- Responsive captures: Providers, Dictionary, and Settings at approximately `1280x900`, `900x900`, and `390x844`.
+- Responsive measurements: every checked page reported `scrollWidth === clientWidth` at 1280, 900, and 390 pixels.
+- Interactions checked: Provider Add dialog and Cancel, Dictionary search and Add dialog, and navigation across all three pages.
+- Console checked: no warning or error entries during the final responsive pass.
+
+## Findings and Resolution
+
+- P2 responsiveness: at the supplied screenshot width (`1123x965`), the Provider grid initially switched to a two-line medium layout and its intrinsic column minimums pushed the Add button outside the card. The medium breakpoint now ends at 1100px, the two flexible columns use `minmax(0, ...)`, and the compact row gap is 10px. Final measurement places the Add button at `1063.7px` inside the card edge at `1080.5px`, with no page overflow.
+- No remaining actionable P0/P1/P2 findings.
+
+## Required Fidelity Surfaces
+
+- Typography: Providers, Dictionary, and Settings use General's title scale, 14px descriptions, 17px section headings, and 12px helper/status text.
+- Layout and surfaces: shared 16px cards, restrained borders/shadows, 40px controls, and compact Provider rows follow the General page language.
+- Responsiveness: desktop rows stay single-line where space permits; tablet/mobile layouts stack without overlapping, clipping, or horizontal page scrolling.
+- States and accessibility: native buttons, regions, labels, disabled states, dialogs, focus behavior, search, filters, and toggles remain intact.
+- Assets and icons: existing Gospeak brand asset and Lucide icon family are retained; no substitute artwork was introduced.
+
+final result: passed

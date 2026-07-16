@@ -1108,10 +1108,10 @@ button:disabled {
 
 .provider-config-row {
   display: grid;
-  grid-template-columns: minmax(210px, 1.35fr) minmax(140px, 1fr) max-content minmax(96px, auto) max-content;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) max-content minmax(90px, auto) max-content;
   align-items: center;
   min-height: 64px;
-  gap: 14px;
+  gap: 10px;
   padding: 10px 0;
   border-top: 1px solid #edf0f5;
 }
@@ -2037,7 +2037,7 @@ pre {
   line-height: 1.45;
 }
 
-@media (max-width: 1240px) and (min-width: 981px) {
+@media (max-width: 1100px) and (min-width: 981px) {
   .provider-config-row {
     grid-template-columns: minmax(200px, 1.35fr) minmax(140px, 1fr) max-content;
   }

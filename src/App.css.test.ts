@@ -134,10 +134,13 @@ describe("Secondary page CSS contract", () => {
 
   it("keeps Provider rows aligned and action labels on one line", () => {
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
-    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*grid-template-columns:/s);
+    expect(css).toMatch(
+      /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.35fr\) minmax\(0, 1fr\)/s,
+    );
+    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*gap:\s*10px/s);
     expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
-      /@media \(max-width: 1240px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
+      /@media \(max-width: 1100px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
     );
   });
 });
