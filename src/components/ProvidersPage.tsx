@@ -148,7 +148,9 @@ export function ProvidersPage(props: ProvidersPageProps) {
                     {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                   </span>
                   <small>{providerLabel(configuration.providerId)}</small>
-                  {configuration.baseUrl ? <small>{shortEndpoint(configuration.baseUrl)}</small> : null}
+                  {(configuration.providerId === "qwen-local" || configuration.providerId === "qwen-api") && configuration.baseUrl
+                    ? <small>{shortEndpoint(configuration.baseUrl)}</small>
+                    : null}
                 </div>
                 <span className="provider-config-model">{configuration.model}</span>
                 <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
@@ -157,7 +159,7 @@ export function ProvidersPage(props: ProvidersPageProps) {
                   {isActive ? (
                     <span className="active-config-label">Active</span>
                   ) : (
-                    <button aria-label="Use configuration" onClick={() => activate(configuration.id)} type="button">
+                    <button onClick={() => activate(configuration.id)} type="button">
                       Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                     </button>
                   )}

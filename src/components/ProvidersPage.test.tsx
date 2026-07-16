@@ -19,7 +19,7 @@ function defaultState() {
 function paginatedState() {
   const base = defaultState();
   const extras: ProviderConfiguration[] = [
-    { id: "groq-work", name: "Groq Work", kind: "stt", providerId: "groq", model: "whisper-large-v3", createdAt: timestamp, updatedAt: timestamp },
+    { id: "groq-work", name: "Groq Work", kind: "stt", providerId: "groq", model: "whisper-large-v3", baseUrl: "https://should-not-render.example/v1", createdAt: timestamp, updatedAt: timestamp },
     { id: "qwen-local", name: "Local Qwen", kind: "stt", providerId: "qwen-local", model: "Qwen/Qwen3-ASR-0.6B", baseUrl: "http://127.0.0.1:8000/v1", createdAt: timestamp, updatedAt: timestamp },
     { id: "qwen-api", name: "Qwen Cloud", kind: "stt", providerId: "qwen-api", model: "Qwen/Qwen3-ASR-1.7B", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", createdAt: timestamp, updatedAt: timestamp },
     { id: "doubao", name: "Doubao", kind: "stt", providerId: "doubao", model: "bigmodel", createdAt: timestamp, updatedAt: timestamp },
@@ -77,6 +77,8 @@ describe("ProvidersPage", () => {
     expect(screen.queryByRole("button", { name: "Refresh local status" })).not.toBeInTheDocument();
     expect(rows()).toHaveLength(5);
     expect(within(list).getAllByText(/^(ASR|Rewrite)$/)).toHaveLength(5);
+    expect(within(list).getByText("127.0.0.1:8000")).toBeInTheDocument();
+    expect(within(list).queryByText("should-not-render.example")).not.toBeInTheDocument();
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Next" }));
@@ -126,8 +128,7 @@ describe("ProvidersPage", () => {
     expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Delete" })).toBeDisabled();
     expect(rows()[1]).toHaveTextContent("Rewrite");
-    expect(rows()[2]).toHaveTextContent("Use for ASR");
-    expect(within(rows()[2]).getByRole("button", { name: "Use configuration" })).toBeInTheDocument();
+    expect(within(rows()[2]).getByRole("button", { name: "Use for ASR" })).toBeInTheDocument();
     expect(props.onActivate).not.toHaveBeenCalled();
   });
 
@@ -189,7 +190,7 @@ describe("ProvidersPage", () => {
     const doubaoRow = rows().find((row) => row.textContent?.includes("Doubao ASR"))!;
 
     expect(within(doubaoRow).getByText("Missing key")).toBeInTheDocument();
-    await user.click(within(doubaoRow).getByRole("button", { name: "Use configuration" }));
+    await user.click(within(doubaoRow).getByRole("button", { name: "Use for ASR" }));
     expect(props.onActivate).toHaveBeenCalledWith("provider_default_doubao_stt");
   });
 
@@ -200,7 +201,7 @@ describe("ProvidersPage", () => {
     props.onActivate.mockRejectedValueOnce(new Error("disk full"));
     const doubaoRow = rows().find((row) => row.textContent?.includes("Doubao ASR"))!;
 
-    await user.click(within(doubaoRow).getByRole("button", { name: "Use configuration" }));
+    await user.click(within(doubaoRow).getByRole("button", { name: "Use for ASR" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("previous active configuration was kept");
     expect(within(doubaoRow).queryByText("Active")).not.toBeInTheDocument();
