@@ -130,4 +130,10 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.settings-section\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
     expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
   });
+
+  it("keeps Provider rows aligned and action labels on one line", () => {
+    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
+    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*grid-template-columns:/s);
+    expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
+  });
 });

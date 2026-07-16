@@ -58,6 +58,7 @@ describe("ProvidersPage", () => {
     });
 
     const pipeline = screen.getByLabelText("Current dictation pipeline");
+    expect(pipeline).toHaveClass("ui-card");
     expect(within(pipeline).getByText("ASR")).toBeInTheDocument();
     expect(within(pipeline).getByText("Rewrite")).toBeInTheDocument();
     expect(within(pipeline).getAllByText("Configured")).toHaveLength(2);
@@ -70,7 +71,9 @@ describe("ProvidersPage", () => {
     const list = screen.getByRole("region", { name: "Configurations" });
 
     expect(within(list).getByText("7 saved")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Add configuration" })).toHaveLength(1);
+    const addButton = screen.getByRole("button", { name: "Add configuration" });
+    expect(addButton).toHaveClass("ui-button-primary");
+    expect(list).toHaveClass("ui-card");
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Groq Whisper" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();

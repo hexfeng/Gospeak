@@ -15,6 +15,7 @@ import {
   type ProviderConfigurationState,
   type ProviderConfigurationStatus,
 } from "../domain/providerConfigurations";
+import { Button, Card, PageHeader } from "./ui";
 
 type ProvidersPageProps = {
   state: ProviderConfigurationState;
@@ -102,14 +103,13 @@ export function ProvidersPage(props: ProvidersPageProps) {
 
   return (
     <section className="module-panel providers-page" aria-labelledby="providers-title">
-      <header className="page-heading">
-        <div>
-          <h1 id="providers-title">Providers</h1>
-          <p>Manage named ASR and Rewrite configurations. Availability is evaluated locally.</p>
-        </div>
-      </header>
+      <PageHeader
+        description="Manage named ASR and Rewrite configurations. Availability is evaluated locally."
+        title="Providers"
+        titleId="providers-title"
+      />
 
-      <section className="pipeline-summary" aria-label="Current dictation pipeline">
+      <Card className="pipeline-summary" aria-label="Current dictation pipeline">
         <PipelineStep
           configuration={active.stt}
           label="ASR"
@@ -123,19 +123,19 @@ export function ProvidersPage(props: ProvidersPageProps) {
           onSelect={() => focusConfiguration(active.rewrite.id)}
           presence={props.keyPresence}
         />
-      </section>
+      </Card>
 
       {pageError ? <p className="app-message" role="alert">{pageError}</p> : null}
 
-      <section className="provider-configurations" aria-labelledby="provider-configurations-title">
+      <Card className="provider-configurations" aria-labelledby="provider-configurations-title">
         <header>
           <div>
             <h2 id="provider-configurations-title">Configurations</h2>
             <p>{props.state.configurations.length} saved</p>
           </div>
-          <button onClick={(event) => openDialog({ mode: "new", kind: "stt" }, event.currentTarget)} type="button">
+          <Button onClick={(event) => openDialog({ mode: "new", kind: "stt" }, event.currentTarget)} type="button" variant="primary">
             <Plus size={14} /> Add configuration
-          </button>
+          </Button>
         </header>
 
         <div className="provider-config-list">
@@ -171,12 +171,12 @@ export function ProvidersPage(props: ProvidersPageProps) {
                   {isActive ? (
                     <span className="active-config-label">Active</span>
                   ) : (
-                    <button onClick={() => activate(configuration.id)} type="button">
+                    <Button onClick={() => activate(configuration.id)} type="button">
                       Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
-                    </button>
+                    </Button>
                   )}
-                  <button onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)} type="button">Edit</button>
-                  <button disabled={isActive} onClick={() => remove(configuration)} type="button">Delete</button>
+                  <Button onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)} type="button">Edit</Button>
+                  <Button disabled={isActive} onClick={() => remove(configuration)} type="button" variant="danger">Delete</Button>
                 </div>
               </article>
             );
@@ -185,12 +185,12 @@ export function ProvidersPage(props: ProvidersPageProps) {
 
         {pageCount > 1 ? (
           <footer className="provider-pagination">
-            <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">Previous</button>
+            <Button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">Previous</Button>
             <span>Page {currentPage} of {pageCount}</span>
-            <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">Next</button>
+            <Button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">Next</Button>
           </footer>
         ) : null}
-      </section>
+      </Card>
 
       {dialog ? (
         <ProviderDialog
@@ -370,9 +370,9 @@ function ProviderDialog(props: {
         ) : null}
         {error ? <p role="alert">{error}</p> : null}
         <div className="button-row">
-          <button disabled={saving} type="submit">Save configuration</button>
+          <Button disabled={saving} type="submit" variant="primary">Save configuration</Button>
           {original && hasKey ? (
-            <button
+            <Button
               onClick={() => {
                 if (window.confirm("Remove the saved credential from this configuration?")) {
                   setSaving(true);
@@ -386,9 +386,9 @@ function ProviderDialog(props: {
               type="button"
             >
               Remove saved key
-            </button>
+            </Button>
           ) : null}
-          <button onClick={closeDialog} type="button">Cancel</button>
+          <Button onClick={closeDialog} type="button">Cancel</Button>
         </div>
       </form>
     </dialog>

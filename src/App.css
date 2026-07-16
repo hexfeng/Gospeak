@@ -1116,6 +1116,9 @@ button:disabled {
 }
 
 .provider-config-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.35fr) minmax(140px, 1fr) max-content minmax(96px, auto) max-content;
+  align-items: center;
   min-height: 64px;
   gap: 14px;
   padding: 10px 0;
@@ -1156,6 +1159,7 @@ button:disabled {
 .provider-config-actions {
   justify-content: flex-end;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .provider-pagination {
@@ -2140,13 +2144,14 @@ pre {
   }
 
   .provider-config-row {
-    align-items: center;
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .provider-config-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .dictionary-toolbar {
