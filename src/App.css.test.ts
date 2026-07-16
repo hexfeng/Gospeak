@@ -132,11 +132,12 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
   });
 
-  it("keeps Provider rows aligned and action labels on one line", () => {
-    expect(css).toMatch(/\.workspace-providers\s*\{[^}]*padding:\s*58px 36px 28px 45px/s);
-    expect(css).toMatch(
-      /\.app-shell:has\(\.workspace-providers\) \.nav-item\s*\{[^}]*min-height:\s*50px/s,
-    );
+  it("keeps Providers on the shared shell and page typography scale", () => {
+    expect(css).not.toMatch(/\.app-shell:has\(\.workspace-providers\)/);
+    expect(css).not.toMatch(/\.workspace-providers\s*\{/);
+    expect(css).not.toMatch(/\.providers-page > \.ui-page-header\s*\{/);
+    expect(css).not.toMatch(/\.providers-page > \.ui-page-header h1\s*\{/);
+    expect(css).not.toMatch(/\.providers-page > \.ui-page-header p\s*\{/);
     expect(css).toMatch(/\.pipeline-summary\s*\{[^}]*min-height:\s*158px/s);
     expect(css).toMatch(/\.pipeline-step\s*\{[^}]*background:\s*transparent/s);
     expect(css).toMatch(/\.pipeline-arrow\s*\{[^}]*width:\s*48px/s);

@@ -996,56 +996,6 @@ button:disabled {
   box-shadow: none;
 }
 
-@media (min-width: 1101px) {
-  .app-shell:has(.workspace-providers) {
-    grid-template-columns: 312px minmax(0, 1fr);
-  }
-
-  .app-shell:has(.workspace-providers) .sidebar {
-    gap: 43px;
-  }
-
-  .app-shell:has(.workspace-providers) .brand {
-    gap: 20px;
-    margin-left: 2px;
-  }
-
-  .app-shell:has(.workspace-providers) .brand-mark {
-    width: 48px;
-    height: 48px;
-  }
-
-  .app-shell:has(.workspace-providers) .nav-list {
-    gap: 13px;
-  }
-
-  .app-shell:has(.workspace-providers) .nav-item {
-    min-height: 50px;
-  }
-
-  .app-shell:has(.workspace-providers) .sidebar-status {
-    margin-bottom: 7px;
-    padding-block: 25px;
-  }
-}
-
-.workspace-providers {
-  padding: 58px 36px 28px 45px;
-}
-
-.providers-page > .ui-page-header {
-  margin-bottom: 39px;
-}
-
-.providers-page > .ui-page-header h1 {
-  font-size: 36px;
-}
-
-.providers-page > .ui-page-header p {
-  margin-top: 16px;
-  font-size: 16px;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
