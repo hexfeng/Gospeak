@@ -150,7 +150,7 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*110px/s);
     expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
-      /@media \(max-width: 1100px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
+      /@media \(max-width: 1300px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
     );
   });
 });

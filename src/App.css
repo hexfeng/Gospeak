@@ -2144,7 +2144,7 @@ pre {
   line-height: 1.45;
 }
 
-@media (max-width: 1100px) and (min-width: 981px) {
+@media (max-width: 1300px) and (min-width: 981px) {
   .provider-config-row {
     grid-template-columns: minmax(200px, 1.35fr) minmax(140px, 1fr) max-content;
   }
