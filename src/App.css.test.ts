@@ -80,7 +80,7 @@ describe("General dashboard CSS contract", () => {
       /\.activity-panel\s*\{[^}]*border-radius:\s*16px/s,
     );
     expect(css).toMatch(
-      /\.workspace-general\s*\{[^}]*overflow:\s*hidden/s,
+      /\.workspace-general\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s,
     );
     expect(css).toMatch(
       /\.app-shell \.general-status-card\s*\{[^}]*min-height:\s*clamp\(182px, 18\.3vh, 190px\)/s,

@@ -8,6 +8,7 @@
 - Responsive evidence:
   - `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-2x2-1050x1100.png`.
   - `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-mobile-500x1200.png`.
+- Default-window scroll evidence: `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-default-window-bottom-1180x760.png`.
 - Hover evidence: `C:\Users\PC\.codex\visualizations\2026\07\16\019f6c1b-25fb-7be3-8cd9-635f6373b814\gospeak-general-final-hover-1280x1024.png`.
 - Desktop viewport: `1280x1024`, device scale factor `1`.
 - State: General page, ASR Not Set, Rewrite Not Set, Active Profile Normal, usage totals at zero.
@@ -22,6 +23,7 @@
   - `1050px`: two-by-two metric grid.
   - `500px`: one metric column.
   - Root `scrollWidth === clientWidth` at all three widths.
+  - Tauri default `1180x760`: General has `46px` of vertical scroll; after scrolling, the final card is fully visible with its bottom at `760px`.
 - Console errors checked: no browser warnings, console errors, or page errors.
 
 ## Findings
@@ -48,6 +50,7 @@
   - Set the page gap to a maximum of `27px`.
   - Rebalanced the readiness-card grid to `0.94fr / 1fr`.
   - Fixed the card-height root cause with the more specific `.app-shell .general-status-card` selector.
+  - Restored General's vertical scroll path with `overflow-y: auto` while retaining `overflow-x: hidden`, preventing default-window clipping.
 - Final desktop geometry:
   - readiness card: `top 38px`, `height 225.27px`;
   - metrics: `top 290.27px`, `height 119.75px`;

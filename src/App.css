@@ -159,7 +159,8 @@
 
 .workspace-general {
   padding-top: 38px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: #ffffff;
 }
 
