@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, KeyRound, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import {
   REWRITE_PROVIDER_OPTIONS,
   STT_PROVIDER_OPTIONS,
@@ -28,13 +28,11 @@ type ProvidersPageProps = {
 };
 
 type DialogState =
-  | {
-      mode: "new";
-      kind: ProviderConfiguration["kind"];
-      providerId?: ProviderConfiguration["providerId"];
-    }
-  | { mode: "preview" | "edit"; configuration: ProviderConfiguration }
+  | { mode: "new"; kind: ProviderConfiguration["kind"] }
+  | { mode: "edit"; configuration: ProviderConfiguration }
   | null;
+
+const PAGE_SIZE = 5;
 
 const statusCopy: Record<ProviderConfigurationStatus, string> = {
   configured: "Configured",
@@ -45,18 +43,52 @@ const statusCopy: Record<ProviderConfigurationStatus, string> = {
 };
 
 export function ProvidersPage(props: ProvidersPageProps) {
-  const [kind, setKind] = useState<ProviderConfiguration["kind"]>(props.focus?.kind ?? "stt");
+  const initialFocusIndex = props.focus
+    ? props.state.configurations.findIndex((item) => item.id === props.focus?.configurationId)
+    : 0;
+  const [page, setPage] = useState(
+    Math.floor(Math.max(0, initialFocusIndex) / PAGE_SIZE) + 1,
+  );
   const [dialog, setDialog] = useState<DialogState>(null);
   const [pageError, setPageError] = useState("");
   const active = activeProviderPair(props.state);
-  const options = kind === "stt" ? STT_PROVIDER_OPTIONS : REWRITE_PROVIDER_OPTIONS;
+  const pageCount = Math.max(1, Math.ceil(props.state.configurations.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleConfigurations = props.state.configurations.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const focusConfigurationId = props.focus?.configurationId;
+  const focusRequestId = props.focus?.requestId;
 
   useEffect(() => {
-    if (!props.focus) return;
-    requestAnimationFrame(() => {
-      document.getElementById(`provider-configuration-${props.focus?.configurationId}`)?.focus();
+    if (!focusConfigurationId) return;
+    focusConfigurationRow(focusConfigurationId);
+  }, [focusConfigurationId, focusRequestId]);
+
+  function focusConfiguration(configurationId: string) {
+    setPage(pageForConfiguration(props.state.configurations, configurationId));
+    focusConfigurationRow(configurationId);
+  }
+
+  function activate(configurationId: string) {
+    setPageError("");
+    void props.onActivate(configurationId).catch(() => {
+      setPageError(
+        "Could not activate this configuration. The previous active configuration was kept.",
+      );
     });
-  }, [props.focus]);
+  }
+
+  function remove(configuration: ProviderConfiguration) {
+    if (!window.confirm(`Delete ${configuration.name}?`)) return;
+    setPageError("");
+    void props.onDelete(configuration).catch(() => {
+      setPageError(
+        "Could not delete this configuration. It remains available to retry.",
+      );
+    });
+  }
 
   return (
     <section className="module-panel providers-page" aria-labelledby="providers-title">
@@ -65,121 +97,92 @@ export function ProvidersPage(props: ProvidersPageProps) {
           <h1 id="providers-title">Providers</h1>
           <p>Manage named ASR and Rewrite configurations. Availability is evaluated locally.</p>
         </div>
-        <button className="primary-action" onClick={() => setDialog({ mode: "new", kind })} type="button">
-          <Plus size={16} /> Add configuration
-        </button>
       </header>
 
       <section className="pipeline-summary" aria-label="Current dictation pipeline">
-        <PipelineStep label="ASR" configuration={active.stt} presence={props.keyPresence} onSelect={() => {
-          setKind("stt");
-          requestAnimationFrame(() => document.getElementById(`provider-configuration-${active.stt.id}`)?.focus());
-        }} />
+        <PipelineStep
+          configuration={active.stt}
+          label="ASR"
+          onSelect={() => focusConfiguration(active.stt.id)}
+          presence={props.keyPresence}
+        />
         <ArrowRight aria-hidden="true" size={20} />
-        <PipelineStep label="Rewrite" configuration={active.rewrite} presence={props.keyPresence} onSelect={() => {
-          setKind("rewrite");
-          requestAnimationFrame(() => document.getElementById(`provider-configuration-${active.rewrite.id}`)?.focus());
-        }} />
+        <PipelineStep
+          configuration={active.rewrite}
+          label="Rewrite"
+          onSelect={() => focusConfiguration(active.rewrite.id)}
+          presence={props.keyPresence}
+        />
       </section>
-
-      <div className="provider-toolbar">
-        <div className="segmented-control" aria-label="Provider type" role="tablist">
-          <button aria-selected={kind === "stt"} onClick={() => setKind("stt")} role="tab" type="button">ASR</button>
-          <button aria-selected={kind === "rewrite"} onClick={() => setKind("rewrite")} role="tab" type="button">Rewrite</button>
-        </div>
-        <button onClick={() => void props.onRefresh()} type="button">
-          <RefreshCw size={15} /> Refresh local status
-        </button>
-      </div>
 
       {pageError ? <p className="app-message" role="alert">{pageError}</p> : null}
 
-      <div className="provider-groups">
-        {options.map((option) => {
-          const configurations = props.state.configurations.filter(
-            (item) => item.kind === kind && item.providerId === option.id,
-          );
-          return (
-            <section className="provider-group" key={option.id}>
-              <header>
-                <div>
-                  <h2>{option.label}</h2>
-                  <p>{configurations.length} saved configuration{configurations.length === 1 ? "" : "s"}</p>
+      <section className="provider-configurations" aria-labelledby="provider-configurations-title">
+        <header>
+          <div>
+            <h2 id="provider-configurations-title">Configurations</h2>
+            <p>{props.state.configurations.length} saved</p>
+          </div>
+          <button onClick={() => setDialog({ mode: "new", kind: "stt" })} type="button">
+            <Plus size={14} /> Add configuration
+          </button>
+        </header>
+
+        <div className="provider-config-list">
+          {visibleConfigurations.map((configuration) => {
+            const status = configurationStatus(configuration, props.keyPresence);
+            const isActive =
+              configuration.id === props.state.activeAsrConfigId ||
+              configuration.id === props.state.activeRewriteConfigId;
+            return (
+              <article
+                className="provider-config-row"
+                data-testid="provider-configuration-row"
+                id={`provider-configuration-${configuration.id}`}
+                key={configuration.id}
+                tabIndex={-1}
+              >
+                <div className="provider-config-identity">
+                  <strong>{configuration.name}</strong>
+                  <span className="provider-kind-label">
+                    {configuration.kind === "stt" ? "ASR" : "Rewrite"}
+                  </span>
+                  <small>{providerLabel(configuration.providerId)}</small>
+                  {configuration.baseUrl ? <small>{shortEndpoint(configuration.baseUrl)}</small> : null}
                 </div>
-                <button
-                  onClick={() => setDialog({ mode: "new", kind, providerId: option.id })}
-                  type="button"
-                >
-                  <Plus size={14} /> Add
-                </button>
-              </header>
-              {configurations.length ? (
-                <div className="provider-config-list">
-                  {configurations.map((configuration) => {
-                    const status = configurationStatus(configuration, props.keyPresence);
-                    const isActive =
-                      configuration.id === props.state.activeAsrConfigId ||
-                      configuration.id === props.state.activeRewriteConfigId;
-                    return (
-                      <article className="provider-config-card" id={`provider-configuration-${configuration.id}`} key={configuration.id} tabIndex={-1}>
-                        <div>
-                          <strong>{configuration.name}</strong>
-                          <span>{configuration.model}</span>
-                          {configuration.baseUrl ? <span>{configuration.baseUrl}</span> : null}
-                          <span>Updated {formatDate(configuration.updatedAt)}</span>
-                        </div>
-                        <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
-                        <div className="provider-config-actions">
-                          {isActive ? (
-                            <span className="active-config-label">Active</span>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setPageError("");
-                                void props.onActivate(configuration.id).catch(() => {
-                                  setPageError("Could not activate this configuration. The previous active configuration was kept.");
-                                });
-                              }}
-                              type="button"
-                            >
-                              Use configuration
-                            </button>
-                          )}
-                          <button onClick={() => setDialog({ mode: "preview", configuration })} type="button">Preview</button>
-                          <button onClick={() => setDialog({ mode: "edit", configuration })} type="button">Edit</button>
-                          <button
-                            disabled={isActive}
-                            onClick={() => {
-                              if (window.confirm(`Delete ${configuration.name}?`)) {
-                                setPageError("");
-                                void props.onDelete(configuration).catch(() => {
-                                  setPageError("Could not delete this configuration. It remains available to retry.");
-                                });
-                              }
-                            }}
-                            type="button"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
+                <span className="provider-config-model">{configuration.model}</span>
+                <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
+                <small>Updated {formatDate(configuration.updatedAt)}</small>
+                <div className="provider-config-actions">
+                  {isActive ? (
+                    <span className="active-config-label">Active</span>
+                  ) : (
+                    <button aria-label="Use configuration" onClick={() => activate(configuration.id)} type="button">
+                      Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
+                    </button>
+                  )}
+                  <button onClick={() => setDialog({ mode: "edit", configuration })} type="button">Edit</button>
+                  <button disabled={isActive} onClick={() => remove(configuration)} type="button">Delete</button>
                 </div>
-              ) : (
-                <p className="empty-note">No saved configurations for this Provider.</p>
-              )}
-            </section>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+
+        {pageCount > 1 ? (
+          <footer className="provider-pagination">
+            <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">Previous</button>
+            <span>Page {currentPage} of {pageCount}</span>
+            <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">Next</button>
+          </footer>
+        ) : null}
+      </section>
 
       {dialog ? (
         <ProviderDialog
           key={dialog.mode === "new" ? `${dialog.mode}-${dialog.kind}` : `${dialog.mode}-${dialog.configuration.id}`}
           keyPresence={props.keyPresence}
           onClose={() => setDialog(null)}
-          onEdit={(configuration) => setDialog({ mode: "edit", configuration })}
           onRemoveKey={props.onRemoveKey}
           onSave={props.onSave}
           state={dialog}
@@ -215,20 +218,18 @@ function ProviderDialog(props: {
   state: Exclude<DialogState, null>;
   keyPresence: ConfigurationKeyPresence;
   onClose: () => void;
-  onEdit: (configuration: ProviderConfiguration) => void;
   onSave: ProvidersPageProps["onSave"];
   onRemoveKey: ProvidersPageProps["onRemoveKey"];
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const original = props.state.mode === "new" ? undefined : props.state.configuration;
-  const readOnly = props.state.mode === "preview";
-  const kind = props.state.mode === "new" ? props.state.kind : props.state.configuration.kind;
+  const original = props.state.mode === "edit" ? props.state.configuration : undefined;
+  const initialKind = props.state.mode === "edit"
+    ? props.state.configuration.kind
+    : props.state.kind;
+  const [kind, setKind] = useState<ProviderConfiguration["kind"]>(initialKind);
   const providerOptions = kind === "stt" ? STT_PROVIDER_OPTIONS : REWRITE_PROVIDER_OPTIONS;
-  const initialProvider =
-    original?.providerId ??
-    (props.state.mode === "new" ? props.state.providerId : undefined) ??
-    providerOptions[0].id;
-  const [providerId, setProviderId] = useState(initialProvider);
+  const initialProvider = original?.providerId ?? providerOptions[0].id;
+  const [providerId, setProviderId] = useState<ProviderConfiguration["providerId"]>(initialProvider);
   const selectedOption = providerOptions.find((option) => option.id === providerId)!;
   const [name, setName] = useState(original?.name ?? "");
   const [model, setModel] = useState(original?.model ?? selectedOption.models[0]);
@@ -246,15 +247,21 @@ function ProviderDialog(props: {
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
-  const title = props.state.mode === "new"
-    ? `Add ${kind === "stt" ? "ASR" : "Rewrite"} configuration`
-    : props.state.mode === "edit"
-      ? "Edit Provider configuration"
-      : "Provider configuration";
+  const title = original
+    ? "Edit Provider configuration"
+    : `Add ${kind === "stt" ? "ASR" : "Rewrite"} configuration`;
+
+  function changeKind(nextKind: ProviderConfiguration["kind"]) {
+    const nextOptions = nextKind === "stt" ? STT_PROVIDER_OPTIONS : REWRITE_PROVIDER_OPTIONS;
+    const nextProvider = nextOptions[0];
+    setKind(nextKind);
+    setProviderId(nextProvider.id);
+    setModel(nextProvider.models[0]);
+    setBaseUrl(optionDefaultBaseUrl(nextProvider));
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (readOnly) return;
     if (!name.trim()) {
       setError("Configuration name is required.");
       return;
@@ -288,13 +295,24 @@ function ProviderDialog(props: {
       <form onSubmit={submit}>
         <h2>{title}</h2>
         <label>
+          Type
+          <select
+            disabled={Boolean(original)}
+            onChange={(event) => changeKind(event.target.value as ProviderConfiguration["kind"])}
+            value={kind}
+          >
+            <option value="stt">ASR</option>
+            <option value="rewrite">Rewrite</option>
+          </select>
+        </label>
+        <label>
           Configuration name
-          <input disabled={readOnly} onChange={(event) => setName(event.target.value)} value={name} />
+          <input onChange={(event) => setName(event.target.value)} value={name} />
         </label>
         <label>
           Provider
           <select
-            disabled={readOnly || Boolean(original)}
+            disabled={Boolean(original)}
             onChange={(event) => {
               const nextProvider = event.target.value;
               const nextOption = providerOptions.find((option) => option.id === nextProvider)!;
@@ -309,14 +327,14 @@ function ProviderDialog(props: {
         </label>
         <label>
           Model
-          <select disabled={readOnly} onChange={(event) => setModel(event.target.value)} value={model}>
+          <select onChange={(event) => setModel(event.target.value)} value={model}>
             {selectedOption.models.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         {providerId === "qwen-local" || providerId === "qwen-api" ? (
           <label>
             Base URL
-            <input disabled={readOnly} onChange={(event) => setBaseUrl(event.target.value)} value={baseUrl} />
+            <input onChange={(event) => setBaseUrl(event.target.value)} value={baseUrl} />
           </label>
         ) : null}
         {credentialProvider ? (
@@ -324,7 +342,6 @@ function ProviderDialog(props: {
             API key
             <input
               autoComplete="off"
-              disabled={readOnly}
               onChange={(event) => setApiKey(event.target.value)}
               placeholder={hasKey ? "Saved key · leave blank to keep" : "Enter API key"}
               type="password"
@@ -332,17 +349,10 @@ function ProviderDialog(props: {
             />
           </label>
         ) : null}
-        {readOnly ? (
-          <>
-            <p>Created {formatDate(original?.createdAt ?? "")} · Updated {formatDate(original?.updatedAt ?? "")}</p>
-            <p className="credential-note"><KeyRound size={14} /> {hasKey ? "Credential is available in the OS credential store." : "No credential is available."}</p>
-          </>
-        ) : null}
         {error ? <p role="alert">{error}</p> : null}
         <div className="button-row">
-          {readOnly && original ? <button onClick={() => props.onEdit(original)} type="button">Edit</button> : null}
-          {!readOnly ? <button disabled={saving} type="submit">Save configuration</button> : null}
-          {!readOnly && original && hasKey ? (
+          <button disabled={saving} type="submit">Save configuration</button>
+          {original && hasKey ? (
             <button
               onClick={() => {
                 if (window.confirm("Remove the saved credential from this configuration?")) {
@@ -359,11 +369,27 @@ function ProviderDialog(props: {
               Remove saved key
             </button>
           ) : null}
-          <button onClick={props.onClose} type="button">{readOnly ? "Close" : "Cancel"}</button>
+          <button onClick={props.onClose} type="button">Cancel</button>
         </div>
       </form>
     </dialog>
   );
+}
+
+function pageForConfiguration(
+  configurations: ProviderConfiguration[],
+  configurationId: string,
+) {
+  const index = configurations.findIndex((item) => item.id === configurationId);
+  return Math.floor(Math.max(0, index) / PAGE_SIZE) + 1;
+}
+
+function focusConfigurationRow(configurationId: string) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.getElementById(`provider-configuration-${configurationId}`)?.focus();
+    });
+  });
 }
 
 function credentialProviderFor(providerId: string): CredentialProviderId | null {
@@ -382,6 +408,14 @@ function optionDefaultBaseUrl(option: object) {
   return "defaultBaseUrl" in option && typeof option.defaultBaseUrl === "string"
     ? option.defaultBaseUrl
     : "";
+}
+
+function shortEndpoint(value: string) {
+  try {
+    return new URL(value).host;
+  } catch {
+    return value;
+  }
 }
 
 function formatDate(value: string) {
