@@ -133,11 +133,16 @@ describe("Secondary page CSS contract", () => {
   });
 
   it("keeps Provider rows aligned and action labels on one line", () => {
+    expect(css).toMatch(/\.workspace-providers\s*\{[^}]*padding:\s*58px 36px 28px 45px/s);
+    expect(css).toMatch(/\.pipeline-summary\s*\{[^}]*min-height:\s*158px/s);
+    expect(css).toMatch(/\.pipeline-arrow\s*\{[^}]*width:\s*48px/s);
+    expect(css).toMatch(/\.provider-icon-tile\s*\{[^}]*width:\s*54px/s);
+    expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*104px/s);
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(
-      /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.35fr\) minmax\(0, 1fr\)/s,
+      /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(250px, 1\.45fr\) minmax\(155px, 0\.9fr\)/s,
     );
-    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*gap:\s*10px/s);
+    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*110px/s);
     expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
       /@media \(max-width: 1100px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
