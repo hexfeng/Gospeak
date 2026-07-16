@@ -11,9 +11,15 @@ Live cloud calls require the corresponding user-supplied provider keys. The app 
 developed and tested without keys through mocked frontend behavior and Rust unit
 tests.
 
-## Screenshot
+## Screenshots
 
-![Gospeak Alpha home screen](artifacts/gospeak-home.png)
+### General
+
+![Gospeak General page](artifacts/general.png)
+
+### Providers
+
+![Gospeak Providers page](artifacts/providers.png)
 
 ## Product Documents
 
