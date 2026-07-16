@@ -885,6 +885,7 @@ button:disabled {
   }
 }
 
+.ui-page-header,
 .page-heading,
 .profile-split,
 .summary-grid,
@@ -894,6 +895,7 @@ button:disabled {
   display: grid;
 }
 
+.ui-page-header,
 .page-heading {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
@@ -901,12 +903,14 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.ui-page-header h1,
 .page-heading h1,
 .page-heading h2 {
   margin: 0;
   color: var(--text-strong);
 }
 
+.ui-page-header h1,
 .page-heading h1 {
   color: #0f172a;
   font-size: clamp(30px, 3.6vh, 36px);
@@ -919,11 +923,68 @@ button:disabled {
   font-size: 16px;
 }
 
+.ui-page-header p,
 .page-heading p {
   margin: clamp(8px, 1.2vh, 12px) 0 0;
   color: #667085;
   font-size: 14px;
   line-height: 1.45;
+}
+
+.ui-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e4e9f1;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 5%);
+}
+
+.ui-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ui-button-primary {
+  background: #111827;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgb(17 24 39 / 12%);
+}
+
+.ui-button-primary:hover:not(:disabled) {
+  background: #000000;
+}
+
+.ui-button-secondary {
+  border-color: #dfe5ee;
+  background: #ffffff;
+  color: #344054;
+}
+
+.ui-button-secondary:hover:not(:disabled) {
+  border-color: #d3dae5;
+  background: #f6f8fa;
+}
+
+.ui-button-danger {
+  border-color: #f2c8c5;
+  background: #fffafa;
+  color: #b42318;
+}
+
+.ui-button-danger:hover:not(:disabled) {
+  border-color: #e8aaa5;
+  background: #fff1f0;
 }
 
 .profiles-page,
