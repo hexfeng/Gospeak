@@ -64,13 +64,17 @@ describe("General dashboard CSS contract", () => {
 
   it("uses the approved responsive metric and setup-status layout", () => {
     expect(css).toMatch(
-      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+      /\.general-hero\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 1px minmax\(390px, 0\.94fr\)/s,
+    );
+    expect(css).toMatch(/\.general-hero-divider\s*\{[^}]*width:\s*1px/s);
+    expect(css).toMatch(
+      /\.general-readiness\s*\{[^}]*grid-template-columns:\s*96px minmax\(0, 1fr\)/s,
     );
     expect(css).toMatch(
-      /\.general-metric\s*\{[^}]*grid-template-columns:\s*42px minmax\(0, 1fr\)/s,
+      /\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[^}]*gap:\s*0;[^}]*border:\s*1px solid #e4e9f1/s,
     );
     expect(css).toMatch(
-      /\.general-hero\s*\{[^}]*grid-template-columns:\s*68px minmax\(0, 1fr\)/s,
+      /\.general-metric \+ \.general-metric\s*\{[^}]*border-left:\s*1px solid #edf0f5/s,
     );
     expect(css).toMatch(
       /\.activity-panel\s*\{[^}]*border-radius:\s*16px/s,
@@ -79,7 +83,7 @@ describe("General dashboard CSS contract", () => {
       /\.workspace-general\s*\{[^}]*overflow:\s*hidden/s,
     );
     expect(css).toMatch(
-      /\.general-status-card\s*\{[^}]*min-height:\s*clamp\(124px, 14\.5vh, 144px\)/s,
+      /\.general-status-card\s*\{[^}]*min-height:\s*clamp\(168px, 18vh, 190px\)/s,
     );
     expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*1px solid #e4e9f1/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
@@ -91,16 +95,13 @@ describe("General dashboard CSS contract", () => {
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.general-status-card/s,
     );
     expect(css).toMatch(
-      /@media \(max-width: 980px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
+      /@media \(max-width: 1100px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s,
     );
     expect(css).toMatch(
       /@media \(max-width: 560px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
     expect(css).toMatch(
-      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.activity-chart svg\s*\{[^}]*min-height:\s*132px/s,
-    );
-    expect(css).toMatch(
-      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.general-status-card\s*\{[^}]*min-height:\s*136px/s,
+      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.activity-chart svg\s*\{[^}]*min-height:\s*176px/s,
     );
   });
 
