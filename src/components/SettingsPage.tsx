@@ -1,5 +1,6 @@
 import { Download, Upload } from "lucide-react";
 import type { AppConfig } from "../domain/config";
+import { Button, Card, PageHeader } from "./ui";
 
 type SettingsPageProps = {
   config: AppConfig;
@@ -15,12 +16,11 @@ type SettingsPageProps = {
 export function SettingsPage(props: SettingsPageProps) {
   return (
     <section className="module-panel settings-page" aria-labelledby="settings-title">
-      <header className="page-heading">
-        <div>
-          <h1 id="settings-title">Settings</h1>
-          <p>Dictation behavior, privacy, data, and advanced options.</p>
-        </div>
-      </header>
+      <PageHeader
+        description="Dictation behavior, privacy, data, and advanced options."
+        title="Settings"
+        titleId="settings-title"
+      />
 
       <div className="settings-sections">
         <SettingsSection
@@ -71,8 +71,8 @@ export function SettingsPage(props: SettingsPageProps) {
             />
           </div>
           <div className="button-row">
-            <button onClick={props.onExport} type="button"><Download size={15} /> Export configuration</button>
-            <button onClick={props.onImport} type="button"><Upload size={15} /> Import configuration</button>
+            <Button onClick={props.onExport} type="button"><Download size={15} /> Export configuration</Button>
+            <Button onClick={props.onImport} type="button"><Upload size={15} /> Import configuration</Button>
           </div>
         </SettingsSection>
 
@@ -103,13 +103,13 @@ function SettingsSection({
   title: string;
 }) {
   return (
-    <section className="settings-section">
+    <Card className="settings-section">
       <header>
         <h2>{title}</h2>
         <p>{description}</p>
       </header>
       {children}
-    </section>
+    </Card>
   );
 }
 

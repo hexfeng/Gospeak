@@ -127,7 +127,8 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.dictionary-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.profiles-page,\s*\.providers-page,\s*\.settings-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.profile-split > aside\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
-    expect(css).toMatch(/\.settings-section\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
+    expect(css).toMatch(/\.ui-card\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
+    expect(css).toMatch(/\.settings-section\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
   });
 
@@ -135,5 +136,8 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*grid-template-columns:/s);
     expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
+    expect(css).toMatch(
+      /@media \(max-width: 1240px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
+    );
   });
 });

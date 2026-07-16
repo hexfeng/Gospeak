@@ -22,6 +22,9 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("heading", { name: "Dictation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Privacy & Data" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Advanced" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" }).closest("header")).toHaveClass("ui-page-header");
+    expect(screen.getByRole("heading", { name: "Dictation" }).closest("section")).toHaveClass("ui-card");
+    expect(screen.getByRole("button", { name: "Export configuration" })).toHaveClass("ui-button-secondary");
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("ASR provider")).not.toBeInTheDocument();
   });

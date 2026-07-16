@@ -5,6 +5,7 @@ import {
   type DictionaryTerm,
   type DictionaryTermType,
 } from "../domain/config";
+import { Button, Card, PageHeader } from "./ui";
 
 type DictionaryPageProps = {
   terms: DictionaryTerm[];
@@ -89,60 +90,62 @@ export function DictionaryPage(props: DictionaryPageProps) {
 
   return (
     <section className="module-panel dictionary-page" aria-labelledby="dictionary-title">
-      <header className="page-heading">
-        <div>
-          <h1 id="dictionary-title">Dictionary</h1>
-          <p>{props.terms.length} global terms · {enabledCount} enabled · types and tags organize this page only</p>
+      <PageHeader
+        action={(
+          <Button onClick={(event) => openDialog({ mode: "new" }, event.currentTarget)} type="button" variant="primary">
+            <Plus size={16} /> Add term
+          </Button>
+        )}
+        description={`${props.terms.length} global terms · ${enabledCount} enabled · types and tags organize this page only`}
+        title="Dictionary"
+        titleId="dictionary-title"
+      />
+
+      <Card aria-label="Dictionary entries" className="dictionary-card">
+        <div className="dictionary-toolbar">
+          <label className="dictionary-search">
+            <span className="sr-only">Search Dictionary</span>
+            <Search aria-hidden="true" size={16} />
+            <input
+              aria-label="Search Dictionary"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search spoken, written, aliases, or tags"
+              type="search"
+              value={query}
+            />
+          </label>
+          <select aria-label="Filter by type" onChange={(event) => {
+            setTypeFilter(event.target.value as DictionaryTermType | "all");
+            setPage(1);
+          }} value={typeFilter}>
+            <option value="all">All types</option>
+            {DICTIONARY_TERM_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
+          </select>
+          <select aria-label="Filter by tag" onChange={(event) => {
+            setTagFilter(event.target.value);
+            setPage(1);
+          }} value={tagFilter}>
+            <option value="all">All tags</option>
+            {tags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+          </select>
+          <select aria-label="Filter by status" onChange={(event) => {
+            setStatusFilter(event.target.value as typeof statusFilter);
+            setPage(1);
+          }} value={statusFilter}>
+            <option value="all">All statuses</option>
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+          {filtersActive ? <Button onClick={clearFilters} type="button">Clear filters</Button> : null}
         </div>
-        <button className="primary-action" onClick={(event) => openDialog({ mode: "new" }, event.currentTarget)} type="button">
-          <Plus size={16} /> Add term
-        </button>
-      </header>
 
-      <div className="dictionary-toolbar">
-        <label className="dictionary-search">
-          <span className="sr-only">Search Dictionary</span>
-          <Search aria-hidden="true" size={16} />
-          <input
-            aria-label="Search Dictionary"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search spoken, written, aliases, or tags"
-            type="search"
-            value={query}
-          />
-        </label>
-        <select aria-label="Filter by type" onChange={(event) => {
-          setTypeFilter(event.target.value as DictionaryTermType | "all");
-          setPage(1);
-        }} value={typeFilter}>
-          <option value="all">All types</option>
-          {DICTIONARY_TERM_TYPES.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}
-        </select>
-        <select aria-label="Filter by tag" onChange={(event) => {
-          setTagFilter(event.target.value);
-          setPage(1);
-        }} value={tagFilter}>
-          <option value="all">All tags</option>
-          {tags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-        </select>
-        <select aria-label="Filter by status" onChange={(event) => {
-          setStatusFilter(event.target.value as typeof statusFilter);
-          setPage(1);
-        }} value={statusFilter}>
-          <option value="all">All statuses</option>
-          <option value="enabled">Enabled</option>
-          <option value="disabled">Disabled</option>
-        </select>
-        {filtersActive ? <button onClick={clearFilters} type="button">Clear filters</button> : null}
-      </div>
+        {toggleError ? <p className="app-message" role="alert">{toggleError}</p> : null}
 
-      {toggleError ? <p className="app-message" role="alert">{toggleError}</p> : null}
-
-      {pageTerms.length ? (
-        <div className="dictionary-table-wrap">
+        {pageTerms.length ? (
+          <div className="dictionary-table-wrap">
           <table className="dictionary-table">
             <thead>
               <tr>
@@ -178,11 +181,11 @@ export function DictionaryPage(props: DictionaryPageProps) {
                     <details className="row-menu">
                       <summary aria-label={`More actions for ${term.written}`} role="button"><MoreHorizontal size={17} /></summary>
                       <div>
-                        <button onClick={(event) => openDialog({ mode: "edit", term }, event.currentTarget)} type="button">Edit</button>
-                        <button onClick={(event) => openDialog({ mode: "new", seed: term }, event.currentTarget)} type="button">Duplicate</button>
-                        <button onClick={() => {
+                        <Button onClick={(event) => openDialog({ mode: "edit", term }, event.currentTarget)} type="button">Edit</Button>
+                        <Button onClick={(event) => openDialog({ mode: "new", seed: term }, event.currentTarget)} type="button">Duplicate</Button>
+                        <Button onClick={() => {
                           if (window.confirm(`Delete ${term.written}?`)) props.onDeleteTerm(term);
-                        }} type="button">Delete</button>
+                        }} type="button" variant="danger">Delete</Button>
                       </div>
                     </details>
                   </td>
@@ -190,27 +193,28 @@ export function DictionaryPage(props: DictionaryPageProps) {
               ))}
             </tbody>
           </table>
-        </div>
-      ) : (
-        props.terms.length === 0 ? (
-          <p className="empty-note">No Dictionary terms yet. Add the first global term.<button onClick={(event) => openDialog({ mode: "new" }, event.currentTarget)} type="button">Add first term</button></p>
+          </div>
+        ) : (
+          props.terms.length === 0 ? (
+            <p className="empty-note">No Dictionary terms yet. Add the first global term. <Button onClick={(event) => openDialog({ mode: "new" }, event.currentTarget)} type="button">Add first term</Button></p>
         ) : (
           <p className="empty-note">
             {query.trim() ? `No Dictionary terms match "${query.trim()}".` : "No Dictionary terms match these filters."}
           </p>
-        )
-      )}
+          )
+        )}
 
-      <footer className="dictionary-pagination">
-        <span>{visible.length} result{visible.length === 1 ? "" : "s"} · 50 per page</span>
-        {pageCount > 1 ? (
-          <div>
-            <button disabled={currentPage === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
-            <span>Page {currentPage} of {pageCount}</span>
-            <button disabled={currentPage === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} type="button">Next</button>
-          </div>
-        ) : null}
-      </footer>
+        <footer className="dictionary-pagination">
+          <span>{visible.length} result{visible.length === 1 ? "" : "s"} · 50 per page</span>
+          {pageCount > 1 ? (
+            <div>
+              <Button disabled={currentPage === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</Button>
+              <span>Page {currentPage} of {pageCount}</span>
+              <Button disabled={currentPage === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} type="button">Next</Button>
+            </div>
+          ) : null}
+        </footer>
+      </Card>
 
       {dialogState ? (
         <DictionaryDialog
@@ -302,8 +306,8 @@ function DictionaryDialog(props: {
         <label className="checkbox-row"><input checked={draft.enabled} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} type="checkbox" /> Enabled</label>
         {error ? <p role="alert">{error}</p> : null}
         <div className="button-row">
-          <button disabled={isSaving} type="submit">Save term</button>
-          <button onClick={props.onClose} type="button">Cancel</button>
+          <Button disabled={isSaving} type="submit" variant="primary">Save term</Button>
+          <Button onClick={props.onClose} type="button">Cancel</Button>
         </div>
       </form>
     </dialog>

@@ -43,6 +43,8 @@ describe("DictionaryPage", () => {
     const user = userEvent.setup();
     renderDictionary();
 
+    expect(screen.getByRole("button", { name: "Add term" })).toHaveClass("ui-button-primary");
+    expect(screen.getByRole("region", { name: "Dictionary entries" })).toHaveClass("ui-card");
     expect(screen.getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Filter by type"), "brand-product");
     expect(screen.getByText("Gospeak")).toBeInTheDocument();
