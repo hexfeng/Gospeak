@@ -175,7 +175,7 @@ describe("Gospeak Alpha app shell", () => {
     await user.click(screen.getByRole("button", { name: "Save configuration" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const card = screen.getByText("Realtime test").closest("article")!;
-    await user.click(within(card).getByRole("button", { name: "Use configuration" }));
+    await user.click(within(card).getByRole("button", { name: "Use for ASR" }));
   }
 
   it("renders one module at a time from sidebar navigation", async () => {
