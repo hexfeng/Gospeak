@@ -1203,10 +1203,10 @@ button:disabled {
 
 .provider-config-row {
   display: grid;
-  grid-template-columns: minmax(250px, 1.45fr) minmax(155px, 0.9fr) max-content minmax(130px, auto) max-content;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.75fr) max-content max-content max-content;
   align-items: center;
   min-height: 110px;
-  gap: 16px;
+  gap: clamp(8px, 1vw, 16px);
   padding: 0;
   border-top: 1px solid #edf0f5;
 }
@@ -1249,6 +1249,7 @@ button:disabled {
 }
 
 .provider-config-title strong {
+  min-width: 0;
   color: #0f172a;
   font-size: 16px;
   line-height: 1.2;
@@ -1264,6 +1265,14 @@ button:disabled {
 
 .provider-config-model {
   min-width: 0;
+}
+
+.provider-config-title strong,
+.provider-config-model,
+.provider-config-row > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-kind-label {
@@ -2179,16 +2188,32 @@ pre {
 }
 
 @media (max-width: 1300px) and (min-width: 981px) {
-  .provider-config-row {
-    grid-template-columns: minmax(200px, 1.35fr) minmax(140px, 1fr) max-content;
+  .provider-configurations {
+    padding: 0 20px;
   }
 
-  .provider-config-row > small {
-    grid-column: 1;
+  .provider-icon-tile {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+  }
+
+  .provider-icon-tile img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .provider-config-identity {
+    gap: 10px;
   }
 
   .provider-config-actions {
-    grid-column: 2 / -1;
+    gap: 6px;
+  }
+
+  .provider-config-actions .ui-button {
+    min-height: 42px;
+    padding: 0 10px;
   }
 }
 

@@ -148,12 +148,15 @@ describe("Secondary page CSS contract", () => {
     expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*104px/s);
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(
-      /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(250px, 1\.45fr\) minmax\(155px, 0\.9fr\)/s,
+      /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.35fr\) minmax\(0, 0\.75fr\) max-content max-content max-content/s,
     );
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*110px/s);
-    expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
-      /@media \(max-width: 1300px\) and \(min-width: 981px\)[\s\S]*\.provider-config-actions\s*\{[^}]*grid-column:\s*2 \/ -1/s,
+      /\.provider-config-title strong,\s*\.provider-config-model,\s*\.provider-config-row > small\s*\{[^}]*text-overflow:\s*ellipsis/s,
+    );
+    expect(css).toMatch(/\.ui-button\s*\{[^}]*white-space:\s*nowrap/s);
+    expect(css).not.toMatch(
+      /@media \(max-width: 1300px\) and \(min-width: 981px\)[\s\S]*?\.provider-config-(?:row|actions)[^{]*\{[^}]*grid-column:/s,
     );
   });
 });
