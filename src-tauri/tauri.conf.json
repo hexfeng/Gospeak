@@ -16,6 +16,8 @@
         "title": "Gospeak",
         "width": 1180,
         "height": 760,
+        "minWidth": 1024,
+        "minHeight": 640,
         "resizable": true,
         "fullscreen": false
       },

@@ -158,10 +158,13 @@
 }
 
 .workspace-general {
-  padding-top: 38px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  padding-top: clamp(14px, 3.9vh, 38px);
   background: #ffffff;
+}
+
+.workspace-general,
+.workspace-providers {
+  overflow: hidden;
 }
 
 .topbar {
@@ -244,7 +247,8 @@ button:disabled {
   max-width: none;
 }
 
-.workspace-general .module-stage {
+.workspace-general .module-stage,
+.workspace-providers .module-stage {
   height: 100%;
 }
 
@@ -296,14 +300,15 @@ button:disabled {
 }
 
 .general-page {
+  height: 100%;
   min-height: 0;
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   display: grid;
-  grid-template-rows: auto auto auto auto;
-  gap: clamp(22px, 2.7vh, 27px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: clamp(10px, 1.7vh, 24px);
 }
 
 .general-header {
@@ -360,7 +365,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 0.94fr) 1px minmax(390px, 1fr);
   align-items: center;
-  min-height: clamp(204px, 22vh, 230px);
+  min-height: clamp(140px, 22vh, 230px);
   padding: 38px 42px;
   border: 1px solid #e4e9f1;
   border-radius: 16px;
@@ -448,7 +453,7 @@ button:disabled {
   align-items: center;
   gap: 16px;
   min-width: 0;
-  min-height: clamp(106px, 11.5vh, 120px);
+  min-height: clamp(60px, 10vh, 120px);
   padding: 22px 26px;
   border: 0;
   border-radius: 0;
@@ -520,7 +525,7 @@ button:disabled {
 }
 
 .activity-panel {
-  min-height: clamp(260px, 30vh, 314px);
+  min-height: clamp(170px, 28vh, 314px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   padding: 20px 26px 14px;
@@ -620,7 +625,7 @@ button:disabled {
 }
 
 .app-shell .general-status-card {
-  min-height: clamp(182px, 18.3vh, 190px);
+  min-height: clamp(116px, 18vh, 190px);
 }
 
 .general-status-icon {
@@ -768,7 +773,7 @@ button:disabled {
   }
 
   .workspace {
-    padding: 30px clamp(42px, 3.8vw, 56px) 28px;
+    padding: clamp(10px, 2vh, 24px) clamp(14px, 2.5vw, 40px);
   }
 
   .general-header h1 {
@@ -787,8 +792,8 @@ button:disabled {
 
   .general-hero {
     grid-template-columns: minmax(0, 0.94fr) 1px minmax(360px, 1fr);
-    min-height: 190px;
-    padding: 30px 36px;
+    min-height: clamp(140px, 22vh, 190px);
+    padding: clamp(18px, 3.2vh, 30px) clamp(24px, 3.4vw, 36px);
   }
 
   .general-hero-divider {
@@ -827,14 +832,14 @@ button:disabled {
 
   .general-metric {
     grid-template-columns: 44px minmax(0, 1fr);
-    gap: 13px;
-    min-height: 96px;
-    padding: 18px 20px;
+    gap: clamp(8px, 1.4vw, 13px);
+    min-height: clamp(50px, 8vh, 96px);
+    padding: clamp(4px, 1vh, 14px) clamp(10px, 1.5vw, 18px);
   }
 
   .general-metric-icon {
-    width: 44px;
-    height: 44px;
+    width: clamp(36px, 6vh, 44px);
+    height: clamp(36px, 6vh, 44px);
   }
 
   .general-metric-copy > span {
@@ -847,8 +852,8 @@ button:disabled {
   }
 
   .activity-panel {
-    min-height: 264px;
-    padding: 16px 22px 10px;
+    min-height: clamp(160px, 28vh, 264px);
+    padding: clamp(10px, 1.8vh, 16px) 22px 8px;
   }
 
   .activity-panel-header {
@@ -865,7 +870,7 @@ button:disabled {
   }
 
   .activity-chart svg {
-    min-height: 176px;
+    min-height: 0;
   }
 
   .activity-chart text {
@@ -881,8 +886,8 @@ button:disabled {
   }
 
   .app-shell .general-status-card {
-    min-height: 158px;
-    padding: 20px 20px 16px;
+    min-height: clamp(116px, 18vh, 158px);
+    padding: clamp(12px, 2vh, 20px) 20px clamp(10px, 1.7vh, 16px);
   }
 
   .general-status-icon {
@@ -1030,6 +1035,18 @@ button:disabled {
   box-shadow: none;
 }
 
+.providers-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.providers-page > .ui-page-header {
+  flex: 0 0 auto;
+  margin-bottom: clamp(10px, 1.8vh, 18px);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1048,8 +1065,8 @@ button:disabled {
   grid-template-columns: minmax(0, 46.3%) minmax(0, 53.7%);
   align-items: center;
   gap: 0;
-  min-height: 158px;
-  margin-bottom: 41px;
+  min-height: clamp(90px, 15vh, 158px);
+  margin-bottom: clamp(12px, 2.5vh, 32px);
   padding: 0;
   border: 1px solid #e4e9f1;
   border-radius: 16px;
@@ -1064,7 +1081,7 @@ button:disabled {
   gap: 5px 12px;
   min-width: 0;
   height: 100%;
-  padding: 34px 26px;
+  padding: clamp(16px, 3vh, 34px) 26px;
 }
 
 .pipeline-summary > .pipeline-step:last-child {
@@ -1135,6 +1152,7 @@ button:disabled {
 }
 
 .provider-configurations {
+  min-height: 0;
   display: grid;
   gap: 0;
   padding: 0 26px;
@@ -1148,7 +1166,7 @@ button:disabled {
 }
 
 .provider-configurations > header {
-  min-height: 104px;
+  min-height: clamp(56px, 9.5vh, 104px);
   border-bottom: 1px solid #edf0f5;
 }
 
@@ -1205,7 +1223,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.75fr) max-content max-content max-content;
   align-items: center;
-  min-height: 110px;
+  min-height: clamp(60px, 9.2vh, 92px);
   gap: clamp(8px, 1vw, 16px);
   padding: 0;
   border-top: 1px solid #edf0f5;
@@ -1238,7 +1256,7 @@ button:disabled {
 .provider-config-copy {
   display: grid;
   min-width: 0;
-  gap: 7px;
+  gap: 4px;
 }
 
 .provider-config-title {
@@ -1263,8 +1281,21 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.provider-config-identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .provider-config-model {
   min-width: 0;
+}
+
+.provider-config-model,
+.provider-config-row > small,
+.provider-config-row > .configuration-status,
+.provider-config-actions {
+  align-self: center;
 }
 
 .provider-config-title strong,
@@ -1276,6 +1307,7 @@ button:disabled {
 }
 
 .provider-kind-label {
+  flex: 0 0 auto;
   padding: 3px 8px;
   border-radius: 999px;
   background: #eef2f8;
@@ -1291,13 +1323,19 @@ button:disabled {
 }
 
 .provider-config-actions .ui-button {
-  min-height: 46px;
-  padding: 0 16px;
+  min-height: clamp(36px, 5.5vh, 42px);
+  padding: 0 12px;
   font-size: 14px;
 }
 
 .provider-pagination {
-  padding-top: 4px;
+  min-height: clamp(34px, 5.5vh, 48px);
+  padding: 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.provider-pagination .ui-button {
+  min-height: 34px;
 }
 
 .configuration-status,
@@ -2189,18 +2227,18 @@ pre {
 
 @media (max-width: 1300px) and (min-width: 981px) {
   .provider-configurations {
-    padding: 0 20px;
+    padding: 0 14px;
   }
 
   .provider-icon-tile {
-    width: 46px;
-    height: 46px;
-    flex-basis: 46px;
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
   }
 
   .provider-icon-tile img {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
   }
 
   .provider-config-identity {
@@ -2212,8 +2250,17 @@ pre {
   }
 
   .provider-config-actions .ui-button {
-    min-height: 42px;
-    padding: 0 10px;
+    min-height: clamp(36px, 5.5vh, 42px);
+    padding: 0 7px;
+    font-size: 12px;
+  }
+
+  .provider-config-identity small,
+  .provider-config-model,
+  .provider-config-row > small,
+  .provider-configurations .configuration-status,
+  .provider-configurations .active-config-label {
+    font-size: 12px;
   }
 }
 

@@ -4,8 +4,24 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(join(process.cwd(), "src", "App.css"), "utf8");
+const tauriConfig = JSON.parse(
+  readFileSync(join(process.cwd(), "src-tauri", "tauri.conf.json"), "utf8"),
+);
 
 describe("Gospeak responsive layout CSS", () => {
+  it("defines the smallest desktop viewport the fixed dashboard supports", () => {
+    const mainWindow = tauriConfig.app.windows.find(
+      (window: { label: string }) => window.label === "main",
+    );
+
+    expect(mainWindow).toMatchObject({
+      width: 1180,
+      height: 760,
+      minWidth: 1024,
+      minHeight: 640,
+    });
+  });
+
   it("allows form controls to shrink inside desktop installer windows", () => {
     expect(css).toMatch(/label\s*{[^}]*min-width:\s*0;/s);
     expect(css).toMatch(/select,\s*input,\s*textarea\s*{[^}]*min-width:\s*0;/s);
@@ -80,13 +96,16 @@ describe("General dashboard CSS contract", () => {
       /\.activity-panel\s*\{[^}]*border-radius:\s*16px/s,
     );
     expect(css).toMatch(
-      /\.workspace-general\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s,
+      /\.workspace-general,\s*\.workspace-providers\s*\{[^}]*overflow:\s*hidden;/s,
     );
     expect(css).toMatch(
-      /\.app-shell \.general-status-card\s*\{[^}]*min-height:\s*clamp\(182px, 18\.3vh, 190px\)/s,
+      /\.app-shell \.general-status-card\s*\{[^}]*min-height:\s*clamp\(116px, 18vh, 190px\)/s,
     );
-    expect(css).toMatch(/\.workspace-general\s*\{[^}]*padding-top:\s*38px/s);
-    expect(css).toMatch(/\.general-page\s*\{[^}]*gap:\s*clamp\(22px, 2\.7vh, 27px\)/s);
+    expect(css).toMatch(/\.workspace-general\s*\{[^}]*padding-top:\s*clamp\(/s);
+    expect(css).toMatch(/\.general-page\s*\{[^}]*height:\s*100%;/s);
+    expect(css).toMatch(
+      /\.general-page\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto/s,
+    );
     expect(css).toMatch(/\.general-status-card\s*\{[^}]*border:\s*1px solid #e4e9f1/s);
     expect(css).toMatch(/\.general-status-card\.is-ready\s*\{[^}]*border-color:/s);
     expect(css).toMatch(/\.general-status-card\.is-not-ready\s*\{[^}]*border-color:/s);
@@ -103,7 +122,7 @@ describe("General dashboard CSS contract", () => {
       /@media \(max-width: 560px\)[\s\S]*\.general-metrics\s*\{[^}]*grid-template-columns:\s*1fr/s,
     );
     expect(css).toMatch(
-      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.activity-chart svg\s*\{[^}]*min-height:\s*176px/s,
+      /@media \(max-height: 980px\) and \(min-width: 981px\)[\s\S]*\.activity-chart svg\s*\{[^}]*min-height:\s*0/s,
     );
   });
 
@@ -137,20 +156,23 @@ describe("Secondary page CSS contract", () => {
 
   it("keeps Providers on the shared shell and page typography scale", () => {
     expect(css).not.toMatch(/\.app-shell:has\(\.workspace-providers\)/);
-    expect(css).not.toMatch(/\.workspace-providers\s*\{/);
-    expect(css).not.toMatch(/\.providers-page > \.ui-page-header\s*\{/);
-    expect(css).not.toMatch(/\.providers-page > \.ui-page-header h1\s*\{/);
-    expect(css).not.toMatch(/\.providers-page > \.ui-page-header p\s*\{/);
-    expect(css).toMatch(/\.pipeline-summary\s*\{[^}]*min-height:\s*158px/s);
+    expect(css).toMatch(/\.workspace-providers\s*\{[^}]*overflow:\s*hidden/s);
+    expect(css).toMatch(/\.providers-page\s*\{[^}]*height:\s*100%;/s);
+    expect(css).toMatch(/\.providers-page > \.ui-page-header\s*\{[^}]*margin-bottom:\s*clamp\(/s);
+    expect(css).toMatch(/\.pipeline-summary\s*\{[^}]*min-height:\s*clamp\(90px, 15vh, 158px\)/s);
     expect(css).toMatch(/\.pipeline-step\s*\{[^}]*background:\s*transparent/s);
     expect(css).toMatch(/\.pipeline-arrow\s*\{[^}]*width:\s*48px/s);
     expect(css).toMatch(/\.provider-icon-tile\s*\{[^}]*width:\s*54px/s);
-    expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*104px/s);
+    expect(css).toMatch(/\.provider-configurations > header\s*\{[^}]*min-height:\s*clamp\(56px, 9\.5vh, 104px\)/s);
     expect(css).toMatch(/\.provider-config-row\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(
       /\.provider-config-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.35fr\) minmax\(0, 0\.75fr\) max-content max-content max-content/s,
     );
-    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*110px/s);
+    expect(css).toMatch(/\.provider-config-row\s*\{[^}]*min-height:\s*clamp\(60px, 9\.2vh, 92px\)/s);
+    expect(css).toMatch(/\.provider-pagination \.ui-button\s*\{[^}]*min-height:\s*34px/s);
+    expect(css).toMatch(
+      /\.provider-config-model,\s*\.provider-config-row > small,\s*\.provider-config-row > \.configuration-status,\s*\.provider-config-actions\s*\{[^}]*align-self:\s*center/s,
+    );
     expect(css).toMatch(
       /\.provider-config-title strong,\s*\.provider-config-model,\s*\.provider-config-row > small\s*\{[^}]*text-overflow:\s*ellipsis/s,
     );

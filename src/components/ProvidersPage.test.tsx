@@ -28,6 +28,18 @@ function paginatedState() {
   return { ...base, configurations: [...base.configurations, ...extras] };
 }
 
+function allProvidersState() {
+  const base = defaultState();
+  const extras: ProviderConfiguration[] = [
+    { id: "qwen-local", name: "Local Qwen", kind: "stt", providerId: "qwen-local", model: "Qwen/Qwen3-ASR-0.6B", baseUrl: "http://127.0.0.1:8000/v1", createdAt: timestamp, updatedAt: timestamp },
+    { id: "qwen-api", name: "Qwen Cloud", kind: "stt", providerId: "qwen-api", model: "Qwen/Qwen3-ASR-1.7B", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", createdAt: timestamp, updatedAt: timestamp },
+    { id: "doubao", name: "Doubao", kind: "stt", providerId: "doubao", model: "bigmodel", createdAt: timestamp, updatedAt: timestamp },
+    { id: "openai-realtime", name: "OpenAI Realtime", kind: "stt", providerId: "openai-realtime", model: "gpt-realtime-2", createdAt: timestamp, updatedAt: timestamp },
+    { id: "deepseek", name: "DeepSeek", kind: "rewrite", providerId: "deepseek", model: "deepseek-v4-flash", createdAt: timestamp, updatedAt: timestamp },
+  ];
+  return { ...base, configurations: [...base.configurations, ...extras] };
+}
+
 function renderProviders(
   keyPresence: Record<string, boolean> = {},
   state: ProviderConfigurationState = defaultState(),
@@ -88,6 +100,23 @@ describe("ProvidersPage", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
     expect(rows()).toHaveLength(2);
     expect(rows()[1]).toHaveTextContent("DeepSeek");
+  });
+
+  it("renders a local logo for every supported provider", async () => {
+    const user = userEvent.setup();
+    renderProviders({}, allProvidersState());
+    const firstPageLabels = ["Groq Whisper", "OpenAI", "Qwen Local", "Qwen API", "Doubao ASR"];
+
+    expect(rows()).toHaveLength(5);
+    for (const label of firstPageLabels) {
+      expect(screen.getByRole("img", { name: label })).toBeInTheDocument();
+    }
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(rows()).toHaveLength(2);
+    expect(screen.getByRole("img", { name: "OpenAI Realtime" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "DeepSeek" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
   });
 
   it("clamps to the last valid page when configurations are removed", async () => {

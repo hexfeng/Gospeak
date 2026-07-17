@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Pencil, Plus, Trash2 } from "lucide-react";
+import deepseekIcon from "../assets/providers/deepseek.svg";
+import doubaoIcon from "../assets/providers/doubao.png";
 import groqIcon from "../assets/providers/groq.svg";
 import openaiIcon from "../assets/providers/openai.svg";
+import qwenIcon from "../assets/providers/qwen.svg";
 import {
   REWRITE_PROVIDER_OPTIONS,
   STT_PROVIDER_OPTIONS,
@@ -453,7 +456,10 @@ function providerLabel(providerId: string) {
 
 function providerIcon(providerId: string) {
   if (providerId === "groq") return groqIcon;
-  if (providerId === "openai") return openaiIcon;
+  if (providerId === "qwen-local" || providerId === "qwen-api") return qwenIcon;
+  if (providerId === "doubao") return doubaoIcon;
+  if (providerId === "openai" || providerId === "openai-realtime") return openaiIcon;
+  if (providerId === "deepseek") return deepseekIcon;
   return null;
 }
 
