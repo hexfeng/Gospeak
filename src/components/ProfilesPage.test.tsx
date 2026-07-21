@@ -420,7 +420,14 @@ describe("ProfilesPage", () => {
       />,
     );
 
-    await user.type(screen.getByRole("searchbox", { name: "Search App Rules" }), "meeting");
+    const search = screen.getByRole("searchbox", { name: "Search App Rules" });
+    await user.type(search, "meeting");
+
+    expect(screen.getByText("teams.exe")).toBeInTheDocument();
+    expect(screen.queryByText("outlook.exe")).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "TEAMS.EXE");
 
     expect(screen.getByText("teams.exe")).toBeInTheDocument();
     expect(screen.queryByText("outlook.exe")).not.toBeInTheDocument();
