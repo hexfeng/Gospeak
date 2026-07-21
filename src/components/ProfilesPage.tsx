@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Plus, SlidersHorizontal } from "lucide-react";
+import { Check, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import type {
   AppProfileRule,
   ForegroundAppContext,
@@ -73,11 +73,19 @@ export function ProfilesPage(props: ProfilesPageProps) {
   const [profileError, setProfileError] = useState("");
   const [profilePending, setProfilePending] = useState(false);
   const [ruleDraft, setRuleDraft] = useState(emptyRuleDraft);
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [ruleQuery, setRuleQuery] = useState("");
   const profileOpenerRef = useRef<HTMLElement | null>(null);
+  const ruleOpenerRef = useRef<HTMLElement | null>(null);
   const selected = props.profiles.find((profile) => profile.id === selectedId);
   const dirty = profileDialogOpen && draft !== null &&
     (selected === undefined || JSON.stringify(toDraft(selected)) !== JSON.stringify(draft));
   const rules = props.appRules.filter((rule) => rule.profileId === selectedId && !rule.deletedAt);
+  const normalizedRuleQuery = ruleQuery.trim().toLocaleLowerCase();
+  const visibleRules = rules.filter((rule) =>
+    !normalizedRuleQuery || rule.appId.toLocaleLowerCase().includes(normalizedRuleQuery) ||
+    (rule.windowTitlePattern ?? "").toLocaleLowerCase().includes(normalizedRuleQuery),
+  );
   const visibleProfiles = props.profiles.filter((profile) =>
     profile.name.toLocaleLowerCase().includes(profileQuery.toLocaleLowerCase()),
   );
@@ -86,6 +94,9 @@ export function ProfilesPage(props: ProfilesPageProps) {
   useEffect(() => {
     if (!profileDialogOpen) profileOpenerRef.current?.focus();
   }, [profileDialogOpen]);
+  useEffect(() => {
+    if (!ruleDialogOpen) ruleOpenerRef.current?.focus();
+  }, [ruleDialogOpen]);
 
   function openProfile(profile: PromptProfile, target: HTMLElement) {
     profileOpenerRef.current = target;
@@ -189,9 +200,17 @@ export function ProfilesPage(props: ProfilesPageProps) {
       deletedAt: null,
     });
     setRuleDraft(emptyRuleDraft);
+    setRuleDialogOpen(false);
   }
 
-  function editRule(rule: AppProfileRule) {
+  function openNewRule(target: HTMLElement) {
+    ruleOpenerRef.current = target;
+    setRuleDraft(emptyRuleDraft);
+    setRuleDialogOpen(true);
+  }
+
+  function openEditRule(rule: AppProfileRule, target: HTMLElement) {
+    ruleOpenerRef.current = target;
     setRuleDraft({
       id: rule.id,
       appId: rule.appId,
@@ -199,6 +218,12 @@ export function ProfilesPage(props: ProfilesPageProps) {
       priority: rule.priority,
       enabled: rule.enabled,
     });
+    setRuleDialogOpen(true);
+  }
+
+  function closeRuleDialog() {
+    setRuleDialogOpen(false);
+    setRuleDraft(emptyRuleDraft);
   }
 
   function toggleRule(rule: AppProfileRule) {
@@ -252,20 +277,47 @@ export function ProfilesPage(props: ProfilesPageProps) {
           original={selected}
         />
       ) : null}
-      <section aria-labelledby="app-rules-title">
-        <h2 id="app-rules-title">App Rules</h2>
+      <Card className="profile-rules-card" aria-labelledby="app-rules-title">
+        <header className="profile-rules-header">
+          <div><h2 id="app-rules-title">App Rules</h2><p>{selected ? `Automatic switching for ${selected.name}` : "Select a Profile"}</p></div>
+          <Button disabled={!selected} onClick={(event) => openNewRule(event.currentTarget)} type="button" variant="primary"><Plus size={16} /> Add Rule</Button>
+        </header>
         <section aria-label="Current app preview" className="app-context-preview"><span>{props.foregroundContext?.appId || "No app detected"}</span><span>{props.foregroundContext?.windowTitle || "No window title"}</span></section>
-        {selected ? <>
-          <div className="compact-form app-rule-form">
-            <label>App id<input onChange={(event) => setRuleDraft((current) => ({ ...current, appId: event.target.value }))} placeholder="chrome.exe" value={ruleDraft.appId} /></label>
-            <label>Title contains<input onChange={(event) => setRuleDraft((current) => ({ ...current, windowTitlePattern: event.target.value }))} placeholder="ChatGPT" value={ruleDraft.windowTitlePattern} /></label>
-            <label>Priority<input onChange={(event) => setRuleDraft((current) => ({ ...current, priority: Number(event.target.value) }))} type="number" value={ruleDraft.priority} /></label>
-            <Button disabled={!ruleDraft.appId.trim()} onClick={saveRule} type="button">Save app rule</Button>
-          </div>
-          <div className="rule-list">{rules.length > 0 ? rules.map((rule) => <article className="rule-item" key={rule.id}><strong>{rule.appId}</strong><span>{rule.windowTitlePattern || "Any title"}</span><small>Priority {rule.priority}</small><label><span>Enable rule for {rule.appId}</span><input aria-label={`Enable rule for ${rule.appId}`} checked={rule.enabled} onChange={() => toggleRule(rule)} type="checkbox" /></label><Button onClick={() => editRule(rule)} type="button">Edit rule for {rule.appId}</Button><Button onClick={() => window.confirm(`Delete rule for ${rule.appId}?`) && props.onDeleteRule(rule)} type="button">Delete rule for {rule.appId}</Button></article>) : <p className="empty-note">No App Rules for this Profile.</p>}</div>
-        </> : <p className="empty-note">Save the Profile before adding automatic switching rules</p>}
-      </section>
+        <label className="rule-search"><Search aria-hidden="true" size={16} /><span className="sr-only">Search App Rules</span><input aria-label="Search App Rules" onChange={(event) => setRuleQuery(event.target.value)} placeholder="Search rules..." type="search" value={ruleQuery} /></label>
+        {visibleRules.length ? (
+          <div className="profile-rule-table-wrap"><table className="profile-rule-table"><thead><tr><th>App</th><th>Window title</th><th>Priority</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>{visibleRules.map((rule) => <tr key={rule.id}><td><strong>{rule.appId}</strong></td><td>{rule.windowTitlePattern || "Any title"}</td><td>{rule.priority}</td><td><input aria-label={`Enable rule for ${rule.appId}`} checked={rule.enabled} onChange={() => toggleRule(rule)} type="checkbox" /></td><td><div className="profile-rule-actions"><Button aria-label={`Edit rule for ${rule.appId}`} onClick={(event) => openEditRule(rule, event.currentTarget)} type="button"><Pencil aria-hidden="true" size={15} /></Button><Button aria-label={`Delete rule for ${rule.appId}`} onClick={() => window.confirm(`Delete rule for ${rule.appId}?`) && props.onDeleteRule(rule)} type="button" variant="danger"><Trash2 aria-hidden="true" size={15} /></Button></div></td></tr>)}</tbody></table></div>
+        ) : <p className="empty-note">No App Rules for this Profile.</p>}
+      </Card>
+      {ruleDialogOpen ? <RuleDialog draft={ruleDraft} editing={Boolean(ruleDraft.id)} onCancel={closeRuleDialog} onChange={setRuleDraft} onSave={saveRule} /> : null}
     </section>
+  );
+}
+
+function RuleDialog(props: {
+  draft: RuleDraft;
+  editing: boolean;
+  onCancel: () => void;
+  onChange: (draft: RuleDraft) => void;
+  onSave: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+  const title = props.editing ? "Edit App Rule" : "Add App Rule";
+
+  return (
+    <dialog aria-label={title} onClose={props.onCancel} ref={dialogRef}>
+      <form onSubmit={(event) => { event.preventDefault(); props.onSave(); }}>
+        <h2>{title}</h2>
+        <label>App id<input autoFocus onChange={(event) => props.onChange({ ...props.draft, appId: event.target.value })} placeholder="chrome.exe" value={props.draft.appId} /></label>
+        <label>Title contains<input onChange={(event) => props.onChange({ ...props.draft, windowTitlePattern: event.target.value })} placeholder="ChatGPT" value={props.draft.windowTitlePattern} /></label>
+        <label>Priority<input onChange={(event) => props.onChange({ ...props.draft, priority: Number(event.target.value) })} type="number" value={props.draft.priority} /></label>
+        <label className="checkbox-line"><span>Enabled</span><input checked={props.draft.enabled} onChange={(event) => props.onChange({ ...props.draft, enabled: event.target.checked })} type="checkbox" /></label>
+        <div className="button-row"><Button disabled={!props.draft.appId.trim()} type="submit" variant="primary">Save App Rule</Button><Button onClick={props.onCancel} type="button">Cancel</Button></div>
+      </form>
+    </dialog>
   );
 }
 

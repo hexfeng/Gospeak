@@ -320,7 +320,7 @@ describe("ProfilesPage", () => {
     expect(onSaveRule).not.toHaveBeenCalled();
   });
 
-  it("saves App Rules for the selected Profile without a profile picker", async () => {
+  it("opens Add Rule in a dialog and saves it for the selected Profile", async () => {
     const user = userEvent.setup();
     const onSaveRule = vi.fn();
     render(
@@ -332,8 +332,10 @@ describe("ProfilesPage", () => {
     );
 
     expect(screen.queryByLabelText("Rule profile")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add Rule" }));
+    expect(screen.getByRole("dialog", { name: "Add App Rule" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("App id"), "teams.exe");
-    await user.click(screen.getByRole("button", { name: "Save app rule" }));
+    await user.click(screen.getByRole("button", { name: "Save App Rule" }));
 
     expect(onSaveRule).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -361,15 +363,13 @@ describe("ProfilesPage", () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
   });
 
-  it("requires saving a new Profile before adding App Rules", async () => {
+  it("disables Add Rule until a new Profile is saved", async () => {
     const user = userEvent.setup();
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
 
     await user.click(screen.getByRole("button", { name: "New Profile" }));
 
-    expect(
-      screen.getByText("Save the Profile before adding automatic switching rules"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Rule" })).toBeDisabled();
     expect(screen.queryByLabelText("App id")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Duplicate/i })).not.toBeInTheDocument();
   });
@@ -386,9 +386,10 @@ describe("ProfilesPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Edit rule for outlook.exe" }));
+    expect(screen.getByRole("dialog", { name: "Edit App Rule" })).toBeInTheDocument();
     expect(screen.getByLabelText("App id")).toHaveValue("outlook.exe");
     await user.type(screen.getByLabelText("Title contains"), "Inbox");
-    await user.click(screen.getByRole("button", { name: "Save app rule" }));
+    await user.click(screen.getByRole("button", { name: "Save App Rule" }));
 
     expect(onSaveRule).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -399,6 +400,30 @@ describe("ProfilesPage", () => {
         enabled: true,
       }),
     );
+  });
+
+  it("searches App Rules by app id and window title", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="email"
+        appRules={[
+          ...rules,
+          {
+            ...rules[0],
+            id: "rule_teams",
+            appId: "teams.exe",
+            windowTitlePattern: "Meeting",
+          },
+        ]}
+      />,
+    );
+
+    await user.type(screen.getByRole("searchbox", { name: "Search App Rules" }), "meeting");
+
+    expect(screen.getByText("teams.exe")).toBeInTheDocument();
+    expect(screen.queryByText("outlook.exe")).not.toBeInTheDocument();
   });
 
   it("toggles an existing App Rule through the same rule callback", async () => {

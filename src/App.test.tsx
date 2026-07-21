@@ -468,6 +468,7 @@ describe("Gospeak Alpha app shell", () => {
 
     expect(screen.getByRole("heading", { name: "App Rules" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Enable app-aware routing/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add Rule" }));
     expect(screen.getByLabelText(/App id/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Title contains/i)).toBeInTheDocument();
     expect(screen.getByText(/chrome\.exe/i)).toBeInTheDocument();
@@ -479,6 +480,7 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Add Rule" }));
     await user.type(screen.getByLabelText(/App id/i), "chrome.exe");
     await user.type(screen.getByLabelText(/Title contains/i), "ChatGPT");
     await user.clear(screen.getByLabelText(/Priority/i));
