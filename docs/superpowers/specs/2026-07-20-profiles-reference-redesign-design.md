@@ -132,4 +132,3 @@ reject save consistently with the current page.
   dialogs, inspect focus and Escape behavior, and check the browser console.
 - Record the final visual comparison in `design-qa.md`; fix P0-P2 differences
   before handoff.
-
