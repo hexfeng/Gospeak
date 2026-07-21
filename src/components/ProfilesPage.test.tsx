@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppProfileRule, PromptProfile } from "../domain/config";
@@ -69,6 +69,16 @@ const profileProps = {
   onSetActive: vi.fn(),
   onDirtyChange: vi.fn(),
 };
+
+function createDeferred() {
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = () => resolvePromise();
+    reject = (reason) => rejectPromise(reason);
+  });
+  return { promise, reject, resolve };
+}
 
 describe("ProfilesPage", () => {
   it("opens on the active Profile and shows only its App Rules", () => {
@@ -142,6 +152,60 @@ describe("ProfilesPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't duplicate Profile. Try again.");
     expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+  });
+
+  it("blocks Profile dialog actions while saving and allows retry after rejection", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSaveProfile = vi.fn()
+      .mockImplementationOnce(() => deferred.promise)
+      .mockResolvedValueOnce(undefined);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Email Profile" });
+    expect(screen.getByRole("button", { name: "Save Profile" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Set Active" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Duplicate Email" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete Email" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onSaveProfile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+
+    deferred.reject(new Error("Profile storage is unavailable"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save Profile. Try again.");
+    expect(screen.getByRole("button", { name: "Save Profile" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Email Profile" })).not.toBeInTheDocument());
+    expect(onSaveProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks Profile duplication until its persistence resolves", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSaveProfile = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Email Profile" });
+    expect(screen.getByRole("button", { name: "Duplicate Email" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onSaveProfile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+
+    deferred.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Email Profile" })).not.toBeInTheDocument());
   });
 
   it("confirms before cancelling a dirty Profile dialog", async () => {

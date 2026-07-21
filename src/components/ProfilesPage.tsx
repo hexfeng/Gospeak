@@ -71,6 +71,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
   const [profileQuery, setProfileQuery] = useState("");
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [profilePending, setProfilePending] = useState(false);
   const [ruleDraft, setRuleDraft] = useState(emptyRuleDraft);
   const profileOpenerRef = useRef<HTMLElement | null>(null);
   const selected = props.profiles.find((profile) => profile.id === selectedId);
@@ -92,6 +93,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
     setDraft(toDraft(profile));
     setRuleDraft(emptyRuleDraft);
     setProfileError("");
+    setProfilePending(false);
     setProfileDialogOpen(true);
   }
 
@@ -102,10 +104,12 @@ export function ProfilesPage(props: ProfilesPageProps) {
     setDraft(next);
     setRuleDraft(emptyRuleDraft);
     setProfileError("");
+    setProfilePending(false);
     setProfileDialogOpen(true);
   }
 
   function closeProfileDialog() {
+    if (profilePending) return;
     if (dirty && !window.confirm("Discard unsaved Profile changes?")) return;
     setProfileDialogOpen(false);
     setProfileError("");
@@ -113,7 +117,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
   }
 
   async function saveProfile() {
-    if (!draft || !draft.name.trim() || !draft.systemPrompt.trim()) return;
+    if (profilePending || !draft || !draft.name.trim() || !draft.systemPrompt.trim()) return;
     const profile = {
       ...draft,
       name: draft.name.trim(),
@@ -122,6 +126,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
       updatedAt: new Date().toISOString(),
     };
     setProfileError("");
+    setProfilePending(true);
     try {
       await props.onSaveProfile(profile);
       setSelectedId(profile.id);
@@ -129,11 +134,13 @@ export function ProfilesPage(props: ProfilesPageProps) {
       setProfileDialogOpen(false);
     } catch {
       setProfileError("Couldn't save Profile. Try again.");
+    } finally {
+      setProfilePending(false);
     }
   }
 
   async function duplicateProfile(profile: PromptProfile) {
-    if (dirty && !window.confirm("Discard unsaved Profile changes?")) return;
+    if (profilePending || (dirty && !window.confirm("Discard unsaved Profile changes?"))) return;
     const copy = {
       ...profile,
       id: `profile_${crypto.randomUUID()}`,
@@ -141,6 +148,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
       updatedAt: new Date().toISOString(),
     };
     setProfileError("");
+    setProfilePending(true);
     try {
       await props.onSaveProfile(copy);
       setSelectedId(copy.id);
@@ -149,6 +157,8 @@ export function ProfilesPage(props: ProfilesPageProps) {
       setProfileDialogOpen(false);
     } catch {
       setProfileError("Couldn't duplicate Profile. Try again.");
+    } finally {
+      setProfilePending(false);
     }
   }
 
@@ -232,6 +242,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
         <ProfileDialog
           draft={draft}
           error={profileError}
+          pending={profilePending}
           onCancel={closeProfileDialog}
           onChange={setDraft}
           onDelete={() => selected && deleteProfile(selected)}
@@ -261,6 +272,7 @@ export function ProfilesPage(props: ProfilesPageProps) {
 function ProfileDialog(props: {
   draft: ProfileDraft;
   error: string;
+  pending: boolean;
   original?: PromptProfile;
   onCancel: () => void;
   onChange: (draft: ProfileDraft) => void;
@@ -289,11 +301,11 @@ function ProfileDialog(props: {
         <details><summary>Advanced</summary><div className="compact-form"><label className="wide-field">Profile system prompt<textarea onChange={(event) => props.onChange({ ...props.draft, systemPrompt: event.target.value })} value={props.draft.systemPrompt} /></label><label className="wide-field">User prompt template<textarea onChange={(event) => props.onChange({ ...props.draft, userPromptTemplate: event.target.value })} value={props.draft.userPromptTemplate} /></label></div></details>
         {props.error ? <p role="alert">{props.error}</p> : null}
         <div className="button-row">
-          <Button disabled={!props.draft.name.trim() || !props.draft.systemPrompt.trim()} type="submit" variant="primary">Save Profile</Button>
-          {props.original ? <Button onClick={props.onSetActive} type="button">Set Active</Button> : null}
-          {props.original ? <Button onClick={() => void props.onDuplicate()} type="button">Duplicate {props.original.name}</Button> : null}
-          {props.original && props.original.id !== "normal" ? <Button onClick={props.onDelete} type="button" variant="danger">Delete {props.original.name}</Button> : null}
-          <Button onClick={props.onCancel} type="button">Cancel</Button>
+          <Button disabled={props.pending || !props.draft.name.trim() || !props.draft.systemPrompt.trim()} type="submit" variant="primary">Save Profile</Button>
+          {props.original ? <Button disabled={props.pending} onClick={props.onSetActive} type="button">Set Active</Button> : null}
+          {props.original ? <Button disabled={props.pending} onClick={() => void props.onDuplicate()} type="button">Duplicate {props.original.name}</Button> : null}
+          {props.original && props.original.id !== "normal" ? <Button disabled={props.pending} onClick={props.onDelete} type="button" variant="danger">Delete {props.original.name}</Button> : null}
+          <Button disabled={props.pending} onClick={props.onCancel} type="button">Cancel</Button>
         </div>
       </form>
     </dialog>
