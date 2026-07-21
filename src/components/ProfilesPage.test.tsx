@@ -375,7 +375,7 @@ describe("ProfilesPage", () => {
 
   it("returns to the active Profile after discarding a new Profile", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
 
     const newProfile = screen.getByRole("button", { name: "New Profile" });
@@ -386,6 +386,7 @@ describe("ProfilesPage", () => {
     expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Normal");
     expect(screen.getByRole("button", { name: "Add Rule" })).toBeEnabled();
     expect(newProfile).toHaveFocus();
+    confirm.mockRestore();
   });
 
   it("disables Add Rule until a new Profile is saved", async () => {
