@@ -504,12 +504,14 @@ describe("Gospeak Alpha app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Profiles" }));
+    await user.click(screen.getByRole("button", { name: "Normal" }));
     await user.clear(screen.getByLabelText("Profile name"));
     await user.type(screen.getByLabelText("Profile name"), "Changed Normal");
     await user.click(screen.getByRole("button", { name: "General" }));
 
     expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
-    expect(screen.getByRole("heading", { name: "Changed Normal" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit Normal Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile name")).toHaveValue("Changed Normal");
     confirm.mockRestore();
   });
 
@@ -1030,6 +1032,7 @@ describe("Gospeak Alpha app shell", () => {
       expect(screen.queryByText("Saved")).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Profiles" }));
+      fireEvent.click(screen.getByRole("button", { name: "Normal" }));
       expect(screen.getByRole("button", { name: "Save Profile" })).toBeEnabled();
     } finally {
       vi.useRealTimers();

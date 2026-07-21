@@ -74,21 +74,69 @@ describe("ProfilesPage", () => {
   it("opens on the active Profile and shows only its App Rules", () => {
     render(<ProfilesPage {...profileProps} activeProfileId="email" />);
 
-    expect(screen.getByRole("heading", { name: "Email" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Email");
     expect(screen.getByText("outlook.exe")).toBeInTheDocument();
     expect(screen.queryByText("code.exe")).not.toBeInTheDocument();
     expect(screen.queryByText("legacy.exe")).not.toBeInTheDocument();
   });
 
-  it("does not offer deletion for the Normal fallback", () => {
+  it("opens a Profile card in an edit dialog and keeps its App Rules selected", async () => {
+    const user = userEvent.setup();
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
 
-    expect(
-      screen.queryByRole("button", { name: "Delete Normal" }),
-    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Email" }));
+
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile name")).toHaveValue("Email");
+    expect(screen.getByText("outlook.exe")).toBeInTheDocument();
+    expect(screen.queryByText("code.exe")).not.toBeInTheDocument();
   });
 
-  it("keeps the normal id undeletable even when its editable mode changes", () => {
+  it("creates a Profile through the shared Profile dialog", async () => {
+    const user = userEvent.setup();
+    const onSaveProfile = vi.fn();
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "New Profile" }));
+    expect(screen.getByRole("dialog", { name: "New Profile" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Profile name"), "Meeting Notes");
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+
+    expect(onSaveProfile).toHaveBeenCalledWith(expect.objectContaining({
+      id: expect.stringMatching(/^profile_/),
+      name: "Meeting Notes",
+      mode: "normal",
+      enabled: true,
+    }));
+    expect(screen.queryByRole("dialog", { name: "New Profile" })).not.toBeInTheDocument();
+  });
+
+  it("confirms before cancelling a dirty Profile dialog", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("does not offer deletion for the Normal fallback", async () => {
+    const user = userEvent.setup();
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
+
+    await user.click(screen.getByRole("button", { name: "Normal" }));
+
+    expect(screen.queryByRole("button", { name: "Delete Normal" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the normal id undeletable even when its editable mode changes", async () => {
+    const user = userEvent.setup();
     render(
       <ProfilesPage
         {...profileProps}
@@ -99,12 +147,12 @@ describe("ProfilesPage", () => {
       />,
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Delete Normal" }),
-    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Normal" }));
+
+    expect(screen.queryByRole("button", { name: "Delete Normal" })).not.toBeInTheDocument();
   });
 
-  it("shows enabled, active, and App Rule count for every Profile row", () => {
+  it("shows enabled, active, and App Rule count for every Profile card", () => {
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
 
     const normal = screen.getByRole("button", { name: "Normal" });
@@ -115,31 +163,6 @@ describe("ProfilesPage", () => {
     expect(email).toHaveTextContent("Enabled");
     expect(email).toHaveTextContent("Inactive");
     expect(email).toHaveTextContent("1 App Rule");
-  });
-
-  it("saves a new Profile through the profile callback", async () => {
-    const user = userEvent.setup();
-    const onSaveProfile = vi.fn();
-    render(
-      <ProfilesPage
-        {...profileProps}
-        activeProfileId="normal"
-        onSaveProfile={onSaveProfile}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "New Profile" }));
-    await user.type(screen.getByLabelText("Profile name"), "Meeting Notes");
-    await user.click(screen.getByRole("button", { name: "Save Profile" }));
-
-    expect(onSaveProfile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: expect.stringMatching(/^profile_/),
-        name: "Meeting Notes",
-        mode: "normal",
-        enabled: true,
-      }),
-    );
   });
 
   it("duplicates a Profile without duplicating its App Rules", async () => {
@@ -155,6 +178,7 @@ describe("ProfilesPage", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Email" }));
     await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
 
     expect(onSaveProfile).toHaveBeenCalledWith(
@@ -164,20 +188,6 @@ describe("ProfilesPage", () => {
       }),
     );
     expect(onSaveRule).not.toHaveBeenCalled();
-  });
-
-  it("keeps the selected Profile when discarding edits is cancelled", async () => {
-    const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    render(<ProfilesPage {...profileProps} activeProfileId="email" />);
-
-    await user.clear(screen.getByLabelText("Profile name"));
-    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
-    await user.click(screen.getByRole("button", { name: "Normal" }));
-
-    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
-    expect(screen.getByRole("heading", { name: "Changed Email" })).toBeInTheDocument();
-    confirm.mockRestore();
   });
 
   it("saves App Rules for the selected Profile without a profile picker", async () => {
@@ -207,7 +217,6 @@ describe("ProfilesPage", () => {
 
   it("treats a new Profile as dirty before selecting another Profile", async () => {
     const user = userEvent.setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const onDirtyChange = vi.fn();
     render(
       <ProfilesPage
@@ -218,12 +227,8 @@ describe("ProfilesPage", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "New Profile" }));
-    await user.click(screen.getByRole("button", { name: "Email" }));
 
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
-    expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
-    expect(screen.getByRole("heading", { name: "New Profile" })).toBeInTheDocument();
-    confirm.mockRestore();
   });
 
   it("requires saving a new Profile before adding App Rules", async () => {
@@ -300,13 +305,15 @@ describe("ProfilesPage", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Email" }));
     await user.clear(screen.getByLabelText("Profile name"));
     await user.type(screen.getByLabelText("Profile name"), "Changed Email");
     await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
 
     expect(confirm).toHaveBeenCalledWith("Discard unsaved Profile changes?");
     expect(onSaveProfile).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "Changed Email" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile name")).toHaveValue("Changed Email");
     confirm.mockRestore();
   });
 });
