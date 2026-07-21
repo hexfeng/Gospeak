@@ -1025,7 +1025,7 @@ function App() {
               onDeleteProfile={(profile) => void deleteProfile(profile)}
               onDeleteRule={(rule) => void deleteAppRule(rule)}
               onDirtyChange={setProfileDirty}
-              onSaveProfile={(profile) => void saveProfile(profile)}
+              onSaveProfile={saveProfile}
               onSaveRule={(rule) => void saveAppRule(rule)}
               onSetActive={(profileId) => void changeActiveProfile(profileId)}
               profiles={profiles}

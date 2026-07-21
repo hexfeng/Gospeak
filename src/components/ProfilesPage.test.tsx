@@ -111,6 +111,39 @@ describe("ProfilesPage", () => {
     expect(screen.queryByRole("dialog", { name: "New Profile" })).not.toBeInTheDocument();
   });
 
+  it("keeps a rejected Profile save open with its dirty draft", async () => {
+    const user = userEvent.setup();
+    const failedSave = Promise.reject(new Error("Profile storage is unavailable"));
+    failedSave.catch(() => undefined);
+    const onSaveProfile = vi.fn(() => failedSave);
+    const onDirtyChange = vi.fn();
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onDirtyChange={onDirtyChange} onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save Profile. Try again.");
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile name")).toHaveValue("Changed Email");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("keeps a rejected Profile duplicate open", async () => {
+    const user = userEvent.setup();
+    const failedSave = Promise.reject(new Error("Profile storage is unavailable"));
+    failedSave.catch(() => undefined);
+    const onSaveProfile = vi.fn(() => failedSave);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Duplicate Email" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't duplicate Profile. Try again.");
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+  });
+
   it("confirms before cancelling a dirty Profile dialog", async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
