@@ -293,12 +293,12 @@ function ProfileDialog(props: {
       <form onSubmit={(event) => { event.preventDefault(); void props.onSave(); }}>
         <h2>{title}</h2>
         <div className="compact-form">
-          <label>Profile name<input autoFocus onChange={(event) => props.onChange({ ...props.draft, name: event.target.value })} value={props.draft.name} /></label>
-          <label>Profile mode<select onChange={(event) => props.onChange({ ...props.draft, mode: event.target.value as PromptProfile["mode"] })} value={props.draft.mode}><option value="normal">normal</option><option value="email">email</option><option value="prompt">prompt</option><option value="translate">translate</option></select></label>
-          <label>Target language<input onChange={(event) => props.onChange({ ...props.draft, targetLanguage: event.target.value })} value={props.draft.targetLanguage ?? ""} /></label>
-          <label className="checkbox-line"><span>Enabled</span><input aria-label="Enabled" checked={props.draft.enabled} onChange={(event) => props.onChange({ ...props.draft, enabled: event.target.checked })} type="checkbox" /></label>
+          <label>Profile name<input autoFocus disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, name: event.target.value })} value={props.draft.name} /></label>
+          <label>Profile mode<select disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, mode: event.target.value as PromptProfile["mode"] })} value={props.draft.mode}><option value="normal">normal</option><option value="email">email</option><option value="prompt">prompt</option><option value="translate">translate</option></select></label>
+          <label>Target language<input disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, targetLanguage: event.target.value })} value={props.draft.targetLanguage ?? ""} /></label>
+          <label className="checkbox-line"><span>Enabled</span><input aria-label="Enabled" checked={props.draft.enabled} disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, enabled: event.target.checked })} type="checkbox" /></label>
         </div>
-        <details><summary>Advanced</summary><div className="compact-form"><label className="wide-field">Profile system prompt<textarea onChange={(event) => props.onChange({ ...props.draft, systemPrompt: event.target.value })} value={props.draft.systemPrompt} /></label><label className="wide-field">User prompt template<textarea onChange={(event) => props.onChange({ ...props.draft, userPromptTemplate: event.target.value })} value={props.draft.userPromptTemplate} /></label></div></details>
+        <details><summary onClick={(event) => { if (props.pending) event.preventDefault(); }}>Advanced</summary><div className="compact-form"><label className="wide-field">Profile system prompt<textarea disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, systemPrompt: event.target.value })} value={props.draft.systemPrompt} /></label><label className="wide-field">User prompt template<textarea disabled={props.pending} onChange={(event) => props.onChange({ ...props.draft, userPromptTemplate: event.target.value })} value={props.draft.userPromptTemplate} /></label></div></details>
         {props.error ? <p role="alert">{props.error}</p> : null}
         <div className="button-row">
           <Button disabled={props.pending || !props.draft.name.trim() || !props.draft.systemPrompt.trim()} type="submit" variant="primary">Save Profile</Button>

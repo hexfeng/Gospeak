@@ -208,6 +208,39 @@ describe("ProfilesPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Email Profile" })).not.toBeInTheDocument());
   });
 
+  it("locks Profile fields while saving and restores them after rejection", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSaveProfile = vi.fn()
+      .mockImplementationOnce(() => deferred.promise)
+      .mockResolvedValueOnce(undefined);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSaveProfile={onSaveProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    const name = screen.getByLabelText("Profile name");
+    await user.clear(name);
+    await user.type(name, "Saved Email");
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+
+    expect(name).toBeDisabled();
+    expect(screen.getByLabelText("Profile mode")).toBeDisabled();
+    expect(screen.getByLabelText("Target language")).toBeDisabled();
+    expect(screen.getByLabelText("Enabled")).toBeDisabled();
+    expect(screen.getByLabelText("Profile system prompt")).toBeDisabled();
+    expect(screen.getByLabelText("User prompt template")).toBeDisabled();
+    await user.type(name, " Changed");
+    expect(name).toHaveValue("Saved Email");
+    expect(onSaveProfile).toHaveBeenCalledWith(expect.objectContaining({ name: "Saved Email" }));
+
+    deferred.reject(new Error("Profile storage is unavailable"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save Profile. Try again.");
+    expect(name).toBeEnabled();
+    await user.type(name, " Retry");
+    await user.click(screen.getByRole("button", { name: "Save Profile" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Email Profile" })).not.toBeInTheDocument());
+    expect(onSaveProfile).toHaveBeenLastCalledWith(expect.objectContaining({ name: "Saved Email Retry" }));
+  });
+
   it("confirms before cancelling a dirty Profile dialog", async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
