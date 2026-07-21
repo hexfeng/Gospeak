@@ -760,8 +760,8 @@ function App() {
   }
 
   async function changeActiveProfile(profileId: string) {
-    setConfig((current) => ({ ...current, activeProfileId: profileId }));
     await persistPreference("active_profile_id", profileId);
+    setConfig((current) => ({ ...current, activeProfileId: profileId }));
     setNotice({ text: `Active profile changed to ${profileId}.`, tone: "info" });
   }
 
@@ -1022,12 +1022,12 @@ function App() {
               activeProfileId={config.activeProfileId}
               appRules={appRules}
               foregroundContext={foregroundContext}
-              onDeleteProfile={(profile) => void deleteProfile(profile)}
-              onDeleteRule={(rule) => void deleteAppRule(rule)}
+              onDeleteProfile={deleteProfile}
+              onDeleteRule={deleteAppRule}
               onDirtyChange={setProfileDirty}
               onSaveProfile={saveProfile}
-              onSaveRule={(rule) => void saveAppRule(rule)}
-              onSetActive={(profileId) => void changeActiveProfile(profileId)}
+              onSaveRule={saveAppRule}
+              onSetActive={changeActiveProfile}
               profiles={profiles}
             />
           ) : null}

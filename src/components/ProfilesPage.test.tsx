@@ -96,8 +96,8 @@ describe("ProfilesPage", () => {
     expect(screen.getByText("outlook.exe").closest("td")).toHaveAttribute("data-label", "App");
     expect(screen.getByText("Any title").closest("td")).toHaveAttribute("data-label", "Window title");
     expect(screen.getByText("0").closest("td")).toHaveAttribute("data-label", "Priority");
-    expect(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe" }).closest("td")).toHaveAttribute("data-label", "Enabled");
-    expect(screen.getByRole("button", { name: "Edit rule for outlook.exe" }).closest("td")).toHaveAttribute("data-label", "Actions");
+    expect(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe, any title, priority 0" }).closest("td")).toHaveAttribute("data-label", "Enabled");
+    expect(screen.getByRole("button", { name: "Edit rule for outlook.exe, any title, priority 0" }).closest("td")).toHaveAttribute("data-label", "Actions");
   });
 
   it("opens a Profile card in an edit dialog and keeps its App Rules selected", async () => {
@@ -162,6 +162,88 @@ describe("ProfilesPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't duplicate Profile. Try again.");
     expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+  });
+
+  it("keeps a rejected Set Active operation open and retryable", async () => {
+    const user = userEvent.setup();
+    const failedActivation = Promise.reject(new Error("Profile storage is unavailable"));
+    failedActivation.catch(() => undefined);
+    const onSetActive = vi.fn(() => failedActivation);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSetActive={onSetActive} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.clear(screen.getByLabelText("Profile name"));
+    await user.type(screen.getByLabelText("Profile name"), "Changed Email");
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't set active Profile. Try again.");
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Profile name")).toHaveValue("Changed Email");
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Email");
+    expect(screen.getByRole("button", { name: "Set Active" })).toBeEnabled();
+  });
+
+  it("blocks duplicate Set Active submissions and cancellation while pending", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSetActive = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onSetActive={onSetActive} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Email Profile" });
+    expect(screen.getByRole("button", { name: "Set Active" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Set Active" }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onSetActive).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
+
+    deferred.resolve();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Set Active" })).toBeEnabled());
+  });
+
+  it("keeps a rejected Profile deletion open and retryable", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const failedDelete = Promise.reject(new Error("Profile storage is unavailable"));
+    failedDelete.catch(() => undefined);
+    const onDeleteProfile = vi.fn(() => failedDelete);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onDeleteProfile={onDeleteProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Delete Email" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete Profile. Try again.");
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Email");
+    expect(screen.getByRole("button", { name: "Delete Email" })).toBeEnabled();
+    confirm.mockRestore();
+  });
+
+  it("blocks duplicate Profile deletion and cancellation while pending", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const deferred = createDeferred();
+    const onDeleteProfile = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" onDeleteProfile={onDeleteProfile} />);
+
+    await user.click(screen.getByRole("button", { name: "Email" }));
+    await user.click(screen.getByRole("button", { name: "Delete Email" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Edit Email Profile" });
+    expect(screen.getByRole("button", { name: "Delete Email" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Delete Email" }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onDeleteProfile).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
+
+    deferred.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Email Profile" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Normal");
+    confirm.mockRestore();
   });
 
   it("blocks Profile dialog actions while saving and allows retry after rejection", async () => {
@@ -292,6 +374,28 @@ describe("ProfilesPage", () => {
     expect(screen.queryByRole("button", { name: "Delete Normal" })).not.toBeInTheDocument();
   });
 
+  it("falls back to the persisted Normal Profile after deleting a custom normal-mode Profile", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const customNormal = { ...profiles[1], id: "custom_normal", name: "Custom Normal", mode: "normal" as const };
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="normal"
+        profiles={[customNormal, ...profiles]}
+        onDeleteProfile={vi.fn(async () => undefined)}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Custom Normal" }));
+    await user.click(screen.getByRole("button", { name: "Delete Custom Normal" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Custom Normal Profile" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Normal");
+    expect(screen.getByRole("button", { name: "Normal" })).toHaveAttribute("aria-pressed", "true");
+    confirm.mockRestore();
+  });
+
   it("shows enabled, active, and App Rule count for every Profile card", () => {
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
 
@@ -357,6 +461,50 @@ describe("ProfilesPage", () => {
     );
   });
 
+  it("keeps a rejected App Rule addition open with its draft", async () => {
+    const user = userEvent.setup();
+    const failedSave = Promise.reject(new Error("Rule storage is unavailable"));
+    failedSave.catch(() => undefined);
+    const onSaveRule = vi.fn(() => failedSave);
+    render(<ProfilesPage {...profileProps} activeProfileId="email" onSaveRule={onSaveRule} />);
+
+    await user.click(screen.getByRole("button", { name: "Add Rule" }));
+    await user.type(screen.getByLabelText("App id"), "teams.exe");
+    await user.type(screen.getByLabelText("Title contains"), "Meeting");
+    await user.click(screen.getByRole("button", { name: "Save App Rule" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't save App Rule. Try again.");
+    expect(screen.getByRole("dialog", { name: "Add App Rule" })).toBeInTheDocument();
+    expect(screen.getByLabelText("App id")).toHaveValue("teams.exe");
+    expect(screen.getByLabelText("Title contains")).toHaveValue("Meeting");
+  });
+
+  it("locks an App Rule dialog and blocks duplicate saves and native cancellation while pending", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSaveRule = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="email" onSaveRule={onSaveRule} />);
+
+    await user.click(screen.getByRole("button", { name: "Add Rule" }));
+    await user.type(screen.getByLabelText("App id"), "teams.exe");
+    await user.click(screen.getByRole("button", { name: "Save App Rule" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Add App Rule" });
+    expect(screen.getByLabelText("App id")).toBeDisabled();
+    expect(screen.getByLabelText("Title contains")).toBeDisabled();
+    expect(screen.getByLabelText("Priority")).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Enabled" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save App Rule" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Save App Rule" }));
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onSaveRule).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
+
+    deferred.resolve();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add App Rule" })).not.toBeInTheDocument());
+  });
+
   it("treats a new Profile as dirty before selecting another Profile", async () => {
     const user = userEvent.setup();
     const onDirtyChange = vi.fn();
@@ -411,7 +559,7 @@ describe("ProfilesPage", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Edit rule for outlook.exe" }));
+    await user.click(screen.getByRole("button", { name: "Edit rule for outlook.exe, any title, priority 0" }));
     expect(screen.getByRole("dialog", { name: "Edit App Rule" })).toBeInTheDocument();
     expect(screen.getByLabelText("App id")).toHaveValue("outlook.exe");
     await user.type(screen.getByLabelText("Title contains"), "Inbox");
@@ -470,7 +618,7 @@ describe("ProfilesPage", () => {
       />,
     );
 
-    await user.click(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe" }));
+    await user.click(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe, any title, priority 0" }));
 
     expect(onSaveRule).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -479,6 +627,67 @@ describe("ProfilesPage", () => {
         deletedAt: null,
       }),
     );
+  });
+
+  it("keeps a failed inline App Rule toggle retryable and blocks duplicate mutation", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferred();
+    const onSaveRule = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="email" onSaveRule={onSaveRule} />);
+
+    const toggle = screen.getByRole("checkbox", { name: "Enable rule for outlook.exe, any title, priority 0" });
+    await user.click(toggle);
+
+    expect(toggle).toBeDisabled();
+    await user.click(toggle);
+    expect(onSaveRule).toHaveBeenCalledTimes(1);
+
+    deferred.reject(new Error("Rule storage is unavailable"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't update App Rule. Try again.");
+    expect(toggle).toBeEnabled();
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("outlook.exe")).toBeInTheDocument();
+  });
+
+  it("keeps a failed inline App Rule deletion retryable and blocks duplicate mutation", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const deferred = createDeferred();
+    const onDeleteRule = vi.fn(() => deferred.promise);
+    render(<ProfilesPage {...profileProps} activeProfileId="email" onDeleteRule={onDeleteRule} />);
+
+    const deleteRule = screen.getByRole("button", { name: "Delete rule for outlook.exe, any title, priority 0" });
+    await user.click(deleteRule);
+
+    expect(deleteRule).toBeDisabled();
+    await user.click(deleteRule);
+    expect(onDeleteRule).toHaveBeenCalledTimes(1);
+
+    deferred.reject(new Error("Rule storage is unavailable"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't delete App Rule. Try again.");
+    expect(deleteRule).toBeEnabled();
+    expect(screen.getByText("outlook.exe")).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("gives same-app App Rule actions distinct accessible names", () => {
+    render(
+      <ProfilesPage
+        {...profileProps}
+        activeProfileId="email"
+        appRules={[
+          rules[0],
+          { ...rules[0], id: "rule_outlook_inbox", windowTitlePattern: "Inbox", priority: 10 },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe, any title, priority 0" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe, title Inbox, priority 10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit rule for outlook.exe, any title, priority 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit rule for outlook.exe, title Inbox, priority 10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete rule for outlook.exe, any title, priority 0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete rule for outlook.exe, title Inbox, priority 10" })).toBeInTheDocument();
   });
 
   it("keeps dirty edits when duplicate confirmation is cancelled", async () => {
