@@ -39,10 +39,12 @@ describe("Settings CSS contract", () => {
     expect(css).toMatch(/\.nav-item\s*\{[^}]*min-height:\s*56px/s);
   });
 
-  it("collapses the Profile split layout below the existing breakpoint", () => {
-    expect(css).toMatch(
-      /@media \(max-width: 980px\)[\s\S]*\.profile-split\s*\{[^}]*grid-template-columns:\s*1fr/s,
-    );
+  it("uses the approved responsive Profile card and rule table layout", () => {
+    expect(css).toMatch(/\.profile-card-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s);
+    expect(css).toMatch(/\.profile-card\[aria-pressed="true"\]\s*\{[^}]*border-color:\s*#3b82f6/s);
+    expect(css).toMatch(/\.profile-rule-table\s*\{[^}]*width:\s*100%/s);
+    expect(css).toMatch(/@media \(max-width: 1100px\)[\s\S]*\.profile-card-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/s);
+    expect(css).toMatch(/@media \(max-width: 560px\)[\s\S]*\.profile-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
   });
 
   it("gives Settings tabs a bounded non-shifting layout", () => {
@@ -148,7 +150,6 @@ describe("Secondary page CSS contract", () => {
   it("aligns Profiles, Dictionary, and Settings with the General page surface style", () => {
     expect(css).toMatch(/\.dictionary-page\s*\{[^}]*background:\s*transparent;/s);
     expect(css).toMatch(/\.profiles-page,\s*\.providers-page,\s*\.settings-page\s*\{[^}]*background:\s*transparent;/s);
-    expect(css).toMatch(/\.profile-split > aside\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
     expect(css).toMatch(/\.ui-card\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
     expect(css).toMatch(/\.settings-section\s*\{[^}]*display:\s*grid/s);
     expect(css).toMatch(/\.dictionary-row,\s*\.activity-row\s*\{[^}]*border:\s*1px solid #e4e9f1;/s);
