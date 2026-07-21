@@ -96,7 +96,7 @@ describe("ProfilesPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Email" }));
 
-    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Edit Email Profile" })).toHaveClass("profile-dialog");
     expect(screen.getByLabelText("Profile name")).toHaveValue("Email");
     expect(screen.getByText("outlook.exe")).toBeInTheDocument();
     expect(screen.queryByText("code.exe")).not.toBeInTheDocument();
@@ -361,6 +361,21 @@ describe("ProfilesPage", () => {
     await user.click(screen.getByRole("button", { name: "New Profile" }));
 
     expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("returns to the active Profile after discarding a new Profile", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ProfilesPage {...profileProps} activeProfileId="normal" />);
+
+    const newProfile = screen.getByRole("button", { name: "New Profile" });
+    await user.click(newProfile);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog", { name: "New Profile" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Selected Profile")).toHaveTextContent("Normal");
+    expect(screen.getByRole("button", { name: "Add Rule" })).toBeEnabled();
+    expect(newProfile).toHaveFocus();
   });
 
   it("disables Add Rule until a new Profile is saved", async () => {

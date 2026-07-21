@@ -124,7 +124,13 @@ export function ProfilesPage(props: ProfilesPageProps) {
     if (dirty && !window.confirm("Discard unsaved Profile changes?")) return;
     setProfileDialogOpen(false);
     setProfileError("");
-    if (selected) setDraft(toDraft(selected));
+    const fallback = selected ??
+      props.profiles.find((profile) => profile.id === props.activeProfileId) ??
+      props.profiles[0];
+    if (fallback) {
+      setSelectedId(fallback.id);
+      setDraft(toDraft(fallback));
+    }
   }
 
   async function saveProfile() {
@@ -341,7 +347,7 @@ function ProfileDialog(props: {
   const title = props.original ? `Edit ${props.original.name} Profile` : "New Profile";
 
   return (
-    <dialog aria-label={title} onCancel={(event) => { event.preventDefault(); props.onCancel(); }} onClose={props.onCancel} ref={dialogRef}>
+    <dialog aria-label={title} className="profile-dialog" onCancel={(event) => { event.preventDefault(); props.onCancel(); }} onClose={props.onCancel} ref={dialogRef}>
       <form onSubmit={(event) => { event.preventDefault(); void props.onSave(); }}>
         <h2>{title}</h2>
         <div className="compact-form">

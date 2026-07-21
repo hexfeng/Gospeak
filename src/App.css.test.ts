@@ -47,6 +47,11 @@ describe("Settings CSS contract", () => {
     expect(css).toMatch(/@media \(max-width: 560px\)[\s\S]*\.profile-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
   });
 
+  it("keeps Profile dialog actions visible without horizontal overflow", () => {
+    expect(css).toMatch(/\.profile-dialog\s*\{[^}]*width:\s*min\(720px, calc\(100vw - 32px\)\)/s);
+    expect(css).toMatch(/\.profile-dialog \.button-row\s*\{[^}]*flex-wrap:\s*wrap/s);
+  });
+
   it("gives Settings tabs a bounded non-shifting layout", () => {
     expect(css).toMatch(
       /\.settings-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,

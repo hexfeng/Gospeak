@@ -132,3 +132,60 @@ final result: passed
 - Assets and icons: existing Gospeak brand asset and Lucide icon family are retained; no substitute artwork was introduced.
 
 final result: passed
+
+---
+
+# Profiles Design QA
+
+## Source
+
+- Reference: `C:/Users/PC/Downloads/ChatGPT Image Jul 20, 2026, 09_13_38 PM.png`
+- Reference size: `1402x1122`; the top `38px` native title bar was excluded from the normalized content comparison.
+- Implementation: `http://127.0.0.1:4173/`, Profiles page, Normal active and selected.
+- Browser: Codex Desktop in-app Browser was unavailable; Chrome was used through the documented fallback.
+
+## Browser Evidence
+
+- Requested desktop viewport: `1402x1084` content area.
+- Actual Chrome viewport: `1558x1247` CSS pixels at device pixel ratio `0.9`; the saved desktop capture was normalized to `1402x1084` only for the combined comparison image.
+- Desktop implementation: `.superpowers/sdd/qa-artifacts/profiles-desktop-1402x1084-pass1.png`
+- Browser-opened reference: `.superpowers/sdd/qa-artifacts/reference-browser-capture-1402x1122.png`
+- Full-view comparison: `.superpowers/sdd/qa-artifacts/comparison-desktop-pass1.png`
+- Focused Profiles comparison: `.superpowers/sdd/qa-artifacts/comparison-profiles-focus-pass1.png`
+- Focused App Rules comparison: `.superpowers/sdd/qa-artifacts/comparison-app-rules-focus-pass1.png`
+- Profile dialog before fix: `.superpowers/sdd/qa-artifacts/profile-dialog-email.png`
+- Profile dialog after fix: `.superpowers/sdd/qa-artifacts/profile-dialog-email-pass2.png`
+
+## Interaction Checks
+
+- Profile card and edit dialog opening: passed in the browser.
+- Clean Profile cancellation and focus return: passed in the browser; focus returned to the Email card.
+- Clean native Escape and focus return: passed in the browser; the dialog closed and focus returned to the Email card.
+- Profile filtering: passed in the browser; `email` showed only Email and clearing restored all four Profiles.
+- Dirty Profile cancellation, Save, Set Active, Duplicate, and Delete: automated coverage passed; the complete browser sequence was not finished because the Chrome control channel stalled after the dirty-Escape confirm.
+- App Rule create/edit/toggle/delete and filtering: automated coverage passed; browser interaction evidence is incomplete for the same blocker.
+- Console errors: not checked after the browser control channel stalled.
+
+## Visual Comparison
+
+- Fonts and typography: desktop headings, labels, weights, and hierarchy are directionally aligned; exact acceptance is blocked by the unmatched viewport.
+- Spacing and layout: Profile cards, selected summary, and App Rules preserve the intended hierarchy. A P2 Profile-dialog action overflow was found and fixed.
+- Colors and tokens: selected blue, neutral borders, white surfaces, green enabled switches, focus styling, and destructive red align with the source direction.
+- Image quality and assets: the existing Gospeak brand asset is used. Application-specific brand icons are intentionally omitted by scope; Lucide icons are used for controls.
+- Copy and content: Profiles and App Rules labels and actions are coherent. The implementation retains the scoped Profile search and current-app preview even though the source image does not show them.
+- P0: none observed in the available desktop evidence.
+- P1: none observed in the available desktop evidence.
+- P2: Profile dialog actions overflowed horizontally and clipped Cancel; resolved in pass 2.
+- P3: application-specific brand icons and drag reorder intentionally omitted by scope.
+
+## Comparison History
+
+1. Pass 1: the full-view and focused comparisons were created from the opened reference and browser-rendered Profiles page. The implementation had no persisted App Rules, so the table-content comparison remained state-mismatched. The Email Profile dialog visibly clipped Cancel behind a horizontal scrollbar (P2).
+2. Fix: added a Profiles-only `720px` dialog width and wrapping action row, without changing shared dialogs.
+3. Pass 2: `.superpowers/sdd/qa-artifacts/profile-dialog-email-pass2.png` shows every Profile action and Cancel visible with no horizontal scrollbar.
+
+## Blocker
+
+Chrome advertised the documented viewport capability, but `set()` did not change the page viewport. Requests for `1402px`, `900px`, and `390px` produced fresh tabs measuring `1558px` or `3058px` wide. The required exact desktop, medium, and narrow browser-rendered captures therefore could not be produced. After a dirty-Escape confirmation was observed, the Chrome control channel also stalled, preventing completion of the remaining interactions and console inspection. No alternate browser-control surface was used.
+
+final result: blocked

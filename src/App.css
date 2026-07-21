@@ -1692,6 +1692,14 @@ button:disabled {
 .profile-rule-actions { gap: 8px; }
 .profile-rule-actions .ui-button { min-width: 40px; padding: 0; }
 
+.profile-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.profile-dialog .button-row {
+  flex-wrap: wrap;
+}
+
 .settings-tabs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
