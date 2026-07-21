@@ -47,6 +47,12 @@ describe("Settings CSS contract", () => {
     expect(css).toMatch(/@media \(max-width: 560px\)[\s\S]*\.profile-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
   });
 
+  it("keeps stacked App Rule fields identifiable on narrow screens", () => {
+    expect(css).toMatch(
+      /@media \(max-width: 560px\)[\s\S]*\.profile-rule-table td::before\s*\{[^}]*content:\s*attr\(data-label\)/s,
+    );
+  });
+
   it("keeps Profile dialog actions visible without horizontal overflow", () => {
     expect(css).toMatch(/\.profile-dialog\s*\{[^}]*width:\s*min\(720px, calc\(100vw - 32px\)\)/s);
     expect(css).toMatch(/\.profile-dialog \.button-row\s*\{[^}]*flex-wrap:\s*wrap/s);

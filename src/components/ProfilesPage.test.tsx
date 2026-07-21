@@ -90,6 +90,16 @@ describe("ProfilesPage", () => {
     expect(screen.queryByText("legacy.exe")).not.toBeInTheDocument();
   });
 
+  it("labels stacked App Rule fields for narrow screens", () => {
+    render(<ProfilesPage {...profileProps} activeProfileId="email" />);
+
+    expect(screen.getByText("outlook.exe").closest("td")).toHaveAttribute("data-label", "App");
+    expect(screen.getByText("Any title").closest("td")).toHaveAttribute("data-label", "Window title");
+    expect(screen.getByText("0").closest("td")).toHaveAttribute("data-label", "Priority");
+    expect(screen.getByRole("checkbox", { name: "Enable rule for outlook.exe" }).closest("td")).toHaveAttribute("data-label", "Enabled");
+    expect(screen.getByRole("button", { name: "Edit rule for outlook.exe" }).closest("td")).toHaveAttribute("data-label", "Actions");
+  });
+
   it("opens a Profile card in an edit dialog and keeps its App Rules selected", async () => {
     const user = userEvent.setup();
     render(<ProfilesPage {...profileProps} activeProfileId="normal" />);

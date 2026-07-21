@@ -142,50 +142,60 @@ final result: passed
 - Reference: `C:/Users/PC/Downloads/ChatGPT Image Jul 20, 2026, 09_13_38 PM.png`
 - Reference size: `1402x1122`; the top `38px` native title bar was excluded from the normalized content comparison.
 - Implementation: `http://127.0.0.1:4173/`, Profiles page, Normal active and selected.
-- Browser: Codex Desktop in-app Browser was unavailable; Chrome was used through the documented fallback.
+- Browser: local Playwright Chromium `1.61.0`, explicitly authorized after the in-app Browser and Chrome viewport fallback were blocked.
 
 ## Browser Evidence
 
-- Requested desktop viewport: `1402x1084` content area.
-- Actual Chrome viewport: `1558x1247` CSS pixels at device pixel ratio `0.9`; the saved desktop capture was normalized to `1402x1084` only for the combined comparison image.
-- Desktop implementation: `.superpowers/sdd/qa-artifacts/profiles-desktop-1402x1084-pass1.png`
-- Browser-opened reference: `.superpowers/sdd/qa-artifacts/reference-browser-capture-1402x1122.png`
-- Full-view comparison: `.superpowers/sdd/qa-artifacts/comparison-desktop-pass1.png`
-- Focused Profiles comparison: `.superpowers/sdd/qa-artifacts/comparison-profiles-focus-pass1.png`
-- Focused App Rules comparison: `.superpowers/sdd/qa-artifacts/comparison-app-rules-focus-pass1.png`
+- Exact source-content viewport: `1402x1084`, device pixel ratio `1`; both document and `#root` report `scrollWidth/clientWidth = 1402/1402`.
+- Exact medium viewport: `900x1122`, device pixel ratio `1`; document and `#root` report `900/900`. `#root` scrolls from `0` to `329`, placing the final rule at `bottom=1077.6px` inside the `1122px` viewport.
+- Exact narrow viewport: `390x844`, device pixel ratio `1`; document and `#root` report `390/390`. `#root` scrolls from `0` to `1994`, placing the final rule at `bottom=799.6px` inside the `844px` viewport.
+- Desktop implementation: `.superpowers/sdd/qa-artifacts/profiles-desktop-content-1402x1084.png`
+- Medium top/bottom: `.superpowers/sdd/qa-artifacts/profiles-medium-900x1122.png`, `.superpowers/sdd/qa-artifacts/profiles-medium-900-bottom.png`
+- Narrow top/rules/bottom: `.superpowers/sdd/qa-artifacts/profiles-mobile-390x844.png`, `.superpowers/sdd/qa-artifacts/profiles-mobile-rules-390x844.png`, `.superpowers/sdd/qa-artifacts/profiles-mobile-390-bottom.png`
+- Mobile Profile dialog: `.superpowers/sdd/qa-artifacts/profile-dialog-email-mobile-390x844.png`; `scrollWidth/clientWidth = 352/352`, with bounds `x=19..371`.
+- Normalized reference: `.superpowers/sdd/qa-artifacts/reference-content-1402x1084.png`
+- Full-view comparison: `.superpowers/sdd/qa-artifacts/comparison-desktop-exact.png`
+- Focused Profiles comparison: `.superpowers/sdd/qa-artifacts/comparison-profiles-focus-exact.png`
+- Focused App Rules comparison: `.superpowers/sdd/qa-artifacts/comparison-app-rules-focus-exact.png`
 - Profile dialog before fix: `.superpowers/sdd/qa-artifacts/profile-dialog-email.png`
 - Profile dialog after fix: `.superpowers/sdd/qa-artifacts/profile-dialog-email-pass2.png`
+- Structured Playwright evidence: `.superpowers/sdd/qa-artifacts/profiles-playwright-results.json`
 
 ## Interaction Checks
 
-- Profile card and edit dialog opening: passed in the browser.
-- Clean Profile cancellation and focus return: passed in the browser; focus returned to the Email card.
-- Clean native Escape and focus return: passed in the browser; the dialog closed and focus returned to the Email card.
-- Profile filtering: passed in the browser; `email` showed only Email and clearing restored all four Profiles.
-- Dirty Profile cancellation, Save, Set Active, Duplicate, and Delete: automated coverage passed; the complete browser sequence was not finished because the Chrome control channel stalled after the dirty-Escape confirm.
-- App Rule create/edit/toggle/delete and filtering: automated coverage passed; browser interaction evidence is incomplete for the same blocker.
-- Console errors: not checked after the browser control channel stalled.
+- Profile filtering: `EMAIL` showed only Email and clearing restored all four Profiles.
+- Dirty Cancel and native Escape: each displayed one discard confirmation, closed after acceptance, and returned focus to the Email card.
+- Profile lifecycle: New Profile, Save, edit and Save, Set Active, Duplicate, delete the copy, restore Normal active, and delete the temporary original all passed in the live browser.
+- App Rule lifecycle: five rules were created through the UI; Outlook was edited, Code was toggled on and back off, `OUTLOOK` filtering was cleared, and a temporary rule was deleted, leaving the source-representative four rows.
+- Rule-dialog Cancel returned focus to Add Rule. The 390px Profile dialog also closed cleanly and returned focus to Email.
+- Console warnings: `0`; console errors: `0`; page errors: `0`.
 
 ## Visual Comparison
 
-- Fonts and typography: desktop headings, labels, weights, and hierarchy are directionally aligned; exact acceptance is blocked by the unmatched viewport.
-- Spacing and layout: Profile cards, selected summary, and App Rules preserve the intended hierarchy. A P2 Profile-dialog action overflow was found and fixed.
+- Fonts and typography: both use the Gospeak system/Inter stack with matching strong page and section hierarchy. The implementation keeps inline Profile metadata instead of the reference's status pills; this is an accepted product-data treatment, not a readability defect.
+- Spacing and layout: exact desktop comparison preserves the page-header, four-card, selected-summary, and App Rules hierarchy. The existing shared Gospeak sidebar is narrower than the reference, while scoped Profile search and current-app preview intentionally add vertical content. At 900px the cards form two columns; at 390px they stack without overlap or root horizontal overflow.
 - Colors and tokens: selected blue, neutral borders, white surfaces, green enabled switches, focus styling, and destructive red align with the source direction.
-- Image quality and assets: the existing Gospeak brand asset is used. Application-specific brand icons are intentionally omitted by scope; Lucide icons are used for controls.
-- Copy and content: Profiles and App Rules labels and actions are coherent. The implementation retains the scoped Profile search and current-app preview even though the source image does not show them.
-- P0: none observed in the available desktop evidence.
-- P1: none observed in the available desktop evidence.
-- P2: Profile dialog actions overflowed horizontally and clipped Cancel; resolved in pass 2.
-- P3: application-specific brand icons and drag reorder intentionally omitted by scope.
+- Image quality and assets: the real Gospeak brand asset is used. Application-specific brand icons and drag-reorder decoration remain intentionally omitted by scope; Lucide supplies the edit/delete/control icons.
+- Copy and content: all app-specific labels are coherent. Profile search and current-app preview are retained product features even though the reference omits them.
+- Accessibility and responsiveness: native dialogs, keyboard Escape, confirmations, focus restoration, 40px controls, mobile field labels, and vertical scrolling were exercised. Screenshot review does not claim full WCAG compliance.
+- P0: none.
+- P1: none.
+- P2: none remaining.
+- P3: application-specific brand icons, drag reorder, reference status pills, and the reference footer count remain out of scope.
 
 ## Comparison History
 
-1. Pass 1: the full-view and focused comparisons were created from the opened reference and browser-rendered Profiles page. The implementation had no persisted App Rules, so the table-content comparison remained state-mismatched. The Email Profile dialog visibly clipped Cancel behind a horizontal scrollbar (P2).
-2. Fix: added a Profiles-only `720px` dialog width and wrapping action row, without changing shared dialogs.
-3. Pass 2: `.superpowers/sdd/qa-artifacts/profile-dialog-email-pass2.png` shows every Profile action and Cancel visible with no horizontal scrollbar.
+1. Chrome pass: the Email Profile dialog clipped Cancel behind a horizontal scrollbar (P2). A Profiles-only `720px` width and wrapping action row fixed it; `.superpowers/sdd/qa-artifacts/profile-dialog-email-pass2.png` confirms all actions are visible.
+2. Exact Playwright pass: the source-representative four-row state was created through the UI and compared at the true `1402x1084` content viewport. Desktop and 900px showed no actionable P0-P2.
+3. Narrow pass: at `390x844`, converting the table to stacked cells hid the table header without adding visible field labels (P2). Each cell now exposes a `data-label`, and the mobile CSS renders it before the value.
+4. Post-fix pass: `.superpowers/sdd/qa-artifacts/profiles-mobile-rules-390x844.png` and `.superpowers/sdd/qa-artifacts/profiles-mobile-390-bottom.png` show App, Window title, Priority, Enabled, and Actions labels with all four rows reachable. The exact full and focused comparisons show no remaining actionable P0-P2.
 
-## Blocker
+## Five-Point Adversarial Review
 
-Chrome advertised the documented viewport capability, but `set()` did not change the page viewport. Requests for `1402px`, `900px`, and `390px` produced fresh tabs measuring `1558px` or `3058px` wide. The required exact desktop, medium, and narrow browser-rendered captures therefore could not be produced. After a dirty-Escape confirmation was observed, the Chrome control channel also stalled, preventing completion of the remaining interactions and console inspection. No alternate browser-control surface was used.
+1. Discarding a new Profile restores the active persisted Profile; the focused regression passes.
+2. Save and Duplicate clear the dialog dirtiness by replacing the draft with the persisted result; the live sequence and component tests pass.
+3. Normal remains undeletable by id even if its editable mode changes; the regression passes.
+4. App Rule edits preserve the rule id and selected Profile ownership; focused tests and the live edit pass.
+5. Dirty Cancel/Escape each produce one confirmation and restore focus; no double-close or stale-dialog behavior was observed.
 
-final result: blocked
+final result: passed
