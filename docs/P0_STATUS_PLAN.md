@@ -43,6 +43,8 @@ acceptance as of 2026-07-01.
 - Groq STT adapter using `/audio/transcriptions`.
 - OpenAI rewrite adapter using `/responses`.
 - Qwen Local/API multipart transcription adapter with loopback/HTTPS boundaries.
+- Optional Qwen Local process management with a machine-local runtime directory,
+  explicit Providers Start/Stop controls, readiness checks, and normal-exit cleanup.
 - Doubao Flash recording-file adapter using the current single `X-Api-Key` flow.
 - DeepSeek V4 Flash/Pro batch and SSE Rewrite adapters with explicit Thinking mode.
 - Live Groq/OpenAI smoke test with a generated WAV. Result returned text
@@ -102,6 +104,9 @@ acceptance as of 2026-07-01.
 
 - Multi-provider routing and request/response contracts have automated coverage;
   live Qwen, Doubao, DeepSeek, and current OpenAI Realtime acceptance is not recorded.
+- Managed Qwen Local service and real repeated transcription smoke tests pass on
+  the configured RTX 4060 environment; installed-app Start/Stop and spoken-input
+  acceptance remain pending.
 - Local light rewrite has automated coverage and a manual test checklist;
   current-build spoken-input acceptance is not recorded.
 - The latest frontend passes automated tests. Browser design QA was recorded
@@ -113,8 +118,8 @@ acceptance as of 2026-07-01.
 - No remaining P0 Alpha implementation items.
 - Transcript history, history sync, and transcript-in-crash-report behavior are
   not implemented. Their unsupported Settings controls have been removed.
-- VAD, explicit provider retry, Qwen/Doubao streaming, model downloading, and
-  managed local-model lifecycle are not implemented.
+- VAD, explicit provider retry, Qwen/Doubao streaming, and model downloading are
+  not implemented.
 - Sync Folder and WebDAV remain deferred follow-up features.
 
 ## Next Plan
@@ -124,5 +129,5 @@ acceptance as of 2026-07-01.
    OpenAI Realtime, OpenAI Rewrite, and DeepSeek Flash/Pro.
 3. Fix only issues found in that functional acceptance before considering new
    features.
-4. Keep VAD, transcript history, Sync Folder, WebDAV, Qwen/Doubao streaming,
-   and local model lifecycle management deferred until explicitly prioritized.
+4. Keep VAD, transcript history, Sync Folder, WebDAV, and Qwen/Doubao streaming
+   deferred until explicitly prioritized.

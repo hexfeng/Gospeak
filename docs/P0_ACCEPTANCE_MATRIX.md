@@ -120,8 +120,11 @@ P0, App-aware routing, or Speak to Edit acceptance decisions.
 | Groq + OpenAI | Existing adapter and route coverage pass | Previous P0 path accepted; current feature-branch regression pending |
 | Groq + DeepSeek Flash/Pro | Routing, Thinking, batch parsing, usage, and cost tests pass | Pending real DeepSeek credentials |
 | OpenAI Realtime + OpenAI/DeepSeek | Provider/model selection and both streaming Rewrite implementations pass automated coverage | Pending live Realtime incremental-insertion checks |
-| Qwen Local 0.6B service running | Loopback, multipart, model, response, and zero external-cost checks pass | Pending user-managed RTX 4060 environment |
-| Qwen Local stopped / wrong port | Connection errors remain on the selected Provider with no cloud fallback | Pending installed-runtime check |
+| Qwen Local 0.6B service running | Loopback, multipart, model, response, and zero external-cost checks pass | Real repeated-transcription smoke passes on the configured RTX 4060; installed Gospeak flow pending |
+| Qwen Local stopped / wrong port | Connection errors remain on the selected Provider with no cloud fallback | Automated managed-state errors pass; installed-runtime check pending |
+| Managed Qwen activation | App launch and selecting the Qwen ASR configuration do not start Python; only the Providers Start action loads the model | Frontend coverage and a release-binary launch smoke pass; installed UI confirmation pending |
+| Managed Qwen Start / Stop | Starting reaches Ready after exact health/model validation; Stop and tray Quit release the owned process, port, temporary files, and GPU memory | Python real-service process/port smoke and Rust state/readiness coverage pass; installed tray-Quit/GPU confirmation pending |
+| Managed Qwen while using Groq | A manually started model stays resident after switching ASR configuration and retains an explicit Stop action | Automated frontend coverage passes; installed-app confirmation pending |
 | Qwen API 1.7B | HTTPS, optional Bearer, multipart, fixed model, and unknown-cost behavior pass | Pending deployment URL and live API |
 | Doubao normal speech / silence | Fixed headers/resource/model, Base64 body, success, silence, and cleaned-error parsing pass | Pending live Doubao key |
 | Fast / normal / Prompt Profile | Existing pipeline coverage passes across local and model Rewrite paths | Pending multi-provider spoken regression |

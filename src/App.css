@@ -1358,6 +1358,7 @@ button:disabled {
 }
 
 .status-configured,
+.status-ready,
 .active-config-label {
   background: #eaf7ef;
   color: #187442;
@@ -1366,9 +1367,27 @@ button:disabled {
 .status-missing-key,
 .status-missing-endpoint,
 .status-invalid-endpoint,
-.status-incomplete {
+.status-incomplete,
+.status-not-configured,
+.status-stopped,
+.status-starting {
   background: #fff2e2;
   color: #9a5800;
+}
+
+.status-failed {
+  background: #feeceb;
+  color: #b42318;
+}
+
+.provider-runtime-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-runtime-input input {
+  flex: 1;
 }
 
 .settings-sections {

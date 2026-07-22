@@ -176,6 +176,11 @@ export type ProviderCredentialQuery = {
   provider: CredentialProviderId;
 };
 
+export type QwenLocalStatus = {
+  status: "not-configured" | "stopped" | "starting" | "ready" | "failed";
+  message?: string | null;
+};
+
 export async function checkProviderConfigurationKeys(
   configurations: ProviderCredentialQuery[],
 ): Promise<Record<string, boolean>> {
@@ -373,6 +378,27 @@ export async function upsertPreference(record: PreferenceRecord): Promise<void> 
   return invoke<void>("upsert_preference", { record });
 }
 
+export async function getQwenLocalStatus(): Promise<QwenLocalStatus> {
+  if (!hasTauriRuntime()) {
+    return { status: "not-configured" };
+  }
+  return invoke<QwenLocalStatus>("get_qwen_local_status");
+}
+
+export async function startQwenLocal(): Promise<QwenLocalStatus> {
+  if (!hasTauriRuntime()) {
+    return { status: "starting", message: "Browser preview" };
+  }
+  return invoke<QwenLocalStatus>("start_qwen_local");
+}
+
+export async function stopQwenLocal(): Promise<QwenLocalStatus> {
+  if (!hasTauriRuntime()) {
+    return { status: "stopped" };
+  }
+  return invoke<QwenLocalStatus>("stop_qwen_local");
+}
+
 export async function getForegroundAppContext(): Promise<ForegroundAppContext> {
   if (!hasTauriRuntime()) {
     return {
@@ -531,6 +557,15 @@ export async function selectImportPath(): Promise<string | null> {
     directory: false,
     filters: [{ name: "JSON configuration", extensions: ["json"] }],
   });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function selectQwenLocalRuntimeDirectory(): Promise<string | null> {
+  if (!hasTauriRuntime()) {
+    return null;
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({ multiple: false, directory: true });
   return typeof selected === "string" ? selected : null;
 }
 

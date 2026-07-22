@@ -3,6 +3,7 @@ pub mod audio;
 pub mod clipboard;
 mod light_rewrite;
 pub mod provider;
+mod qwen_local;
 pub mod storage;
 mod streaming;
 
@@ -89,6 +90,7 @@ fn validate_alpha_pipeline(config: ProviderRuntimeConfig) -> Result<String, Stri
 #[tauri::command]
 fn run_audio_file_dictation(
     app: tauri::AppHandle,
+    qwen_state: tauri::State<'_, qwen_local::QwenLocalProcessState>,
     mut request: AudioFilePipelineRequest,
 ) -> Result<PipelineResult, String> {
     let database = open_app_database(&app)?;
@@ -100,6 +102,9 @@ fn run_audio_file_dictation(
     request.rewrite_config_id = Some(providers.rewrite_config_id);
     request.rewrite_provider = providers.rewrite_provider;
     request.rewrite_model = providers.rewrite_model;
+    if request.stt_provider == "qwen-local" {
+        qwen_local::ensure_ready(&app, &qwen_state, request.stt_base_url.as_deref())?;
+    }
     let profile = storage::get_enabled_profile(&database, &request.profile_id)?;
     let dictionary_terms = storage::dictionary_prompt_terms(&database)?;
     let result = run_audio_file_pipeline(
@@ -383,6 +388,29 @@ fn upsert_preference(
 }
 
 #[tauri::command]
+fn get_qwen_local_status(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, qwen_local::QwenLocalProcessState>,
+) -> Result<qwen_local::QwenLocalStatus, String> {
+    qwen_local::get_status(&app, &state)
+}
+
+#[tauri::command]
+fn start_qwen_local(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, qwen_local::QwenLocalProcessState>,
+) -> Result<qwen_local::QwenLocalStatus, String> {
+    qwen_local::start(&app, &state)
+}
+
+#[tauri::command]
+fn stop_qwen_local(
+    state: tauri::State<'_, qwen_local::QwenLocalProcessState>,
+) -> Result<qwen_local::QwenLocalStatus, String> {
+    qwen_local::stop(&state)
+}
+
+#[tauri::command]
 fn list_dictionary_terms(app: tauri::AppHandle) -> Result<Vec<storage::DictionaryRecord>, String> {
     let database = open_app_database(&app)?;
     storage::list_dictionary_terms(&database)
@@ -461,8 +489,9 @@ fn open_app_database(app: &tauri::AppHandle) -> Result<rusqlite::Connection, Str
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(RecordingState::default())
+        .manage(qwen_local::QwenLocalProcessState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -589,6 +618,9 @@ pub fn run() {
             get_foreground_app_context,
             list_preferences,
             upsert_preference,
+            get_qwen_local_status,
+            start_qwen_local,
+            stop_qwen_local,
             list_dictionary_terms,
             upsert_dictionary_term,
             list_profiles,
@@ -599,8 +631,14 @@ pub fn run() {
             export_config_to_file,
             import_config_from_file
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+    app.run(|app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            let state = app.state::<qwen_local::QwenLocalProcessState>();
+            let _ = qwen_local::stop(&state);
+        }
+    });
 }
 
 #[cfg(test)]

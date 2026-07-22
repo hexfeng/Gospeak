@@ -20,16 +20,26 @@ import {
   type ProviderConfigurationState,
   type ProviderConfigurationStatus,
 } from "../domain/providerConfigurations";
+import type { QwenLocalStatus } from "../lib/tauri";
 import { Button, Card, PageHeader } from "./ui";
 
 type ProvidersPageProps = {
   state: ProviderConfigurationState;
   keyPresence: ConfigurationKeyPresence;
-  onSave: (configuration: ProviderConfiguration, apiKey?: string) => Promise<void>;
+  onSave: (
+    configuration: ProviderConfiguration,
+    apiKey?: string,
+    qwenLocalRuntimeDir?: string,
+  ) => Promise<void>;
   onActivate: (configurationId: string) => Promise<void>;
   onDelete: (configuration: ProviderConfiguration) => Promise<void>;
   onRemoveKey: (configuration: ProviderConfiguration) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onSelectQwenLocalRuntimeDirectory: () => Promise<string | null>;
+  onStartQwenLocal: () => Promise<void>;
+  onStopQwenLocal: () => Promise<void>;
+  qwenLocalRuntimeDir: string;
+  qwenLocalStatus: QwenLocalStatus;
   focus?: { kind: ProviderConfiguration["kind"]; configurationId: string; requestId: number };
 };
 
@@ -46,6 +56,14 @@ const statusCopy: Record<ProviderConfigurationStatus, string> = {
   "missing-endpoint": "Missing endpoint",
   "invalid-endpoint": "Invalid endpoint",
   incomplete: "Incomplete",
+};
+
+const qwenStatusCopy: Record<QwenLocalStatus["status"], string> = {
+  "not-configured": "Not configured",
+  stopped: "Stopped",
+  starting: "Starting",
+  ready: "Ready",
+  failed: "Failed",
 };
 
 export function ProvidersPage(props: ProvidersPageProps) {
@@ -106,6 +124,13 @@ export function ProvidersPage(props: ProvidersPageProps) {
     });
   }
 
+  function runQwenAction(action: () => Promise<void>) {
+    setPageError("");
+    void action().catch((error) => {
+      setPageError(error instanceof Error ? error.message : "Qwen Local action failed.");
+    });
+  }
+
   return (
     <section className="module-panel providers-page" aria-labelledby="providers-title">
       <PageHeader
@@ -156,6 +181,10 @@ export function ProvidersPage(props: ProvidersPageProps) {
                 ? shortEndpoint(configuration.baseUrl)
                 : null;
             const icon = providerIcon(configuration.providerId);
+            const managedQwen = isManagedQwenConfiguration(configuration);
+            const displayStatus = managedQwen && status === "configured"
+              ? props.qwenLocalStatus.status
+              : status;
             return (
               <article
                 className="provider-config-row"
@@ -182,7 +211,11 @@ export function ProvidersPage(props: ProvidersPageProps) {
                   </div>
                 </div>
                 <span className="provider-config-model">{configuration.model}</span>
-                <span className={`configuration-status status-${status}`}>{statusCopy[status]}</span>
+                <span className={`configuration-status status-${displayStatus}`}>
+                  {managedQwen && status === "configured"
+                    ? qwenStatusCopy[props.qwenLocalStatus.status]
+                    : statusCopy[status]}
+                </span>
                 <small>Updated {formatDate(configuration.updatedAt)}</small>
                 <div className="provider-config-actions">
                   {isActive ? (
@@ -192,6 +225,23 @@ export function ProvidersPage(props: ProvidersPageProps) {
                       Use for {configuration.kind === "stt" ? "ASR" : "Rewrite"}
                     </Button>
                   )}
+                  {managedQwen && isActive && ["not-configured", "stopped", "failed"].includes(props.qwenLocalStatus.status) ? (
+                    <Button
+                      onClick={() => runQwenAction(props.onStartQwenLocal)}
+                      type="button"
+                      variant="primary"
+                    >
+                      Start local model
+                    </Button>
+                  ) : null}
+                  {managedQwen && ["starting", "ready"].includes(props.qwenLocalStatus.status) ? (
+                    <Button
+                      onClick={() => runQwenAction(props.onStopQwenLocal)}
+                      type="button"
+                    >
+                      Stop local model
+                    </Button>
+                  ) : null}
                   <Button
                     className="provider-edit-button"
                     onClick={(event) => openDialog({ mode: "edit", configuration }, event.currentTarget)}
@@ -227,9 +277,11 @@ export function ProvidersPage(props: ProvidersPageProps) {
         <ProviderDialog
           key={dialog.mode === "new" ? `${dialog.mode}-${dialog.kind}` : `${dialog.mode}-${dialog.configuration.id}`}
           keyPresence={props.keyPresence}
+          onSelectQwenLocalRuntimeDirectory={props.onSelectQwenLocalRuntimeDirectory}
           onClose={() => setDialog(null)}
           onRemoveKey={props.onRemoveKey}
           onSave={props.onSave}
+          qwenLocalRuntimeDir={props.qwenLocalRuntimeDir}
           state={dialog}
         />
       ) : null}
@@ -265,6 +317,8 @@ function ProviderDialog(props: {
   onClose: () => void;
   onSave: ProvidersPageProps["onSave"];
   onRemoveKey: ProvidersPageProps["onRemoveKey"];
+  onSelectQwenLocalRuntimeDirectory: ProvidersPageProps["onSelectQwenLocalRuntimeDirectory"];
+  qwenLocalRuntimeDir: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const original = props.state.mode === "edit" ? props.state.configuration : undefined;
@@ -280,6 +334,9 @@ function ProviderDialog(props: {
   const [model, setModel] = useState(original?.model ?? selectedOption.models[0]);
   const [baseUrl, setBaseUrl] = useState(
     original?.baseUrl ?? optionDefaultBaseUrl(selectedOption),
+  );
+  const [qwenLocalRuntimeDir, setQwenLocalRuntimeDir] = useState(
+    props.qwenLocalRuntimeDir,
   );
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -331,6 +388,7 @@ function ProviderDialog(props: {
           updatedAt: now,
         },
         apiKey.trim() || undefined,
+        providerId === "qwen-local" ? qwenLocalRuntimeDir.trim() : undefined,
       );
       closeDialog();
     } catch (caught) {
@@ -385,6 +443,28 @@ function ProviderDialog(props: {
           <label>
             Base URL
             <input onChange={(event) => setBaseUrl(event.target.value)} value={baseUrl} />
+          </label>
+        ) : null}
+        {providerId === "qwen-local" ? (
+          <label>
+            Local runtime directory
+            <span className="provider-runtime-input">
+              <input
+                onChange={(event) => setQwenLocalRuntimeDir(event.target.value)}
+                value={qwenLocalRuntimeDir}
+              />
+              <Button
+                onClick={() => {
+                  void props.onSelectQwenLocalRuntimeDirectory().then((selected) => {
+                    if (selected) setQwenLocalRuntimeDir(selected);
+                  });
+                }}
+                type="button"
+              >
+                Browse
+              </Button>
+            </span>
+            <small>Saved only on this machine. Starting is always manual.</small>
           </label>
         ) : null}
         {credentialProvider ? (
@@ -474,6 +554,21 @@ function shortEndpoint(value: string) {
     return new URL(value).host;
   } catch {
     return null;
+  }
+}
+
+function isManagedQwenConfiguration(configuration: ProviderConfiguration) {
+  if (configuration.providerId !== "qwen-local" || !configuration.baseUrl) return false;
+  try {
+    const url = new URL(configuration.baseUrl);
+    return url.protocol === "http:"
+      && url.hostname === "127.0.0.1"
+      && url.port === "8000"
+      && url.pathname.replace(/\/$/, "") === "/v1"
+      && !url.search
+      && !url.hash;
+  } catch {
+    return false;
   }
 }
 

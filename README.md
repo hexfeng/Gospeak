@@ -30,7 +30,7 @@ tests.
 
 - Tauri 2 + React + TypeScript app shell.
 - Minimal Provider/model configuration for five ASR providers and two Rewrite providers.
-- Batch ASR adapters for Groq Whisper, user-managed Qwen3-ASR 0.6B, remote
+- Batch ASR adapters for Groq Whisper, manually started local Qwen3-ASR 0.6B, remote
   Qwen3-ASR 1.7B, and Doubao Flash recording-file ASR.
 - OpenAI Realtime ASR using `gpt-realtime-2`.
 - Rewrite adapters for OpenAI Responses and DeepSeek V4 Chat Completions.
@@ -95,8 +95,10 @@ tests.
 | Rewrite | OpenAI | `gpt-5-nano`, `gpt-5-mini` | Batch and streaming | Recorded when token usage is complete |
 | Rewrite | DeepSeek | `deepseek-v4-flash`, `deepseek-v4-pro` | Batch and streaming | Recorded when cache/output usage is complete |
 
-Qwen Local is an external user-managed service and is not bundled or started by
-Gospeak. See [Local Qwen3-ASR setup](docs/QWEN_LOCAL_ASR.md).
+Qwen Local is optional and is not bundled. Gospeak can start an existing local
+Python/model runtime only after the user explicitly clicks `Start local model`
+in Providers; app launch and Provider activation never load it automatically.
+See [Local Qwen3-ASR setup](docs/QWEN_LOCAL_ASR.md).
 
 ## Current Status And Remaining Work
 

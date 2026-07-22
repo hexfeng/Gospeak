@@ -18,6 +18,7 @@ import {
   exportConfigToFile,
   importConfigFromFile,
   getForegroundAppContext,
+  getQwenLocalStatus,
   listAppProfileRules,
   listDictionaryTerms,
   listPreferences,
@@ -38,6 +39,8 @@ import {
   upsertProfile,
   selectExportPath,
   selectImportPath,
+  startQwenLocal,
+  stopQwenLocal,
 } from "./lib/tauri";
 
 type GlobalShortcutState = "pressed" | "released";
@@ -94,6 +97,9 @@ vi.mock("./lib/tauri", () => ({
     appId: "browser-preview.exe",
     windowTitle: "Browser preview",
   })),
+  getQwenLocalStatus: vi.fn(async () => ({ status: "not-configured" })),
+  startQwenLocal: vi.fn(async () => ({ status: "starting" })),
+  stopQwenLocal: vi.fn(async () => ({ status: "stopped" })),
   listAppProfileRules: vi.fn(async () => []),
   upsertAppProfileRule: vi.fn(async () => undefined),
   listProfiles: vi.fn(async () => []),
@@ -107,6 +113,7 @@ vi.mock("./lib/tauri", () => ({
   importConfigFromFile: vi.fn(async () => ({ data: null })),
   selectExportPath: vi.fn(async () => "C:\\Temp\\gospeak-export.json"),
   selectImportPath: vi.fn(async () => "C:\\Temp\\gospeak-import.json"),
+  selectQwenLocalRuntimeDirectory: vi.fn(async () => "D:\\Models\\Qwen_3_0.6B_ASR"),
   updateGlobalShortcut: vi.fn(async () => undefined),
   publishRecorderState: vi.fn(async () => undefined),
   listenForTrayAction: vi.fn(async () => vi.fn()),
@@ -309,6 +316,61 @@ describe("Gospeak Alpha app shell", () => {
     expect(screen.getByLabelText("Provider")).toHaveTextContent(
       "OpenAI Realtime",
     );
+  });
+
+  it("starts and stops an active managed Qwen configuration only on explicit clicks", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getQwenLocalStatus).mockResolvedValue({ status: "stopped" });
+    vi.mocked(listPreferences).mockResolvedValueOnce([
+      {
+        key: "qwen_local_runtime_dir",
+        value: "D:\\Models\\Qwen_3_0.6B_ASR",
+        updated_at: "2026-07-21T00:00:00.000Z",
+      },
+      {
+        key: "providers",
+        value: JSON.stringify({
+          stt: {
+            providerId: "qwen-local",
+            model: "Qwen/Qwen3-ASR-0.6B",
+            baseUrl: "http://127.0.0.1:8000/v1",
+          },
+          rewrite: { providerId: "openai", model: "gpt-5-nano" },
+          configurations: [
+            {
+              id: "qwen-local",
+              name: "Local Qwen",
+              kind: "stt",
+              providerId: "qwen-local",
+              model: "Qwen/Qwen3-ASR-0.6B",
+              baseUrl: "http://127.0.0.1:8000/v1",
+              createdAt: "2026-07-21T00:00:00.000Z",
+              updatedAt: "2026-07-21T00:00:00.000Z",
+            },
+            {
+              id: "openai-default",
+              name: "OpenAI",
+              kind: "rewrite",
+              providerId: "openai",
+              model: "gpt-5-nano",
+              createdAt: "2026-07-21T00:00:00.000Z",
+              updatedAt: "2026-07-21T00:00:00.000Z",
+            },
+          ],
+          activeAsrConfigId: "qwen-local",
+          activeRewriteConfigId: "openai-default",
+        }),
+        updated_at: "2026-07-21T00:00:00.000Z",
+      },
+    ]);
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Providers" }));
+    await user.click(await screen.findByRole("button", { name: "Start local model" }));
+    expect(startQwenLocal).toHaveBeenCalledTimes(1);
+
+    await user.click(await screen.findByRole("button", { name: "Stop local model" }));
+    expect(stopQwenLocal).toHaveBeenCalledTimes(1);
   });
 
   it("does not fall back to another ASR provider when realtime fails", async () => {
@@ -837,6 +899,13 @@ describe("Gospeak Alpha app shell", () => {
 
   it("exports and imports configuration through file commands", async () => {
     const user = userEvent.setup();
+    vi.mocked(listPreferences).mockResolvedValueOnce([
+      {
+        key: "qwen_local_runtime_dir",
+        value: "D:\\Models\\Qwen_3_0.6B_ASR",
+        updated_at: "2026-07-21T00:00:00.000Z",
+      },
+    ]);
     vi.mocked(importConfigFromFile).mockResolvedValueOnce({
       schemaVersion: 1,
       exportedAt: "2026-06-22T00:00:00.000Z",
@@ -892,6 +961,9 @@ describe("Gospeak Alpha app shell", () => {
       expect(exportConfigToFile).toHaveBeenCalledWith(
         "C:\\Temp\\gospeak-export.json",
         expect.objectContaining({ schemaVersion: 2 }),
+      );
+      expect(JSON.stringify(vi.mocked(exportConfigToFile).mock.calls.at(-1)?.[1])).not.toContain(
+        "Qwen_3_0.6B_ASR",
       );
 
       await user.click(screen.getByRole("button", { name: /Import configuration/i }));

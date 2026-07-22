@@ -50,6 +50,7 @@ import {
   copyTextForPaste,
   exportConfigToFile,
   getForegroundAppContext,
+  getQwenLocalStatus,
   importConfigFromFile,
   listAppProfileRules,
   listDictionaryTerms,
@@ -68,9 +69,12 @@ import {
   saveProviderConfigurationApiKey,
   selectExportPath,
   selectImportPath,
+  selectQwenLocalRuntimeDirectory,
+  startQwenLocal,
   startRecording,
   startStreamingRecording,
   stopRecording,
+  stopQwenLocal,
   updateGlobalShortcut,
   upsertAppProfileRule,
   upsertDictionaryTerm,
@@ -79,6 +83,7 @@ import {
   type AudioFilePipelineRequest,
   type DictionaryRecord,
   type ProfileRecord,
+  type QwenLocalStatus,
   type UsageEventRecord,
 } from "./lib/tauri";
 
@@ -139,6 +144,10 @@ function App() {
     useState<DictionaryTerm[]>(seedDictionaryTerms);
   const [appRules, setAppRules] = useState<AppProfileRule[]>([]);
   const [usageEvents, setUsageEvents] = useState<UsageEventRecord[]>([]);
+  const [qwenLocalRuntimeDir, setQwenLocalRuntimeDir] = useState("");
+  const [qwenLocalStatus, setQwenLocalStatus] = useState<QwenLocalStatus>({
+    status: "not-configured",
+  });
   const [foregroundContext, setForegroundContext] =
     useState<ForegroundAppContext | null>(null);
   const [profileDirty, setProfileDirty] = useState(false);
@@ -613,6 +622,25 @@ function App() {
   }, [activeSection]);
 
   useEffect(() => {
+    if (activeSection !== "providers") return;
+    let disposed = false;
+    async function refresh() {
+      try {
+        const status = await getQwenLocalStatus();
+        if (!disposed) setQwenLocalStatus(status);
+      } catch (error) {
+        console.warn("Qwen Local status refresh failed", error);
+      }
+    }
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 2000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [activeSection]);
+
+  useEffect(() => {
     let unlisten: (() => void) | undefined;
     listenForTrayAction((action) => {
       if (action === "toggle") {
@@ -637,6 +665,7 @@ function App() {
         storedPreferences,
         storedKeyPresence,
         storedUsageEvents,
+        storedQwenLocalStatus,
       ] = await Promise.all([
         listProfiles(),
         listDictionaryTerms(),
@@ -644,12 +673,14 @@ function App() {
         listPreferences(),
         checkProviderKeys(),
         listUsageEvents(),
+        getQwenLocalStatus(),
       ]);
       if (disposed) {
         return;
       }
       setKeyPresence(storedKeyPresence);
       setUsageEvents(storedUsageEvents);
+      setQwenLocalStatus(storedQwenLocalStatus);
       if (storedProfiles.length > 0) {
         const mappedProfiles = storedProfiles.map(profileRecordToProfile);
         setProfiles(mappedProfiles);
@@ -659,6 +690,7 @@ function App() {
       const preferences = Object.fromEntries(
         storedPreferences.map((preference) => [preference.key, preference.value]),
       );
+      setQwenLocalRuntimeDir(preferences.qwen_local_runtime_dir ?? "");
       const mappedProfiles =
         storedProfiles.length > 0
           ? storedProfiles.map(profileRecordToProfile)
@@ -838,6 +870,7 @@ function App() {
   async function saveProviderConfiguration(
     configuration: ProviderConfiguration,
     apiKey?: string,
+    runtimeDir?: string,
   ) {
     const existing = providerState.configurations.find(
       (item) => item.id === configuration.id,
@@ -857,9 +890,26 @@ function App() {
         apiKey,
       );
     }
+    if (configuration.providerId === "qwen-local" && runtimeDir !== undefined) {
+      await persistPreference("qwen_local_runtime_dir", runtimeDir);
+      setQwenLocalRuntimeDir(runtimeDir);
+      setQwenLocalStatus(await getQwenLocalStatus());
+    }
     await persistProviderState(next);
     await refreshProviderConfigurationKeys(next, false);
     setNotice({ text: `Provider configuration saved: ${configuration.name}`, tone: "info" });
+  }
+
+  async function startLocalQwen() {
+    const status = await startQwenLocal();
+    setQwenLocalStatus(status);
+    setNotice({ text: "Qwen Local model is starting.", tone: "info" });
+  }
+
+  async function stopLocalQwen() {
+    const status = await stopQwenLocal();
+    setQwenLocalStatus(status);
+    setNotice({ text: "Qwen Local model stopped.", tone: "info" });
   }
 
   async function activateConfiguration(configurationId: string) {
@@ -997,7 +1047,12 @@ function App() {
               onDelete={deleteConfiguration}
               onRefresh={() => refreshProviderConfigurationKeys()}
               onRemoveKey={removeProviderConfigurationKey}
+              onSelectQwenLocalRuntimeDirectory={selectQwenLocalRuntimeDirectory}
               onSave={saveProviderConfiguration}
+              onStartQwenLocal={startLocalQwen}
+              onStopQwenLocal={stopLocalQwen}
+              qwenLocalRuntimeDir={qwenLocalRuntimeDir}
+              qwenLocalStatus={qwenLocalStatus}
               state={providerState}
             />
           ) : null}

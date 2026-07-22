@@ -47,11 +47,16 @@ function renderProviders(
   const props = {
     state,
     keyPresence,
+    qwenLocalRuntimeDir: "",
+    qwenLocalStatus: { status: "stopped" as const },
     onSave: vi.fn(async () => undefined),
     onActivate: vi.fn(async () => undefined),
     onDelete: vi.fn(async () => undefined),
     onRemoveKey: vi.fn(async () => undefined),
     onRefresh: vi.fn(async () => undefined),
+    onSelectQwenLocalRuntimeDirectory: vi.fn<() => Promise<string | null>>(async () => null),
+    onStartQwenLocal: vi.fn(async () => undefined),
+    onStopQwenLocal: vi.fn(async () => undefined),
   };
   const view = render(<ProvidersPage {...props} />);
   return { ...props, ...view };
@@ -239,6 +244,7 @@ describe("ProvidersPage", () => {
         model: "deepseek-v4-flash",
       }),
       "sk-test",
+      undefined,
     );
     expect(props.onActivate).not.toHaveBeenCalled();
   });
@@ -255,6 +261,7 @@ describe("ProvidersPage", () => {
 
     expect(props.onSave).toHaveBeenCalledWith(
       expect.objectContaining({ id: "provider_default_groq_stt" }),
+      undefined,
       undefined,
     );
   });
@@ -281,5 +288,51 @@ describe("ProvidersPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("previous active configuration was kept");
     expect(within(doubaoRow).queryByText("Active")).not.toBeInTheDocument();
+  });
+
+  it("starts only the active managed Qwen configuration and keeps Stop available after switching", async () => {
+    const user = userEvent.setup();
+    const state = { ...paginatedState(), activeAsrConfigId: "qwen-local" };
+    const view = renderProviders({}, state);
+    const qwenRow = rows().find((row) => row.textContent?.includes("Local Qwen"))!;
+
+    expect(within(qwenRow).getByText("Stopped")).toBeInTheDocument();
+    await user.click(within(qwenRow).getByRole("button", { name: "Start local model" }));
+    expect(view.onStartQwenLocal).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ProvidersPage
+        {...view}
+        qwenLocalStatus={{ status: "ready" }}
+        state={{ ...state, activeAsrConfigId: "provider_default_groq_stt" }}
+      />,
+    );
+    const readyQwenRow = rows().find((row) => row.textContent?.includes("Local Qwen"))!;
+    expect(within(readyQwenRow).getByText("Ready")).toBeInTheDocument();
+    await user.click(within(readyQwenRow).getByRole("button", { name: "Stop local model" }));
+    expect(view.onStopQwenLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves the machine-local runtime directory from the Qwen dialog", async () => {
+    const user = userEvent.setup();
+    const props = renderProviders({}, defaultState());
+    props.onSelectQwenLocalRuntimeDirectory.mockResolvedValueOnce(
+      "D:\\Models\\Qwen_3_0.6B_ASR",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add configuration" }));
+    await user.selectOptions(screen.getByLabelText("Provider"), "qwen-local");
+    await user.type(screen.getByLabelText("Configuration name"), "Local Qwen");
+    await user.click(screen.getByRole("button", { name: "Browse" }));
+    expect(screen.getByLabelText(/Local runtime directory/)).toHaveValue(
+      "D:\\Models\\Qwen_3_0.6B_ASR",
+    );
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+
+    expect(props.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "qwen-local" }),
+      undefined,
+      "D:\\Models\\Qwen_3_0.6B_ASR",
+    );
   });
 });
