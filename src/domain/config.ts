@@ -602,6 +602,7 @@ export function estimateOpenAiRewriteCost(
 export function getProviderReadiness(
   config: AppConfig,
   keyPresence: ApiKeyPresence,
+  localAsrStatus?: "not-configured" | "stopped" | "starting" | "ready" | "failed",
 ) {
   const sttProvider = config.providers.stt.providerId;
   const sttCredential =
@@ -614,23 +615,43 @@ export function getProviderReadiness(
     ? true
     : keyPresence[sttCredential] === true;
   const sttBaseUrlError = validateSttBaseUrl(config);
+  const localAsrProblem = sttProvider === "qwen-local" &&
+    localAsrStatus !== undefined &&
+    localAsrStatus !== "ready";
   const rewriteKey = keyPresence[config.providers.rewrite.providerId] === true;
+  const stt = sttKey && !sttBaseUrlError && !localAsrProblem
+    ? { ready: true as const }
+    : {
+        ready: false as const,
+        reason: sttBaseUrlError
+          ? sttBaseUrlError
+          : localAsrProblem
+            ? `Qwen Local is ${localAsrStatus}.`
+            : `${credentialName(sttCredential!)} API key is missing. Configure it before live STT.`,
+      };
+  const rewrite = rewriteKey
+    ? { ready: true as const }
+    : {
+        ready: false as const,
+        reason: `${credentialName(config.providers.rewrite.providerId)} API key is missing. Configure it before live rewrite.`,
+      };
+  const issues = [];
+  if (!stt.ready) {
+    issues.push(localAsrProblem && localAsrStatus !== "not-configured"
+      ? `ASR ${localAsrStatus}`
+      : "ASR missing");
+  }
+  if (!rewrite.ready) issues.push("Rewrite missing");
 
   return {
-    stt: sttKey && !sttBaseUrlError
-      ? { ready: true as const }
-      : {
-          ready: false as const,
-          reason: sttBaseUrlError
-            ? sttBaseUrlError
-            : `${credentialName(sttCredential!)} API key is missing. Configure it before live STT.`,
-        },
-    rewrite: rewriteKey
-      ? { ready: true as const }
-      : {
-          ready: false as const,
-          reason: `${credentialName(config.providers.rewrite.providerId)} API key is missing. Configure it before live rewrite.`,
-        },
+    stt,
+    rewrite,
+    allReady: issues.length === 0,
+    label: issues.length === 0
+      ? "All systems normal"
+      : issues[0] === "ASR missing" && issues[1] === "Rewrite missing"
+        ? "ASR and Rewrite missing"
+      : issues.join(" and "),
   };
 }
 

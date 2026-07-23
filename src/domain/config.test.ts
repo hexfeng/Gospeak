@@ -215,6 +215,27 @@ describe("Gospeak provider configuration", () => {
     expect(readiness.stt.ready).toBe(false);
     expect(readiness.stt.reason).toMatch(/Groq API key/i);
     expect(readiness.rewrite.ready).toBe(true);
+    expect(readiness.allReady).toBe(false);
+    expect(readiness.label).toBe("ASR missing");
+  });
+
+  it.each([
+    [{ groq: true, openai: true }, "All systems normal"],
+    [{ groq: true, openai: false }, "Rewrite missing"],
+    [{ groq: false, openai: false }, "ASR and Rewrite missing"],
+  ])("summarizes provider readiness for the home status", (presence, label) => {
+    expect(getProviderReadiness(DEFAULT_APP_CONFIG, presence).label).toBe(label);
+  });
+
+  it.each([
+    ["not-configured", "ASR missing"],
+    ["stopped", "ASR stopped"],
+    ["starting", "ASR starting"],
+    ["failed", "ASR failed"],
+    ["ready", "All systems normal"],
+  ] as const)("includes Qwen Local %s status in home readiness", (status, label) => {
+    const config = updateSttProvider(DEFAULT_APP_CONFIG, "qwen-local");
+    expect(getProviderReadiness(config, { openai: true }, status).label).toBe(label);
   });
 
   it("resolves the highest priority matching enabled app rule", () => {

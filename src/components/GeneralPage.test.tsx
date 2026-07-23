@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_APP_CONFIG } from "../domain/config";
+import { DEFAULT_APP_CONFIG, updateSttProvider } from "../domain/config";
 import { GeneralPage } from "./GeneralPage";
 
 describe("GeneralPage", () => {
@@ -81,6 +81,30 @@ describe("GeneralPage", () => {
         (element) => element.textContent,
       ),
     ).toEqual(["Not Set", "Not Set", "Not Set"]);
+    expect(screen.getByRole("heading", { name: "Setup required" })).toBeInTheDocument();
+    expect(screen.getByText("ASR and Rewrite missing")).toHaveClass("is-not-ready");
+    expect(screen.queryByText("All systems normal")).not.toBeInTheDocument();
+  });
+
+  it("shows Local usage mode for ready Qwen Local ASR", () => {
+    const localConfig = updateSttProvider(DEFAULT_APP_CONFIG, "qwen-local");
+    render(
+      <GeneralPage
+        config={{
+          ...localConfig,
+          performance: { ...localConfig.performance, fastMode: true },
+        }}
+        keyPresence={{ openai: true }}
+        profiles={DEFAULT_APP_CONFIG.promptProfiles}
+        qwenLocalStatus="ready"
+        usageEvents={[]}
+        onOpenProfiles={vi.fn()}
+        onOpenProviders={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Local")).toBeInTheDocument();
+    expect(screen.queryByText("Cloud")).not.toBeInTheDocument();
   });
 
   it("prompts for a shortcut when the hotkey is missing", () => {

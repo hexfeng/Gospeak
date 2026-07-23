@@ -16,13 +16,14 @@ import {
   type PromptProfile,
 } from "../domain/config";
 import { summarizeUsage } from "../domain/usage";
-import type { UsageEventRecord } from "../lib/tauri";
+import type { QwenLocalStatus, UsageEventRecord } from "../lib/tauri";
 
 type GeneralPageProps = {
   config: AppConfig;
   keyPresence: ApiKeyPresence;
   profiles: PromptProfile[];
   usageEvents: UsageEventRecord[];
+  qwenLocalStatus?: QwenLocalStatus["status"];
   onOpenProfiles: () => void;
   onOpenProviders: (kind: "stt" | "rewrite") => void;
 };
@@ -32,15 +33,21 @@ export function GeneralPage({
   keyPresence,
   profiles,
   usageEvents,
+  qwenLocalStatus,
   onOpenProfiles,
   onOpenProviders,
 }: GeneralPageProps) {
-  const readiness = getProviderReadiness(config, keyPresence);
+  const readiness = getProviderReadiness(config, keyPresence, qwenLocalStatus);
   const usage = summarizeUsage(usageEvents);
   const activeProfile = profiles.find((profile) => profile.id === config.activeProfileId);
   const hotkeyReady = Boolean(config.hotkey.binding.trim());
   const activeProfileReady = activeProfile?.enabled === true;
   const chartDays = buildWeeklyActivity(usageEvents);
+  const usageMode = !readiness.stt.ready
+    ? "Not Set"
+    : config.providers.stt.providerId === "qwen-local"
+      ? "Local"
+      : "Cloud";
 
   return (
     <section className="module-panel general-page" aria-labelledby="general-title">
@@ -65,11 +72,15 @@ export function GeneralPage({
             <Mic size={34} strokeWidth={1.9} />
           </span>
           <div className="general-hero-copy">
-            <h2>Ready to dictate</h2>
-            <p>Gospeak is ready when you are.</p>
-            <span className="general-hero-pill">
+            <h2>{readiness.allReady ? "Ready to dictate" : "Setup required"}</h2>
+            <p>
+              {readiness.allReady
+                ? "Gospeak is ready when you are."
+                : "Configure Providers before dictating."}
+            </p>
+            <span className={`general-hero-pill ${readiness.allReady ? "is-ready" : "is-not-ready"}`}>
               <span aria-hidden="true" />
-              All systems normal
+              {readiness.label}
             </span>
           </div>
         </div>
@@ -82,7 +93,7 @@ export function GeneralPage({
           value={formatDuration(usage.totalAudioSeconds)}
         />
         <Metric icon={FileText} label="Total characters" value={usage.totalCharacterCount.toLocaleString()} />
-        <Metric icon={Cloud} label="Usage mode" value={readiness.stt.ready ? "Cloud" : "Not Set"} />
+        <Metric icon={Cloud} label="Usage mode" value={usageMode} />
         <Metric icon={DollarSign} label="Total cost" value={formatCost(usage.totalCost)} />
       </section>
 

@@ -135,6 +135,10 @@
   background: #34c759;
 }
 
+.sidebar-status.is-not-ready .sidebar-status-dot {
+  background: #f97316;
+}
+
 .sidebar-status strong {
   color: var(--text-strong);
   font-size: 13px;
@@ -433,6 +437,15 @@ button:disabled {
   height: 8px;
   border-radius: 999px;
   background: #34c759;
+}
+
+.general-hero-pill.is-not-ready {
+  color: #9a3412;
+  background: #fff7ed;
+}
+
+.general-hero-pill.is-not-ready span {
+  background: #f97316;
 }
 
 .general-metrics {

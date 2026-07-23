@@ -121,6 +121,8 @@ fn clean_text(text: &str) -> String {
     }
 
     normalize_spaces_and_punctuation(&words.join(" "))
+        .trim_start_matches(is_punctuation)
+        .to_string()
 }
 
 fn is_no_speech_text(text: &str) -> bool {
@@ -658,6 +660,17 @@ mod tests {
         assert_eq!(
             light_rewrite(input, &LightRewriteContext::normal()),
             LightRewriteDecision::NeedsModel(LightRewriteReason::LongText)
+        );
+    }
+
+    #[test]
+    fn removes_leading_punctuation_left_by_filler_cleanup() {
+        let input = "\u{55ef}\u{ff0c}\u{8fd8}\u{6709}\u{4e24}\u{4e2a}\u{95ee}\u{9898}";
+        let output = light_rewrite(input, &LightRewriteContext::normal()).unwrap();
+
+        assert_eq!(
+            output.text,
+            "\u{8fd8}\u{6709}\u{4e24}\u{4e2a}\u{95ee}\u{9898}\u{3002}"
         );
     }
 

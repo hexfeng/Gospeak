@@ -34,6 +34,7 @@ Turn off Experimental streaming dictation.
 | Mixed Chinese markers | `测试一下功能，一代办，第二图片，三邮件` | Output keeps the title line and formats all three items as numbered lines. `Rewrite = Skipped`. |
 | Short cleanup | `um today today we meet,, discuss project` | Output should read like `Today we meet, discuss project.`. `Rewrite = Skipped`. |
 | Short Chinese cleanup | `嗯 今天开会 然后讨论项目` | Output removes obvious filler and adds conservative punctuation. `Rewrite = Skipped`. |
+| Leading filler punctuation | `嗯，还有两个问题` | Output starts with `还有`, not a comma. `Rewrite = Skipped`. |
 | Short question | Say a short Chinese question ending without punctuation | Output should end with `？`. `Rewrite = Skipped`. |
 | Semantic list fallback | Say a list using `including`, `respectively`, `mainly includes`, `如下`, or `以下`, but without explicit `1/2/3` or `第一/第二/第三` markers | Should use model rewrite and format parallel items one per line when appropriate. `Rewrite` shows latency, not `Skipped`. |
 | Long text fallback | Say more than 100 visible characters without clear local structure | Should use model rewrite. It must not paste raw transcript when OpenAI rewrite is unavailable. |

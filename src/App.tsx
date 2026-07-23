@@ -23,6 +23,7 @@ import {
   type PromptProfile,
   applyStoredPreferences,
   buildExportPayload,
+  getProviderReadiness,
   resolveActiveProfileId,
   resolveProfileForContext,
   validateSttBaseUrl,
@@ -981,6 +982,7 @@ function App() {
     appRules,
     providerState,
   });
+  const readiness = getProviderReadiness(config, keyPresence, qwenLocalStatus.status);
 
   return (
     <main className="app-shell">
@@ -1010,10 +1012,17 @@ function App() {
           ))}
         </nav>
 
-        <div className="sidebar-status" aria-label="Application status">
+        <div
+          className={`sidebar-status ${readiness.allReady ? "is-ready" : "is-not-ready"}`}
+          aria-label="Application status"
+        >
           <span className="sidebar-status-dot" aria-hidden="true" />
-          <strong>All systems normal</strong>
-          <span>Gospeak is running locally</span>
+          <strong>{readiness.label}</strong>
+          <span>
+            {readiness.allReady
+              ? "Gospeak is running locally"
+              : "Configure Providers to start dictating"}
+          </span>
         </div>
       </aside>
 
@@ -1033,6 +1042,7 @@ function App() {
               config={config}
               keyPresence={keyPresence}
               profiles={profiles}
+              qwenLocalStatus={qwenLocalStatus.status}
               usageEvents={usageEvents}
               onOpenProfiles={() => navigate("profiles")}
               onOpenProviders={openActiveProvider}

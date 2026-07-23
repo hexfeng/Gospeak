@@ -45,9 +45,9 @@ The metrics use all stored usage events, not daily or monthly windows:
 Usage mode is:
 
 - `Not Set` when ASR is not ready.
-- `Cloud` when the configured ASR uses the current remote provider path.
-- `Local` is reserved for a future local ASR provider. This redesign does not add
-  a local provider or infer Local from Fast Mode.
+- `Local` when the configured ASR is Qwen Local.
+- `Cloud` when the configured ASR uses a remote provider path.
+- Fast Mode does not change the ASR location shown by this metric.
 
 ### Configuration Cards
 

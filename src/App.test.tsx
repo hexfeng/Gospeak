@@ -318,6 +318,18 @@ describe("Gospeak Alpha app shell", () => {
     );
   });
 
+  it("shows missing active providers in both home status surfaces", async () => {
+    render(<App />);
+
+    const sidebarStatus = screen.getByLabelText("Application status");
+    const generalPage = document.querySelector<HTMLElement>(".general-page")!;
+    await waitFor(() => {
+      expect(within(sidebarStatus).getByText("ASR and Rewrite missing")).toBeInTheDocument();
+      expect(within(generalPage).getByText("ASR and Rewrite missing")).toBeInTheDocument();
+    });
+    expect(sidebarStatus).toHaveClass("is-not-ready");
+  });
+
   it("starts and stops an active managed Qwen configuration only on explicit clicks", async () => {
     const user = userEvent.setup();
     vi.mocked(getQwenLocalStatus).mockResolvedValue({ status: "stopped" });
@@ -365,6 +377,7 @@ describe("Gospeak Alpha app shell", () => {
     ]);
     render(<App />);
 
+    expect(await screen.findAllByText("ASR stopped and Rewrite missing")).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "Providers" }));
     await user.click(await screen.findByRole("button", { name: "Start local model" }));
     expect(startQwenLocal).toHaveBeenCalledTimes(1);
